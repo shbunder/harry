@@ -5,7 +5,7 @@ status: Backlog
 track: full
 created: 2026-09-12
 touches: [scratch]
-stories: []
+stories: [STORY-260912-835929, STORY-260912-76bb6b, STORY-260912-f7cda6, STORY-260912-8d003e, STORY-260912-8bc2b4, STORY-260912-bdf4d2]
 decisions: []
 ---
 
@@ -30,6 +30,12 @@ Five questions nobody has answered, each of which can invalidate a later phase. 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
+- [ ] [[STORY-260912-835929]] — A throwaway MCP server to test against
+- [ ] [[STORY-260912-76bb6b]] — A Claude scheduled task reaches Harry over the tunnel
+- [ ] [[STORY-260912-f7cda6]] — A blocking tool call survives five minutes
+- [ ] [[STORY-260912-8d003e]] — A De Tijd article comes back in full
+- [ ] [[STORY-260912-8bc2b4]] — A PDF reaches the tablet
+- [ ] [[STORY-260912-bdf4d2]] — iCloud answers over CalDAV
 
 ## Notes
 
