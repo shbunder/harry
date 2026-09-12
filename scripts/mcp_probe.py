@@ -3,8 +3,9 @@
 
 Two tools and nothing else:
 
-  ping()   returns immediately, so reachability is answerable on its own
-  sleep()  blocks, so "does a long call survive the trip" is answerable on its own
+  ping()            returns immediately, so reachability is answerable on its own
+  sleep()           blocks silently, so a client's idle ceiling is answerable on its own
+  sleep_reporting() blocks while reporting progress, which is the lever that may defeat it
 
 Answering both against the same server is the point — two slightly different servers
 would let a failure hide in the difference between them.
@@ -34,7 +35,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastmcp import Client, FastMCP
+from fastmcp import Client, Context, FastMCP
 
 # Not `providers.bearer`, which is where you look first and where it is not.
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
@@ -114,6 +115,29 @@ def sleep(seconds: int = 300) -> str:
     return answer
 
 
+async def sleep_reporting(seconds: int = 600, every: int = 30, context: Context | None = None) -> str:
+    """Block for `seconds`, sending a progress notification every `every` seconds.
+
+    The same question as `sleep`, with the one lever that might defeat the client's
+    ceiling. A client aborts a tool that has sent no response *or progress* for some
+    period, so a long job that reports progress may hold open indefinitely — without the
+    caller having to configure anything, which matters because a server cannot configure
+    its clients.
+    """
+    started = time.time()
+    record('sleep_reporting', f'started, asked for {seconds}s reporting every {every}s')
+    elapsed = 0
+    while elapsed < seconds:
+        await asyncio.sleep(min(every, seconds - elapsed))
+        elapsed = int(time.time() - started)
+        if context is not None:
+            await context.report_progress(elapsed, seconds, f'{elapsed}s of {seconds}s')
+    waited = time.time() - started
+    answer = f'slept {waited:.1f}s while reporting progress every {every}s, and still returned'
+    record('sleep_reporting', answer)
+    return answer
+
+
 def build_server(bearer: str | None = None) -> FastMCP:
     """A server carrying both tools, behind a bearer token.
 
@@ -125,7 +149,7 @@ def build_server(bearer: str | None = None) -> FastMCP:
         name='harry-probe',
         instructions='A probe. Two tools: ping, and a sleep that blocks.',
         auth=StaticTokenVerifier(tokens={secret: {'client_id': 'probe', 'scopes': []}}),
-        tools=[ping, sleep],
+        tools=[ping, sleep, sleep_reporting],
     )
 
 
@@ -220,6 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--token', default=token())
     p.add_argument('--ping', action='store_true')
     p.add_argument('--sleep', type=int, metavar='SECONDS')
+    p.add_argument('--sleep-reporting', type=int, metavar='SECONDS', dest='reporting')
     p.add_argument('--timeout', type=float, default=900.0, help='client ceiling, default 15 min')
     p.set_defaults(func=cmd_call)
 

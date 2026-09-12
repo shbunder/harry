@@ -65,10 +65,14 @@ def test_a_log_it_cannot_write_does_not_break_the_probe(monkeypatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-async def test_a_client_reaches_both_tools_and_gets_an_answer(probe_log):
+async def test_a_client_reaches_every_tool_and_gets_an_answer(probe_log):
     server = mcp_probe.build_server(bearer='test-token')
     async with Client(server) as client:
-        assert sorted(tool.name for tool in await client.list_tools()) == ['ping', 'sleep']
+        assert sorted(tool.name for tool in await client.list_tools()) == [
+            'ping',
+            'sleep',
+            'sleep_reporting',
+        ]
 
         result = await client.call_tool('ping', {})
         assert 'pong from' in str(result.data)
@@ -186,3 +190,35 @@ async def test_a_server_that_is_not_there_reports_unknown_not_a_finding(probe_lo
     err = capsys.readouterr().err
     assert err.startswith('FAIL')
     assert 'UNKNOWN, not a finding' in err
+
+
+async def test_sleep_reporting_emits_progress_while_it_blocks(probe_log):
+    """The lever that may defeat a client's idle ceiling.
+
+    A client aborts a tool that has sent no response *or progress* for some period —
+    Claude Code's default is 300s. A long job that reports progress should reset that
+    timer on every notification, which matters because a server cannot configure its
+    clients. Asserting the notifications arrive is the server half of that; whether a
+    given client honours them is that client's half.
+    """
+    seen: list[str] = []
+
+    async def on_progress(progress: float, total: float | None, message: str | None) -> None:
+        seen.append(f'{progress:.0f}/{total:.0f} {message}')
+
+    server = mcp_probe.build_server(bearer='test-token')
+    async with Client(server, progress_handler=on_progress) as client:
+        result = await client.call_tool('sleep_reporting', {'seconds': 3, 'every': 1})
+
+    assert 'still returned' in str(result.data)
+    assert len(seen) == 3, f'expected one notification per second, got {seen}'
+    assert seen[0].startswith('1/3')
+    assert seen[-1].startswith('3/3')
+
+
+async def test_sleep_reporting_still_works_with_no_progress_handler(probe_log):
+    """A caller that ignores progress must not break the call."""
+    server = mcp_probe.build_server(bearer='test-token')
+    async with Client(server) as client:
+        result = await client.call_tool('sleep_reporting', {'seconds': 1, 'every': 1})
+    assert 'still returned' in str(result.data)
