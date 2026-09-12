@@ -1,7 +1,7 @@
 ---
 id: FEAT-260912-cfeb21
 title: Every unknown that could sink the morning page is settled
-status: Backlog
+status: In Progress
 track: full
 created: 2026-09-12
 touches: [scratch]
