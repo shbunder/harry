@@ -17,9 +17,13 @@ CONNECTOR = """\
 ---
 name: remarkable
 description: The reMarkable Paper Pro
-requires_env: [REMARKABLE_DEVICE_TOKEN]
 expires: manual
 enabled: true
+config:
+  device_token:
+    description: Pairing token from my.remarkable.com — complete access to the tablet
+    secret: true
+    required: true
 ---
 
 How to re-pair when the token stops working.
@@ -183,10 +187,15 @@ def test_an_unknown_expiry_is_caught(harry, capsys):
     assert '`expires` must be one of' in capsys.readouterr().err
 
 
-def test_requires_env_must_be_environment_variable_names(harry, capsys):
-    harry('connectors', 'remarkable', CONNECTOR.replace('[REMARKABLE_DEVICE_TOKEN]', '[remarkable_token]'))
+def test_requires_env_is_refused_rather_than_ignored(harry, capsys):
+    """It said less than `config:` does and was a second copy of part of it. Silently
+    ignoring a field somebody wrote is how a setting they expected to matter does not."""
+    stale = CONNECTOR.replace('expires: manual', 'requires_env: [REMARKABLE_DEVICE_TOKEN]\nexpires: manual')
+    harry('connectors', 'remarkable', stale)
     assert cap.main([]) == 1
-    assert 'environment variable names' in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert '`requires_env` is retired' in err
+    assert 'config:' in err
 
 
 def test_enabled_must_be_a_boolean_not_a_word(harry, capsys):

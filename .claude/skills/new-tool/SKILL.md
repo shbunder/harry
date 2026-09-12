@@ -109,6 +109,11 @@ frontmatter, or it becomes a second copy that drifts.
 `isError: true` with what to try instead: *"no articles since 05:00 — try
 `since=yesterday`"*. Never a traceback, never a bare code.
 
+### 7b. Settings, if it has any
+
+Declare them in this tool's own `config:` and run `make env-template`. Bare keys — the
+folder is the namespace.
+
 ### 8. Validate and test
 
 ```bash

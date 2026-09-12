@@ -86,6 +86,12 @@ If the tool you need does not exist yet, it belongs to a connector. Add it there
    deadline. For `trigger: schedule` say so explicitly, even if the answer is "a stale cache
    shows up on the page, which is already reported".
 
+### 6b. Settings, if it has any
+
+A job's own settings go in its `config:` block and nowhere else — `article_limit` is read
+by one job and has no business being global. `make env-template` writes the `.env` beside
+the declaration; your values go in `.env.local` next to it.
+
 ### 7. Validate and test
 
 ```bash

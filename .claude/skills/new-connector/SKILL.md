@@ -26,12 +26,22 @@ usually a credential. Declare `--touches .harry/connectors/<name>`.
 ---
 name: <name>
 description: <what it reaches, and what that gets you>
-requires_env: [SOME_TOKEN, SOME_URL]   # absent config disables the connector, quietly and cleanly
 provides: [<tool>, …]                  # the tools this connector declares
 expires: never                         # never | manual | session
 enabled: true
+config:
+  some_token:
+    description: <what it is, and how to get one>
+    secret: true                       # never rendered into the committed .env
+    required: true                     # absent, the connector disables itself and says so
+  some_url:
+    description: <what it points at>
+    default: https://example.test
 ---
 ```
+
+`config:` is the schema and the only place a setting is declared. There is no
+`requires_env` — it said less and was a second copy of `required: true`.
 
 `expires:` is required and it is not bookkeeping — it is what tells Harry to watch the
 credential at all. `session` means a browser login that lapses on its own; `manual` means a
@@ -58,12 +68,23 @@ Keep each tool a **verb with facts in and facts out**. If a tool is choosing, ra
 summarising, that is judgement and it belongs on Claude's side — return the candidates
 instead. `.claude/rules/no-model-calls.md` and `.claude/rules/tool-design.md`.
 
-### 5. Configuration
+### 5. Configuration lives in this folder
 
-Every value goes in `harry/config.py`, typed, with a comment saying what it is for **and how
-to get it** — the pairing URL, the app-password page, the login script. Then the same key
-and explanation in `.env`, the committed one. Secrets stay empty there and are filled in
-`.env.local`. `.claude/rules/secrets-and-config.md`.
+```bash
+make env-template
+```
+
+That writes `.env` beside your declaration, from `config:`. **Never edit it** — `make lint`
+fails when it has drifted from the schema. Put your own values in `.env.local` beside it,
+which is gitignored.
+
+Keys there are bare: `SOME_TOKEN`, not `HARRY_<NAME>_SOME_TOKEN`. The folder is the
+namespace. The prefixed spelling is the environment override, for a container, and the
+generated file names it beside every key.
+
+Write the `description` for somebody who has to get the value at 07:00 — the page to visit,
+the command to run. It becomes the comment beside the key, and that is the only place
+anybody will look. `.claude/rules/secrets-and-config.md`.
 
 ### 6. Answer the failure questions before writing any code
 
