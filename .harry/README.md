@@ -1,0 +1,149 @@
+# `.harry/` — what Harry can do
+
+> A **connector** is somewhere Harry can reach.
+> A **tool** is something Claude can ask for.
+> A **job** is something Harry does on its own.
+
+Decided in
+[ADR-260912-399f07](../project/decisions/ADR-260912-399f07-capabilities-are-folders-under-harry-connectors-tools-and-jo.md).
+Laid out like `.claude/skills/`, so if you have used Claude Code you already read this.
+
+```
+.harry/
+├── connectors/<name>/CONNECTOR.md   + the code that reaches it
+├── tools/<name>/TOOL.md             + the function it calls
+└── jobs/<name>/JOB.md               + the scripts it runs
+```
+
+Each of those is one **implementation** of a capability. Core defines the kinds; a fourth
+kind is a core change, deliberately, because a kind is a contract.
+
+## The two rules that make this work
+
+**Frontmatter is what Harry does.** Machine-readable and executed: the trigger, the
+schedule, the deadline, the connectors required.
+
+**The body is what Claude is told.** Harry stores it and serves it verbatim. It never
+parses it, templates it, or branches on it — that would be reasoning, and Harry does not
+reason. A job with no mind in the loop has a body that is documentation and nothing serves
+it; `trigger:` says which kind it is.
+
+Everything here is validated by `scripts/check_capabilities.py`, which `make lint` runs. A
+malformed header fails at the gate rather than at 06:30.
+
+## A job
+
+`.harry/jobs/morning-page/JOB.md`
+
+```markdown
+---
+name: morning-page
+description: The day's weather, agenda and a few full articles, on the tablet by 07:00
+trigger: claude                 # claude | schedule
+deadline: "07:00"               # the watchdog alerts if it has not finished by then
+timezone: Europe/Brussels
+requires: [remarkable, icloud, news]
+enabled: true
+---
+
+Ask Harry for today's candidates. Read the headlines and summaries, and pick the six to
+eight that matter to me — I care about Belgian politics, monetary policy and anything
+about how people actually use these tools.
+
+Write a two-sentence intro in your own words, then call `build_digest` with your picks.
+Skip anything that is the same story from a second source.
+```
+
+`trigger: claude` means Harry does not fire this. A Claude scheduled task does, at a time
+it owns, and asks Harry for the brief above. Harry supplies the text and the facts; Claude
+supplies the judgement. That boundary is
+[ADR-260912-bd36c2](../project/decisions/ADR-260912-bd36c2-harry-never-calls-a-model.md).
+
+**A `trigger: claude` job's body is published as an MCP prompt** named for the job. The
+scheduled task invokes the prompt rather than calling a tool to fetch text, and the job
+shows up in any MCP client's prompt picker for free — that is what prompts are for in the
+protocol, so Harry does not build a second mechanism for it.
+
+A heuristic job looks like this instead — `trigger: schedule`, and nothing reads the body:
+
+```markdown
+---
+name: refresh-feeds
+description: Re-fetch every configured feed, so the morning ask is instant
+trigger: schedule
+schedule: "0 5 * * *"
+timezone: Europe/Brussels
+requires: [news]
+enabled: true
+---
+
+Runs an hour before the page is built. Failures are not alerted on their own — a stale
+cache shows up as a feed marked unavailable on the page, which is already reported.
+```
+
+## A tool
+
+`.harry/tools/digest_list_candidates/TOOL.md`
+
+```markdown
+---
+name: digest_list_candidates          # <namespace>_<verb>, underscores only
+namespace: digest
+description: Today's weather, agenda and headlines, as a menu to choose from
+requires: [news, icloud]
+always_load: true                     # the exception — most tools defer
+annotations:
+  readOnlyHint: true                  # required: it is how a client knows what to gate
+  idempotentHint: true
+enabled: true
+---
+
+Returns everything today could contain: the weather, the day's agenda, and up to 40
+headlines with their summaries and ids. Nothing is chosen for you — pick the six to eight
+that matter and pass their ids to `digest_build`. Reach for this first, every morning.
+```
+
+**The body is the MCP description** — the text Claude reads to decide whether to call this
+tool. Small refinements to it move selection accuracy more than almost anything else you
+can change, which makes it the highest-leverage prose in the repo.
+
+**The input schema is not declared.** It comes from the typed Python signature, the way
+FastMCP already does it. Declaring it here too would be a second copy of what the code
+knows, and the two would drift.
+
+Why `digest_list_candidates` and `digest_build` are two tools rather than one with a mode
+argument — and the rule for when to merge instead —
+is [.claude/rules/tool-design.md](../.claude/rules/tool-design.md).
+
+## A connector
+
+`.harry/connectors/tijd/CONNECTOR.md`
+
+```markdown
+---
+name: tijd
+description: De Tijd — full article text, through a logged-in browser session
+requires_env: [TIJD_STORAGE_STATE]
+provides: [fetch_article]
+expires: session                # never | manual | session
+enabled: true
+---
+
+De Tijd returns 403 to any non-browser client, even for free articles. There is no header
+trick — it needs a real browser carrying a real login.
+
+**When this stops working**, articles fall back to their RSS summary, the page still
+renders, and `#harry` says "De Tijd login needs refreshing". To fix it: ...
+```
+
+The renewal procedure lives here, beside the code it is about, rather than in a
+documentation page somebody has to remember exists. `expires:` is what tells Harry to watch
+the credential at all.
+
+## Adding one
+
+```
+/new-job <what it does>              # a markdown file, no Python needed
+/new-tool <the verb Claude can ask for>
+/new-connector <what it reaches>     # a folder, its credential, and its runbook
+```

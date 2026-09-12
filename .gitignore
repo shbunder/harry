@@ -1,0 +1,64 @@
+# ---- Secrets ----
+# `.env` IS COMMITTED. It is the exhaustive list of every key with its working
+# default, and every secret left empty — the documentation of what Harry can be
+# configured with, which is only useful if it is complete.
+#
+# `.env.local` is this machine's file: the real secrets, plus any setting that
+# differs here. Never committed. It wins over `.env`, key by key.
+# See .claude/rules/secrets-and-config.md.
+.env.local
+.env.*.local
+
+# The De Tijd browser session is a live logged-in session. Never commit it.
+storage-state*.json
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ---- Harry's data ----
+# SQLite, rendered PDFs, cached feeds, article text. User content and credentials.
+data/
+out/
+*.db
+*.db-journal
+*.sqlite3
+
+# ---- Phase 0 spikes ----
+# Throwaway scripts. scratch/README.md is tracked so the directory survives.
+scratch/*
+!scratch/README.md
+
+# ---- Docs ----
+site/
+
+# ---- Claude Code ----
+# Per-machine permission allowlist; settings.json IS tracked.
+.claude/settings.local.json
+# Transient unlock flag for the restricted-path guard hook.
+.claude/.unlock-safety
+# The gate's mutual-exclusion lock (make check). Holds a pid, not history.
+.claude/.gate.lock
+# Temporary git worktrees. The worktree is registered in .git/worktrees;
+# this is only the checkout it points at.
+.claude/worktrees/
+
+# ---- OS / editor ----
+.DS_Store
+.idea/
+*.swp
+
+# Screenshots. Two strays reached mykate_cowork's repo root through bulk
+# `git add`; the same rule is cheaper here than the cleanup was there.
+*.png
+!docs/**/*.png

@@ -1,0 +1,117 @@
+# Harry — the workspace root.
+#
+# One package today (`packages/harry`). The workspace exists because the module
+# contract is meant to grow sideways: an out-of-tree module directory becomes a
+# second member here without the core changing.
+
+[project]
+name = "harry-workspace"
+version = "0.1.0"
+description = "Harry — a companion service that does what Claude decides"
+requires-python = ">=3.12"
+dependencies = ["harry"]
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+harry = { workspace = true }
+
+[dependency-groups]
+# The gate's own tools. Installed by `make env-install`, never by the container.
+dev = [
+    "ruff>=0.14",
+    "pyright>=1.1.400",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "coverage[toml]>=7.6",
+    "respx>=0.22",           # httpx mocking, so feed tests never touch a live URL
+]
+
+# ============================================================================
+# ruff — formatter and linter
+# ============================================================================
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+exclude = [".git", ".ruff_cache", ".pytest_cache", ".venv", "__pycache__", "build", "dist", "site", "scratch"]
+# Where first-party modules live. `project` and `scripts` are on pytest's pythonpath,
+# so `import board` is first-party however it looks from the repo root.
+src = ["packages/harry/src", "project", "scripts", ".harry"]
+
+[tool.ruff.lint]
+select = [
+    "A",    # shadowing built-ins
+    "C901", # cyclomatic complexity
+    "E",    # pycodestyle
+    "ERA",  # commented-out code
+    "F",    # pyflakes
+    "I",    # import sorting
+    "N",    # naming
+    "T100", # stray breakpoints
+]
+ignore = [
+    "E501", # line-too-long — the formatter owns line length
+    "N818", # error-suffix-for-exceptions
+]
+
+[tool.ruff.lint.mccabe]
+# A ratchet: it only ever falls. Raising it to make a function fit is the move
+# .claude/rules/debugging.md forbids.
+max-complexity = 12
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = ["harry"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+# ============================================================================
+# pytest
+# ============================================================================
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# --import-mode=importlib so two test files may share a basename in different
+# directories without colliding on module name, and tests/ needs no __init__.py.
+addopts = "--strict-markers --strict-config --import-mode=importlib"
+pythonpath = [".", "scripts", "project"]
+# `.harry` is deliberately absent here: its Python is loaded by Harry at run time, by
+# path, not imported by name. Adding it would let a test import a connector directly and
+# pass while the real loader was broken.
+markers = [
+    # Reaches the network. Never run by `make check` — feed and article parsing is
+    # tested against recorded fixtures, per .claude/rules/external-sources.md.
+    "live: reaches a real external service",
+    "slow: takes more than a second",
+]
+filterwarnings = ["error::DeprecationWarning:harry.*"]
+
+# ============================================================================
+# coverage
+# ============================================================================
+[tool.coverage.run]
+branch = true
+source = ["packages/harry/src/harry", "project", "scripts", ".harry"]
+omit = ["*/tests/*", "*/scratch/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+# A ratchet, like max-complexity above it, and it only ever rises. Lowering this
+# to make the gate green is a Critical finding — .claude/rules/debugging.md.
+#
+# 80 -> 85: opened at 80 before anything was written, raised once the scaffolding
+# measured 88. Three points of headroom, deliberately: unlike max-complexity, this
+# number is global, so a feature elsewhere can push it down without touching the
+# code you are looking at. Sitting exactly at the ceiling turns that into a red
+# gate on somebody else's change.
+fail_under = 85
+show_missing = true
+skip_covered = true

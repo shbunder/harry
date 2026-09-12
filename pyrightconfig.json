@@ -1,0 +1,12 @@
+{
+  "include": ["packages", "project", "scripts", "tests", ".harry"],
+  "exclude": ["**/__pycache__", ".venv", "scratch", "build", "dist", "site"],
+  "extraPaths": ["packages/harry/src", "project", "scripts"],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard",
+  "reportMissingImports": "error",
+  "reportUnusedImport": "error",
+  "reportPrivateUsage": "warning"
+}

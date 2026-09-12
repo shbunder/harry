@@ -1,0 +1,81 @@
+# Operating Harry
+
+Harry runs on the NUC in Docker on port 7430. Marcel owns 7420 and 7421.
+
+```bash
+make image        # build
+make up           # start
+make logs         # follow
+make down         # stop
+```
+
+## Configuration
+
+Two files, and `.env.local` wins:
+
+| File | Committed? | On the NUC it holds |
+|---|---|---|
+| `.env` | Yes — it arrives with the checkout | Every key with its working default, secrets empty |
+| `.env.local` | No | The three credentials, and anything that differs on this machine |
+
+You never copy `.env`. You create `.env.local` beside it with only what differs, so a key
+added to `.env` later reaches this machine without anyone editing it twice.
+
+Every key is declared once and typed in `harry/config.py`; nothing reads the environment
+outside it, and the Makefile reads neither file — that is what keeps the order above
+true. `.claude/rules/secrets-and-config.md` has the reasoning.
+
+## The credential that expires quietly
+
+This is the part worth reading before you need it. It degrades Harry without breaking it,
+which is exactly why it needs an alert rather than a health check.
+
+### The De Tijd browser session
+
+**Symptom.** De Tijd articles stop arriving with full text and fall back to their RSS
+summary. The page still renders. Slack gets *"De Tijd login needs refreshing"*.
+
+**Why.** De Tijd returns 403 to any non-browser client, even for free articles, so Harry
+reads it through a real browser using a saved logged-in session. That session expires every
+few weeks.
+
+**Fix.** Log in by hand in a headed browser and save the session again:
+
+```bash
+make spike S=tijd-login            # headed, logs in, writes the storage state
+```
+
+Then copy the file to the NUC's data volume at the path `TIJD_STORAGE_STATE` names.
+
+This is personal use of a subscription you pay for, on your own device. The storage state
+is never shared and never committed.
+
+## When no page arrives at all
+
+**Symptom.** Nothing on the tablet, and Harry said nothing.
+
+**Why.** The 06:30 trigger is a Claude scheduled task, outside Harry. Harry cannot report
+the absence of something that never asked it for anything.
+
+**Fix.** This is what the watchdog is for: a Harry job that checks whether a digest was
+built since 05:00 and posts to Slack when none was. If you got no page *and* no Slack
+message, the watchdog itself is what to look at first — check Harry is up (`make logs`)
+before looking at the scheduled task.
+
+Harry runs no model and holds no provider credential, so there is no token here to renew.
+See [ADR-260912-bd36c2](../project/decisions/ADR-260912-bd36c2-harry-never-calls-a-model.md).
+
+## When the tablet stops accepting writes
+
+The reMarkable protocol is reverse-engineered and it does break. All writes failed in
+August 2026 and needed a patched client. `rmapi` is pinned exactly in the `Dockerfile`;
+expect to move that pin a few times a year.
+
+If a push fails twice, Harry alerts. That alert is the feature — a fire-and-forget job on a
+protocol like this fails silently and you notice in three weeks.
+
+## The 50-day rule
+
+On reMarkable's free tier a document untouched for 50 days stops syncing. Irrelevant for a
+daily page, relevant if the tablet becomes an archive. Connect is €3.99/month if it starts
+to bite.

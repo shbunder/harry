@@ -1,0 +1,32 @@
+# Harry on the NUC. One service, one volume, one port.
+#
+# Marcel owns 7420 and 7421. Harry owns 7430.
+
+services:
+  harry:
+    build: .
+    image: harry:latest
+    container_name: harry
+    restart: unless-stopped
+    # Both files, in the same order and with the same meaning as everywhere else:
+    # `.env` is committed and carries the defaults, `.env.local` is this NUC's and wins.
+    # `required: false` because a machine with nothing to override needs no second file.
+    env_file:
+      - path: .env
+        required: true
+      - path: .env.local
+        required: false
+    ports:
+      - "7430:7430"
+    volumes:
+      # SQLite, rendered pages, cached articles, and the De Tijd storage state.
+      # All three of Harry's dangerous credentials live in here or in .env.local.
+      - harry-data:/data
+      # Nothing of yours is mounted here. Harry never calls a model, so it needs no
+      # provider credential — see .claude/rules/no-model-calls.md.
+    # Europe/Brussels matters: the 06:30 job is a local time, not a UTC one.
+    environment:
+      TZ: Europe/Brussels
+
+volumes:
+  harry-data:
