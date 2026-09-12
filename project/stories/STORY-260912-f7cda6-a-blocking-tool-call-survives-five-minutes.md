@@ -33,3 +33,7 @@ The whole Slack loop rests on a tool call being held open while a human answers.
 
 ## Notes
 
+
+- **2026-09-12** — Set up to answer the remaining half. The probe runs on 7430 and .mcp.json registers it as 'harry'. MCP servers load at session start, so this needs a window reload before the tools appear; then calling sleep(300) from inside a Claude Code session answers whether the client holds, which is the part my own client could not test.
+- **2026-09-12** — ANSWERED from a real Claude Code session. sleep(300) returned the result in the same turn. sleep(660) was aborted with 'sent no response or progress for 300s'. So: a 300s IDLE ceiling, not a duration cap. Settings named in the error - per-server timeout (ms) in .mcp.json, or CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT globally, 0 disables. The 300s pass was a hair inside the boundary and should not be read as headroom.
+
