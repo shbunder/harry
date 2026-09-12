@@ -33,6 +33,8 @@ The output surface, and the one holding the most dangerous credential in the rep
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-12** — PASS on the rendering half, ahead of the push. WeasyPrint 70.0 imports and renders on this Mac with no brew install pango needed, producing a 9,778-byte PDF at exactly 509.34 x 679.13 pt. The Paper Pro geometry is expressible in plain CSS @page, and the renderer is not a risk.
+- **2026-09-12** — Finding against the plan: remarkapy 0.3.1 exposes register_device(code) and register_device_wizard(), so pairing needs no Go rmapi binary. The plan assumed rmapi for the one-time pairing. rmapi may still be worth having as a fallback pusher, but it is not on the critical path and the Dockerfile may not need it.
 
 ## Links
 
