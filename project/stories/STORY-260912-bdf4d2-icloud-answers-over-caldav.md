@@ -25,6 +25,7 @@ Apple's Reminders support over CalDAV is the least reliable dependency in the pl
 - [ ] Whether Reminders arrive as VTODO is recorded either way
 - [ ] The calendars available on the account are listed, so the connector knows what it can be pointed at
 - [ ] The app-specific password is read from the environment and appears in no output
+- [ ] The finding is a dated note on FEAT-260912-e7ce2d, the connector that depends on it
 
 ## Subtasks
 

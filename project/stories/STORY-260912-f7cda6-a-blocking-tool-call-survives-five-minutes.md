@@ -24,7 +24,8 @@ The whole Slack loop rests on a tool call being held open while a human answers.
 - [ ] A Claude Code session calls `sleep` and receives the result in the same turn, five minutes later
 - [ ] The setting that governs the timeout is named, with its default and its ceiling
 - [ ] The longest call that succeeds is recorded, and the first length that fails
-- [ ] The finding is written into the decision that Phase 4 will be designed against
+- [ ] The finding is a dated note on this feature, since Phase 4 has no feature or decision yet
+- [ ] It says which of the two designs Phase 4 takes, in one sentence, so the next person does not re-derive it
 
 ## Subtasks
 

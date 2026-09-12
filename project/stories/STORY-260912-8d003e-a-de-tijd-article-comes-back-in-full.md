@@ -25,6 +25,7 @@ The riskiest spike. De Tijd returns 403 to any non-browser client, even for free
 - [ ] Reusing it headless returns one article body of more than 1,000 characters of prose through trafilatura
 - [ ] A redirect stub link is shown to resolve to the real article, or shown not to
 - [ ] How old the session was when it last worked is recorded, as the starting guess for how often it needs renewing
+- [ ] The finding is a dated note on FEAT-260912-9c933f, the connector that depends on it
 - [ ] The saved session is written to a path outside the repo, and nothing commits it
 
 ## Subtasks

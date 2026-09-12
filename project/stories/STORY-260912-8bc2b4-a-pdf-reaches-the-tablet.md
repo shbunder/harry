@@ -25,6 +25,9 @@ Settles the free-tier question two independent implementers disagree about, and 
 - [ ] A one-page PDF pushed with remarkapy appears on the tablet
 - [ ] Whether this account needs a Connect subscription for that to work is recorded either way
 - [ ] The exact rmapi and remarkapy versions that worked are recorded, to be pinned
+- [ ] Where rmapi wrote the device token is named, and it is outside the repo — that token is complete read
+      and write access to every document on the tablet, with no scopes and no read-only mode
+- [ ] The finding is a dated note on FEAT-260912-74f222, the connector that depends on it
 
 ## Subtasks
 

@@ -24,7 +24,8 @@ The one on the critical path. The morning page is triggered by a Claude schedule
 - [ ] A Claude scheduled task configured against the tunnel URL calls `ping` and the result comes back to that session
 - [ ] What had to be configured, and where, is written down step by step — this is the setup nobody will remember
 - [ ] If it does not work, the reason is recorded: the plan, the account tier, or the network
-- [ ] The finding is written into the scenario on the morning-page feature that depends on it
+- [ ] The finding is a dated note on FEAT-260912-0f2744, quoting what was configured and what came back
+- [ ] ADR-260912-bd36c2's Consequences is amended, since it already names this as its own unproven half
 
 ## Subtasks
 

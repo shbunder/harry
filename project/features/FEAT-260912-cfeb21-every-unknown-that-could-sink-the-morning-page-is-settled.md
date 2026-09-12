@@ -4,9 +4,9 @@ title: Every unknown that could sink the morning page is settled
 status: Backlog
 track: full
 created: 2026-09-12
-touches: [scratch]
+touches: [scratch, tests/test_config.py]
 stories: [STORY-260912-835929, STORY-260912-76bb6b, STORY-260912-f7cda6, STORY-260912-8d003e, STORY-260912-8bc2b4, STORY-260912-bdf4d2]
-decisions: []
+decisions: [ADR-260912-bd36c2]
 ---
 
 # FEAT-260912-cfeb21 — Every unknown that could sink the morning page is settled
@@ -40,7 +40,10 @@ Five questions nobody has answered, each of which can invalidate a later phase. 
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-12** — The first worktree ever opened went red on tests/test_config.py: it asserted port == 7430 while `make worktree` writes HARRY_PORT=7431 into that tree's .env.local by design. The test now reads .env alone. Declared in `touches` rather than left as silent scope drift — the fix is scaffolding, not Phase 0, and it made every worktree's gate red.
 
 ## Links
 
 - Requirements: [[FEAT-260912-cfeb21]]
+- Decision: [[ADR-260912-bd36c2]] — its Consequences names this feature's connector spike as its own unproven half
+
