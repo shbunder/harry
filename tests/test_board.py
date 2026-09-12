@@ -29,6 +29,27 @@ def tmp_board(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture
+def with_git(monkeypatch):
+    """Stand in for the repo: which features have a feat/ branch, and which have merged.
+
+    In Progress and Done are both read from git now, so a test that wants either has to
+    say what git would have answered.
+    """
+
+    def set_state(branches=(), merged=()):
+        def fake(*args):
+            if args[0] == 'branch':
+                return '\n'.join(f'feat/{i}-slug' for i in branches)
+            if args[0] == 'log':
+                return '\n'.join(f'merge feat/{i}-slug ({i})' for i in merged)
+            return ''
+
+        monkeypatch.setattr(board, 'git', fake)
+
+    return set_state
+
+
 def all_ids(directory, kind):
     """Every board id of `kind` in a throwaway tree, read from the frontmatter."""
     return [
@@ -93,26 +114,25 @@ def test_done_is_never_typed(tmp_board, capsys):
     assert 'merge commit' in capsys.readouterr().err
 
 
-def test_starting_a_second_feature_on_the_same_area_is_refused(tmp_board, capsys):
+def test_starting_a_second_feature_on_the_same_area_is_refused(tmp_board, with_git, capsys):
     board.main(['new-feature', 'The page renders', '--touches', 'modules/digest'])
     board.main(['new-feature', 'The page is capped', '--touches', 'modules/digest'])
     first, second = sorted(all_ids(tmp_board / 'features', 'FEAT'))
 
-    assert board.main(['start', first]) == 0
-    assert board.main(['start', second]) == 1
+    with_git(branches=[first])
+    assert board.main(['can-start', second]) == 1
     assert 'also touches modules/digest' in capsys.readouterr().err
 
     # And deliberately, with --force, it goes through.
-    assert board.main(['start', second, '--force']) == 0
+    assert board.main(['can-start', second, '--force']) == 0
 
 
-def test_the_work_in_progress_cap_holds(tmp_board, capsys):
+def test_the_work_in_progress_cap_holds(tmp_board, with_git, capsys):
     for n in range(board.WIP_CAP + 1):
         board.main(['new-feature', f'Feature {n}', '--touches', f'modules/m{n}'])
     ids = sorted(all_ids(tmp_board / 'features', 'FEAT'))
-    for feature_id in ids[: board.WIP_CAP]:
-        assert board.main(['start', feature_id]) == 0
-    assert board.main(['start', ids[board.WIP_CAP]]) == 1
+    with_git(branches=ids[: board.WIP_CAP])
+    assert board.main(['can-start', ids[board.WIP_CAP]]) == 1
     assert f'the cap is {board.WIP_CAP}' in capsys.readouterr().err
 
 
@@ -174,25 +194,49 @@ def test_lanes_is_quiet_when_nothing_is_in_flight(tmp_board, capsys):
     assert 'Free to start anything' in capsys.readouterr().out
 
 
-def test_lanes_warns_about_an_undeclared_feature(tmp_board, capsys):
+def test_lanes_warns_about_an_undeclared_feature(tmp_board, with_git, capsys):
     board.main(['new-feature', 'The morning page'])
     feature_id = only_id(tmp_board / 'features', 'FEAT')
-    board.main(['start', feature_id])
+    with_git(branches=[feature_id])
     board.main(['lanes'])
-    out = capsys.readouterr().out
-    assert 'undeclared' in out
-    assert 'no branch' in out
+    assert 'undeclared' in capsys.readouterr().out
 
 
-def test_merged_features_report_done_without_the_board_storing_it(tmp_board, monkeypatch, capsys):
+def test_a_features_status_is_read_from_git_and_stored_nowhere(tmp_board, with_git, capsys):
+    """Backlog, In Progress and Done are all derived, and the file stores none of them.
+
+    The stored field was removed after it went wrong in the obvious way: `start` mutated
+    whichever checkout it ran in, so the flip landed on main while the branch carried on
+    saying Backlog, and the two collided at merge over a field neither should have held.
+    """
     board.main(['new-feature', 'The morning page'])
     feature_id = only_id(tmp_board / 'features', 'FEAT')
-    monkeypatch.setattr(board, 'git', lambda *args: f'merge feat/{feature_id}-slug ({feature_id})')
+    assert 'status' not in board.read_frontmatter(board.find(feature_id).read())
 
+    with_git()
+    board.main(['list', 'features'])
+    assert 'Backlog' in capsys.readouterr().out
+
+    with_git(branches=[feature_id])
+    board.main(['list', 'features'])
+    assert 'In Progress' in capsys.readouterr().out
+
+    # A merged branch that still exists is Done — the merge commit outranks it.
+    with_git(branches=[feature_id], merged=[feature_id])
     board.main(['list', 'features'])
     assert 'Done' in capsys.readouterr().out
-    # Nothing was written. The frontmatter still says what it always said.
-    assert board.read_frontmatter(board.find(feature_id).read())['status'] == 'Backlog'
+
+    # Still nothing written, at any point.
+    assert 'status' not in board.read_frontmatter(board.find(feature_id).read())
+
+
+def test_a_features_status_cannot_be_set_at_all(tmp_board, capsys):
+    board.main(['new-feature', 'The morning page'])
+    feature_id = only_id(tmp_board / 'features', 'FEAT')
+    for value in ('Backlog', 'In Progress', 'Done'):
+        with pytest.raises(SystemExit):
+            board.main(['set', feature_id, 'status', value])
+        assert 'not stored' in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
@@ -282,23 +326,24 @@ def test_an_adr_is_accepted_and_then_superseded(tmp_board, capsys):
     assert second in text.partition('## Status')[2]
 
 
-def test_a_story_cannot_be_started_and_a_bad_status_is_refused(tmp_board, capsys):
+def test_a_story_is_not_started_and_its_status_is_still_typed(tmp_board, capsys):
+    """Git knows nothing about a story — no branch, no merge commit — so a story is the
+    one thing on the board that still carries a status somebody sets."""
     board.main(['new-feature', 'The morning page'])
     feature_id = only_id(tmp_board / 'features', 'FEAT')
     board.main(['new-story', 'Fetch the feeds', '--feature', feature_id])
     story_id = only_id(tmp_board / 'stories', 'STORY')
 
     with pytest.raises(SystemExit):
-        board.main(['start', story_id])
+        board.main(['can-start', story_id])
     assert 'only a feature is started' in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
         board.main(['set', story_id, 'status', 'Shipped'])
     assert 'status must be one of' in capsys.readouterr().err
 
-    with pytest.raises(SystemExit):
-        board.main(['set', feature_id, 'status', 'In Progress'])
-    assert 'board.py start' in capsys.readouterr().err
+    assert board.main(['set', story_id, 'status', 'Done']) == 0
+    assert board.read_frontmatter(board.find(story_id).read())['status'] == 'Done'
 
 
 def test_new_story_refuses_a_parent_that_is_not_a_feature(tmp_board, capsys):
@@ -325,3 +370,17 @@ def test_git_helpers_survive_not_being_in_a_repo(tmp_path, monkeypatch):
     assert board._merged_ids() == set()
     assert board._branches() == {}
     assert board._worktrees() == {}
+
+
+def test_can_start_refuses_a_feature_that_is_already_started(tmp_board, with_git, capsys):
+    """The branch is what makes it In Progress, so a second one is the thing to refuse."""
+    board.main(['new-feature', 'The morning page'])
+    feature_id = only_id(tmp_board / 'features', 'FEAT')
+
+    with_git(branches=[feature_id])
+    assert board.main(['can-start', feature_id]) == 1
+    assert 'already In Progress' in capsys.readouterr().err
+
+    with_git(branches=[feature_id], merged=[feature_id])
+    assert board.main(['can-start', feature_id]) == 1
+    assert 'already Done' in capsys.readouterr().err

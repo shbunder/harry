@@ -46,9 +46,9 @@ ID_RE = re.compile(r'^(FEAT|STORY|ADR)-(\d{6})-([0-9a-f]{6})$')
 CLARIFICATION_RE = re.compile(r'\[NEEDS CLARIFICATION:[^\]]*\]')
 FEAT_IN_TEXT_RE = re.compile(r'FEAT-\d{6}-[0-9a-f]{6}')
 
-# `Done` is deliberately absent. A feature is done when its merge commit exists on the
-# main line, and the board reports that rather than storing it — see `_is_merged`.
-WORK_STATUSES = ('Backlog', 'In Progress')
+# Stories only. A feature stores no status at all: both of its live states are read from
+# git — see `_derived_status`. Git knows nothing about a story, so a story still types one.
+WORK_STATUSES = ('Backlog', 'In Progress', 'Done')
 ADR_STATUSES = ('Proposed', 'Accepted', 'Superseded')
 TRACKS = ('story', 'full')
 
@@ -266,7 +266,6 @@ def feature_template(item_id: str, name: str, track: str) -> str:
     return f"""---
 id: {item_id}
 title: {name}
-status: Backlog
 track: {track}
 created: {dt.date.today():%Y-%m-%d}
 touches: []
@@ -554,27 +553,42 @@ def cmd_touches(args: argparse.Namespace) -> int:
 
 
 def _in_progress() -> list[tuple[Item, list[str]]]:
-    """Every feature marked In Progress that has not been merged, with what it touches."""
+    """Every feature with an unmerged `feat/` branch, and what it declared it touches."""
+    merged, branches = _merged_ids(), _branches()
     live: list[tuple[Item, list[str]]] = []
-    merged = _merged_ids()
     for path in sorted(FEATURES.glob('FEAT-*.md')):
         text = path.read_text(encoding='utf-8')
-        fm = read_frontmatter(text)
-        item_id = fm.get('id', '')
-        if fm.get('status') == 'In Progress' and item_id not in merged:
+        item_id = read_frontmatter(text).get('id', '')
+        if item_id in branches and item_id not in merged:
             live.append((Item(item_id, path), read_list(text, 'touches')))
     return live
 
 
-def cmd_start(args: argparse.Namespace) -> int:
-    """Move a feature to In Progress, refusing a collision or a broken cap.
+def cmd_can_start(args: argparse.Namespace) -> int:
+    """Answer whether a feature may be started. Changes nothing.
 
-    Three gates, in the order that fails cheapest first: live clarification markers,
-    the work-in-progress cap, then an overlap with what another live feature declared.
+    Three gates, in the order that fails cheapest first: live clarification markers, the
+    work-in-progress cap, then an overlap with what another live feature declared.
+
+    Starting itself is `make worktree`, which runs this first and stops if it says no.
+    Creating the branch is what makes the feature In Progress, so there is nothing here
+    left to write down.
     """
     feature = find(args.id)
     if feature.kind != 'FEAT':
         die('only a feature is started — a story follows its feature')
+
+    # Cheapest of all, and the one the caller is most likely to hit by accident: a branch
+    # already exists, which is precisely what In Progress means.
+    branches, merged = _branches(), _merged_ids()
+    if feature.id in merged:
+        print(f'error: {feature.id} is already Done — its merge commit is on {main_branch()}.', file=sys.stderr)
+        return 1
+    if feature.id in branches:
+        print(f'error: {feature.id} is already In Progress on {branches[feature.id]}.', file=sys.stderr)
+        print('  That branch is what makes it In Progress. Work in its worktree, or', file=sys.stderr)
+        print('  close it with /finish-feature.', file=sys.stderr)
+        return 1
 
     live_markers = _live_clarifications(feature)
     if live_markers:
@@ -608,10 +622,11 @@ def cmd_start(args: argparse.Namespace) -> int:
         print('this feature touches, or pass --force if you have read both diffs.', file=sys.stderr)
         return 1
 
-    feature.write(set_frontmatter(feature.read(), 'status', 'In Progress'))
-    print(f'{feature.id}: status = In Progress')
+    print(f'{feature.id}: clear to start')
     if clashes:
         print(f'  forced past an overlap with {", ".join(other_id for other_id, _ in clashes)}')
+    slug = feature.path.stem.partition(f'{feature.id}-')[2]
+    print(f'  make worktree FEAT={feature.id} SLUG={slug}')
     return 0
 
 
@@ -678,14 +693,15 @@ def cmd_set(args: argparse.Namespace) -> int:
         print(f'{item.id}: status = {args.value}')
         return 0
 
-    if args.value == 'Done':
+    if item.kind == 'FEAT':
         die(
-            'Done is not a status you type — it is the merge commit on '
-            f'{main_branch()}. Merge the branch with `--no-ff` and the board reports it.'
+            f"a feature's status is not stored, so there is nothing to set. In Progress is an "
+            f'unmerged feat/ branch and Done is the merge commit on {main_branch()}; both are read '
+            f'from git. Use `board.py can-start {item.id}` then `make worktree`, and `--no-ff` to close.'
         )
-    if args.value == 'In Progress' and item.kind == 'FEAT':
-        die(f'use `board.py start {item.id}` — it checks the clarify gate, the cap and the overlaps')
-    if args.value not in WORK_STATUSES:
+    if args.value == 'Done' and item.kind == 'STORY':
+        pass
+    elif args.value not in WORK_STATUSES:
         die(f'status must be one of {", ".join(WORK_STATUSES)}')
 
     item.write(set_frontmatter(text, 'status', args.value))
@@ -705,8 +721,19 @@ def cmd_clarifications(args: argparse.Namespace) -> int:
     return 1
 
 
-def _derived_status(fm: dict[str, str], merged: set[str]) -> str:
-    return 'Done' if fm.get('id', '') in merged else fm.get('status', '?')
+def _derived_status(item_id: str, merged: set[str], branches: dict[str, str]) -> str:
+    """A feature's status, read from git rather than stored anywhere.
+
+    Done is the merge commit. **In Progress is an unmerged `feat/` branch.** Neither is
+    typed, because a status somebody has to remember to change is a status that is
+    eventually wrong — and the second one had already gone wrong once by the time this
+    was written: `start` mutated whichever checkout it ran in, so the flip landed on main
+    while the branch carried on saying Backlog, and the two collided at merge over a
+    field neither of them should have been storing.
+    """
+    if item_id in merged:
+        return 'Done'
+    return 'In Progress' if item_id in branches else 'Backlog'
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -717,15 +744,17 @@ def cmd_list(args: argparse.Namespace) -> int:
     }[args.what]
 
     merged = _merged_ids() if label == 'FEAT' else set()
+    branches = _branches() if label == 'FEAT' else {}
     rows: list[tuple[str, str, str]] = []
     for path in sorted(directory.glob(f'{label}-*.md')):
         fm = read_frontmatter(path.read_text(encoding='utf-8'))
-        status = _derived_status(fm, merged) if label == 'FEAT' else fm.get('status', '?')
+        item_id = fm.get('id', path.stem)
+        status = _derived_status(item_id, merged, branches) if label == 'FEAT' else fm.get('status', '?')
         if args.feature and fm.get('feature') != args.feature:
             continue
         if args.status and status != args.status:
             continue
-        rows.append((fm.get('id', path.stem), status, fm.get('title', '')))
+        rows.append((item_id, status, fm.get('title', '')))
 
     if not rows:
         print('(nothing matches)')
@@ -770,8 +799,6 @@ def cmd_lanes(args: argparse.Namespace) -> int:
             shared = sorted(set(touches) & set(other_touches))
             if shared:
                 warnings.append(f'{item.id} and {other.id} both touch {", ".join(shared)}')
-        if item.id not in branches:
-            warnings.append(f'{item.id} is In Progress with no branch — is it actually started?')
         if not touches:
             warnings.append(f'{item.id} declares no `touches:`, so collisions cannot be checked')
 
@@ -887,10 +914,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('paths', nargs='*')
     p.set_defaults(func=cmd_touches)
 
-    p = sub.add_parser('start', help='move a feature to In Progress, checking the cap and the overlaps')
+    p = sub.add_parser('can-start', help='check the clarify gate, the cap and the overlaps. Changes nothing.')
     p.add_argument('id')
     p.add_argument('--force', action='store_true', help='past the cap or an overlap, deliberately')
-    p.set_defaults(func=cmd_start)
+    p.set_defaults(func=cmd_can_start)
 
     p = sub.add_parser('add-subtask', help='append a subtask to a story')
     p.add_argument('id')

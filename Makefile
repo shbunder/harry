@@ -106,9 +106,10 @@ lessons:  ## Search lessons learned. Usage: make lessons Q="remarkable push"
 	@if [ -z "$(Q)" ]; then echo -e "$(WARN) Usage: make lessons Q=\"<keywords>\""; exit 1; fi
 	@$(PY) scripts/query_lessons.py $(Q)
 
-worktree:  ## Open a worktree for a feature. Usage: make worktree FEAT=FEAT-260912-a1b2c3 SLUG=the-slug
+worktree:  ## Start a feature: check the gates, branch, and open its worktree. FEAT=… SLUG=… [FORCE=1]
 	@if [ -z "$(FEAT)" ] || [ -z "$(SLUG)" ]; then \
 	  echo -e "$(WARN) Usage: make worktree FEAT=FEAT-260912-a1b2c3 SLUG=the-slug"; exit 1; fi
+	@$(BOARD) can-start $(FEAT)$(if $(FORCE), --force,) || exit 1
 	@SHORT=$$(echo "$(FEAT)" | rev | cut -d- -f1 | rev); \
 	 DIR=.claude/worktrees/$$SHORT; \
 	 SLOT=$$(( ( $$(ls -1 .claude/worktrees 2>/dev/null | wc -l) ) + 1 )); \
@@ -119,7 +120,8 @@ worktree:  ## Open a worktree for a feature. Usage: make worktree FEAT=FEAT-2609
 	 echo ""; \
 	 echo "  worktree: $$DIR"; \
 	 echo "  port:     $$((7430 + $$SLOT))   data: $$DIR/data"; \
-	 echo "  Tracked files came with the checkout; only the gitignored ones are seeded."
+	 echo "  Tracked files came with the checkout; only the gitignored ones are seeded."; \
+	 echo "  The branch is what makes this In Progress — there is no status to set."; 
 
 worktree-prune:  ## Drop worktree registrations whose directory is gone
 	git worktree prune -v
