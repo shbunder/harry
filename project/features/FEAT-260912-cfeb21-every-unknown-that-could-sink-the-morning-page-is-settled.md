@@ -3,7 +3,7 @@ id: FEAT-260912-cfeb21
 title: Every unknown that could sink the morning page is settled
 track: full
 created: 2026-09-12
-touches: [scratch, tests/test_config.py]
+touches: [scratch, scripts/mcp_probe.py, tests/test_config.py]
 stories: [STORY-260912-835929, STORY-260912-76bb6b, STORY-260912-f7cda6, STORY-260912-8d003e, STORY-260912-8bc2b4, STORY-260912-bdf4d2]
 decisions: [ADR-260912-bd36c2]
 ---
