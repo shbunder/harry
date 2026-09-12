@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-24d052
 title: Headlines arrive from VRT NWS and the BBC
-status: Backlog
 track: full
 created: 2026-09-12
 touches: [connectors/news]

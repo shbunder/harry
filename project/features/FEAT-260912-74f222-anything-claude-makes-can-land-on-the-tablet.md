@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-74f222
 title: Anything Claude makes can land on the tablet
-status: Backlog
 track: full
 created: 2026-09-12
 touches: [connectors/remarkable]

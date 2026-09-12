@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-9c933f
 title: De Tijd articles arrive in full, and Harry says when the login lapses
-status: Backlog
 track: full
 created: 2026-09-12
 touches: [connectors/tijd]

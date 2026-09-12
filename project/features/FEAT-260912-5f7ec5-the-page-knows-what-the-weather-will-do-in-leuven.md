@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-5f7ec5
 title: The page knows what the weather will do in Leuven
-status: Backlog
 track: full
 created: 2026-09-12
 touches: [connectors/weather]

@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-cfeb21
 title: Every unknown that could sink the morning page is settled
-status: In Progress
 track: full
 created: 2026-09-12
 touches: [scratch, tests/test_config.py]
@@ -13,7 +12,7 @@ decisions: [ADR-260912-bd36c2]
 
 ## Summary
 
-Five questions nobody has answered, each of which can invalidate a later phase. Each one is a throwaway script that prints PASS or FAIL, and each finding is written into the decision or the scenario that depends on it. The connector question is the one on the critical path: if a Claude scheduled task cannot reach Harry, the morning page has no trigger and nothing downstream is safe to build.
+Five questions nobody has answered, each of which can invalidate a later phase. Each one is a throwaway script that prints PASS, FAIL or UNKNOWN, and each finding is recorded as a dated note on the feature that depends on it. The connector question is the one on the critical path: if a Claude scheduled task cannot reach Harry, the morning page has no trigger and nothing downstream is safe to build.
 
 ## Acceptance criteria
 

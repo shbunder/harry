@@ -137,16 +137,20 @@ onto and switched away underneath you, so feature work gets its own worktree.
 
 ```bash
 make worktree FEAT={id} SLUG={slug}
-uv run python project/board.py start {id}
 ```
 
-`make worktree` seeds the gitignored files a fresh worktree needs, and gives it **its own
-port and its own data directory** — two stacks sharing one SQLite file and one port is how a
-second session kills the first.
+That one command is the whole of starting a feature. It runs `board.py can-start` first and
+stops if that refuses — on a live clarification marker, past the cap of three, or on an
+overlap with something already in flight. Read the refusal rather than reaching for
+`FORCE=1`.
 
-`board.py start` is the gate: it refuses on a live clarification marker, past the cap of
-three, or on an overlap with something already in flight. Read the refusal rather than
-reaching for `--force`.
+Then it seeds the gitignored files a fresh worktree needs, and gives it **its own port and
+its own data directory** — two stacks sharing one SQLite file and one port is how a second
+session kills the first.
+
+**There is no status to set.** The branch is what makes the feature In Progress, the same
+way the merge commit is what makes it Done. Both are read from git, so neither can be left
+saying something that is no longer true.
 
 Everything after this step happens in the worktree. Check `git rev-parse --show-toplevel` if
 unsure which tree you are in; `/finish-feature` merges from the main checkout.

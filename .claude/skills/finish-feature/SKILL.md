@@ -103,7 +103,9 @@ Everything from here runs in the main checkout.
 
 ### 9. Confirm the board now says Done, and note the reflection
 
-There is no status to flip. Check that the derivation worked, then record what closing found:
+There is no status to flip — the merge you just made is what makes this Done, exactly as the
+branch was what made it In Progress. Check the derivation worked, then record what closing
+found:
 
 ```bash
 uv run python project/board.py list features --status Done | grep $FEAT
