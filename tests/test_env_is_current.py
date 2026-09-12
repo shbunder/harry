@@ -16,16 +16,16 @@ import pytest
 
 ROOT = Path(__file__).parent.parent
 
-# key -> what to do about it, and why.
+# key -> what to do about it, and why. No decision ids here: the reason is the useful
+# part, and `.claude/rules/` is where the standing version of it lives.
 RETIRED = {
-    'ANTHROPIC_API_KEY': 'delete — Harry never calls a model (ADR-260912-bd36c2)',
-    'HARRY_CLAUDE_BIN': 'delete — Harry ships no model CLI (ADR-260912-bd36c2)',
-    'HARRY_CLAUDE_MCP_URL': 'delete — nothing in Harry dials a model (ADR-260912-bd36c2)',
+    'ANTHROPIC_API_KEY': 'delete — Harry never calls a model, so it holds no provider credential',
+    'HARRY_CLAUDE_BIN': 'delete — Harry ships no model CLI',
+    'HARRY_CLAUDE_MCP_URL': 'delete — nothing in Harry dials a model',
     'HARRY_DIGEST_CRON': 'replace with HARRY_DIGEST_DEADLINE=07:00 — a Claude scheduled task '
     'owns the clock now, and what Harry needs is a deadline for the watchdog. '
-    "A job's own schedule lives in its JOB.md (ADR-260912-399f07)",
-    'HARRY_MODULES_DIR': 'rename to HARRY_CAPABILITIES_DIR — modules became connectors, '
-    'tools and jobs (ADR-260912-399f07)',
+    'A job Harry does trigger carries its own schedule in its JOB.md',
+    'HARRY_MODULES_DIR': 'rename to HARRY_CAPABILITIES_DIR — modules became connectors, tools and jobs',
     # Settings that belong to one capability, not to everybody. Each moves into that
     # implementation's `config:` block, where it gets a default and a description, and is
     # read from a derived key — HARRY_<IMPLEMENTATION>_<SETTING>.

@@ -1,8 +1,8 @@
 """Harry never calls a model, asserted rather than believed.
 
-`.claude/rules/no-model-calls.md` is the rule and ADR-260912-bd36c2 is the reasoning.
-This file is what makes breaking it fail, because a boundary that only exists in prose is
-the control `.claude/rules/inert-controls.md` describes.
+`.claude/rules/no-model-calls.md` is the rule; this file is what makes breaking it fail,
+because a boundary that only exists in prose is the control
+`.claude/rules/inert-controls.md` describes.
 
 Each check is cheap and reads the real artifact — the dependency tree as resolved, the
 image as it will be built, the compose file as it will be run.
@@ -89,7 +89,7 @@ def test_config_declares_no_provider_credential():
 
 
 def test_no_source_file_shells_out_to_a_model_cli():
-    """`claude -p` inside Harry is the exact thing ADR-260912-bd36c2 removed."""
+    """Shelling out to the CLI is how a model gets back inside Harry by the side door."""
     offenders = []
     for path in (ROOT / 'packages').rglob('*.py'):
         text = path.read_text(encoding='utf-8')

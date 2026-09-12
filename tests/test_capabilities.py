@@ -138,7 +138,7 @@ def test_a_scheduled_job_with_no_timezone_is_caught(harry, capsys):
 
 
 def test_a_claude_triggered_job_may_not_also_carry_a_schedule(harry, capsys):
-    """Two clocks that can disagree is the thing ADR-260912-bd36c2 was about."""
+    """Two clocks that can disagree is the failure the split was designed to remove."""
     harry('connectors', 'remarkable', CONNECTOR)
     harry('jobs', 'morning-page', CLAUDE_JOB.replace('trigger: claude', 'trigger: claude\nschedule: "30 6 * * *"'))
     assert cap.main([]) == 1
@@ -206,7 +206,7 @@ def test_every_problem_is_reported_not_just_the_first(harry, capsys):
 
 
 # ---------------------------------------------------------------------------
-# Tools — ADR-260912-b22e46
+# Tools
 # ---------------------------------------------------------------------------
 
 TOOL = """\

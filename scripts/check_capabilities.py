@@ -5,7 +5,7 @@ Connectors and jobs are discovered from the filesystem, which buys a format anyo
 to without writing Python — and costs the guarantee an import gave for free, that a broken
 declaration fails loudly and immediately. This is that guarantee, moved to the gate.
 
-Run by `make lint`. See ADR-260912-399f07 and `.claude/rules/capability-shape.md`.
+Run by `make lint`. See `.claude/rules/capability-shape.md`.
 
     python scripts/check_capabilities.py
 """
@@ -31,7 +31,7 @@ TRIGGERS = ('claude', 'schedule')
 EXPIRIES = ('never', 'manual', 'session')
 NAME_RE = re.compile(r'^[a-z][a-z0-9-]*$')
 # Underscores, never dots. MCP permits dots in a tool name but the Claude API's own
-# validation is narrower, and the intersection is what survives the trip — ADR-260912-b22e46.
+# validation is narrower, and the intersection is what survives the trip.
 TOOL_NAME_RE = re.compile(r'^[a-z][a-z0-9_]*$')
 TIME_RE = re.compile(r'^\d{2}:\d{2}$')
 CONFIG_KEY_RE = re.compile(r'^[a-z][a-z0-9_]*$')
@@ -122,7 +122,8 @@ def check_job(path: Path, fields: dict[str, Any], connectors: set[str]) -> None:
     if trigger == 'claude' and deadline is None:
         raise Problem(
             'a job Harry does not trigger needs a `deadline:`, or nothing can notice it never ran. '
-            'An external trigger cannot report its own absence — see ADR-260912-bd36c2.'
+            'A trigger that lives outside Harry cannot report its own absence, and silence '
+            'looks exactly like a morning you did not check.'
         )
 
     check_requires(fields, connectors)
