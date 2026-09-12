@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-84c828
 title: Harry can tell you something went wrong
-status: Backlog
 track: full
 created: 2026-09-12
 touches: [connectors/slack]

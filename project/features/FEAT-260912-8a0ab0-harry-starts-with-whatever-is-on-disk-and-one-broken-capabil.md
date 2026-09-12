@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-8a0ab0
 title: Harry starts with whatever is on disk, and one broken capability is skipped
-status: Backlog
 track: full
 created: 2026-09-12
 touches: [core/registry, core/store]

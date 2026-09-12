@@ -57,20 +57,33 @@ moment. **Never hand-write an id.** `board.py` allocates them.
 
 ## Statuses
 
-Features and stories: `Backlog` → `In Progress` → **Done, which is never typed.**
+**A feature stores no status at all.** All three of its states are read from git:
 
-A feature is Done when its merge commit exists on `main`. `board.py list` reports that
-by reading git; the frontmatter never stores it. `board.py set … status Done` refuses.
+| State | Is |
+|---|---|
+| `Backlog` | no `feat/` branch |
+| `In Progress` | a `feat/` branch that has not merged |
+| `Done` | a merge commit on `main` carrying the id |
 
-This removes the board's most likely lie — a feature with every box ticked whose status
-was never flipped — and one of the two board commits per feature.
+`board.py set … status` on a feature refuses, because there is nothing to set. This
+removes the board's two most likely lies — a feature with every box ticked whose status
+was never flipped, and one marked In Progress that nobody ever branched — and it removes
+a board commit per feature at each end.
 
-`board.py start` is how a feature leaves Backlog. It checks three things, cheapest
-first:
+The second half of that was not theoretical. `start` used to write the status, and it
+wrote it into whichever checkout it ran in: the flip landed on `main` while the branch
+carried on saying Backlog, and the two then collided at merge over a field neither of them
+should have been storing.
+
+**Stories still type a status.** Git knows nothing about a story — no branch, no merge
+commit — so `Backlog` → `In Progress` → `Done` is set by hand there.
+
+`make worktree` is how a feature leaves Backlog: it runs `board.py can-start` first, which
+checks three things, cheapest first:
 
 1. **The clarify gate.** A feature cannot leave Backlog while a `[NEEDS CLARIFICATION: …]`
    marker is live anywhere in its feature file or requirements page.
-2. **The cap.** Three features in flight is the ceiling. `--force` gets past it and
+2. **The cap.** Three features in flight is the ceiling. `FORCE=1` gets past it and
    wants a note saying why.
 3. **The overlap.** Two features that declare the same `touches:` area cannot both be
    In Progress. Two sessions must never own the same file.
@@ -206,6 +219,7 @@ Stage by name, never `git add .`.
 not a style preference — a fast-forward merge leaves the board reporting In Progress
 forever.
 
-Branch: `feat/FEAT-{YYMMDD}-{hash}-{slug}`, opened with `make worktree`.
+Branch: `feat/FEAT-{YYMMDD}-{hash}-{slug}`, opened with `make worktree`. Creating it is
+what puts the feature In Progress, so the branch name carrying the id is load-bearing.
 
 A board id never appears in source code — `.claude/rules/code-has-no-board-refs.md`.

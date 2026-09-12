@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-e7ce2d
 title: The page knows what today looks like
-status: Backlog
 track: full
 created: 2026-09-12
 touches: [connectors/icloud]

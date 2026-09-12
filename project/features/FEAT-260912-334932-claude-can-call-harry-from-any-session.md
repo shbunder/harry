@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-334932
 title: Claude can call Harry from any session
-status: Backlog
 track: full
 created: 2026-09-12
 touches: [core/mcp]

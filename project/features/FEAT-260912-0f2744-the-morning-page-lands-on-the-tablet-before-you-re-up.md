@@ -1,7 +1,6 @@
 ---
 id: FEAT-260912-0f2744
 title: The morning page lands on the tablet before you're up
-status: Backlog
 track: full
 created: 2026-09-12
 touches: [jobs/morning-page, tools/digest]
