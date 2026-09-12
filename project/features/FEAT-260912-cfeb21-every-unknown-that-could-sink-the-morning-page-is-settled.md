@@ -41,6 +41,7 @@ Five questions nobody has answered, each of which can invalidate a later phase. 
 
 <!-- Appended by `board.py note`. -->
 - **2026-09-12** — The first worktree ever opened went red on tests/test_config.py: it asserted port == 7430 while `make worktree` writes HARRY_PORT=7431 into that tree's .env.local by design. The test now reads .env alone. Declared in `touches` rather than left as silent scope drift — the fix is scaffolding, not Phase 0, and it made every worktree's gate red.
+- **2026-09-12** — Design flaw found opening this feature: In Progress is typed while Done is derived, which is the same failure the board was built to prevent. board.py start mutates whichever checkout it runs in, so the flip landed uncommitted on main and the branch never saw it; both sides then disagreed on a frontmatter line at merge. Recommendation: derive In Progress from an unmerged feat/ branch, the way Done is derived from the merge commit. lanes already reads branches and worktrees, so the machinery exists. Not fixed here — it changes the board contract and belongs in its own decision, not inside a spike feature whose touches are scratch.
 
 ## Links
 
