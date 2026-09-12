@@ -33,7 +33,7 @@ DIM   := \033[2m
 OFF   := \033[0m
 
 .PHONY: help env-install check lint format typecheck test test-cov lock \
-        board lanes lessons worktree worktree-prune spike serve digest-dry digest-now \
+        board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-now \
         image up down logs docs clean
 
 help:  ## Show this help
@@ -129,6 +129,9 @@ worktree-prune:  ## Drop worktree registrations whose directory is gone
 # ---------------------------------------------------------------------------
 # Running Harry
 # ---------------------------------------------------------------------------
+
+probe:  ## The MCP probe: can a client reach Harry? Usage: make probe [ARGS="call --ping"]
+	$(PY) scripts/mcp_probe.py $(or $(ARGS),serve)
 
 spike:  ## Run a Phase 0 spike. Usage: make spike S=remarkable-push
 	@if [ -z "$(S)" ]; then ls -1 scratch/*.py 2>/dev/null | sed 's|scratch/||;s|\.py$$||;s|^|  |' \
