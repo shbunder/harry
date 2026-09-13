@@ -44,10 +44,10 @@ class Alerts:
         self._said: dict[str, dt.datetime] = {}
 
     @classmethod
-    def from_catalogue(cls, catalogue: Catalogue, **kwargs: object) -> Alerts:
+    def from_catalogue(cls, catalogue: Catalogue, *, now: Callable[[], dt.datetime] | None = None) -> Alerts:
         sinks = [c.alert_sink for c in catalogue.loaded if c.alert_sink is not None]
         LOG.info('%d place(s) to send an alert', len(sinks))
-        return cls(sinks, **kwargs)  # type: ignore[arg-type]
+        return cls(sinks, now=now)
 
     def send(self, message: str, *, key: str | None = None) -> bool:
         """Report one fault. True if it was said, False if it was held back.
@@ -62,8 +62,19 @@ class Alerts:
 
         delivered = self._deliver(message)
         if delivered and key is not None:
+            self._forget_what_is_old()
             self._said[key] = self._now()
         return delivered
+
+    def _forget_what_is_old(self) -> None:
+        """Drop keys that are past their quiet period.
+
+        Today every key is a capability, so the record is bounded by the number of folders
+        on disk. `send()` is public, though, and a caller keying on an article id or a URL
+        would grow it forever in a process that runs for months.
+        """
+        cutoff = self._now() - QUIET_FOR
+        self._said = {key: at for key, at in self._said.items() if at > cutoff}
 
     def _still_quiet(self, key: str) -> bool:
         said = self._said.get(key)

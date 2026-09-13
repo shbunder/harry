@@ -62,6 +62,10 @@ def register(registry: Registry, context: Context) -> None:
         return {'day': day, 'summary': 'grey, as ever'}
 ```
 
+A capability may also take on a **role** alongside its kind. There is one today:
+`registry.alerts(fn)` offers this capability as somewhere Harry can report a fault, and it
+does not use up the folder's one implementation — see [alerting.md](alerting.md).
+
 `context` is what the capability is told about itself:
 
 | Field | What it is |

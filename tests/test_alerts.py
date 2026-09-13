@@ -1,3 +1,9 @@
+# pyright: reportPrivateUsage=false
+#
+# One test reads `Alerts._said` directly. What forgetting old keys does is keep that
+# record from growing without limit, and its size is the only thing that shows it —
+# there is no behaviour to watch from outside. A public accessor existing only for this
+# would be worse than the pragma.
 """Saying out loud that something went wrong.
 
 The alerting path is the worst case for a test that cannot fail: an alert that does not
@@ -289,3 +295,48 @@ def test_a_secret_in_the_reason_is_not_in_the_alert(tmp_path, monkeypatch):
     assert sink.heard, 'the skipped capability should have been reported'
     assert secret not in sink.heard[0]
     assert '[redacted]' in sink.heard[0]
+
+
+# ---------------------------------------------------------------------------
+# The way production actually reaches all of this
+# ---------------------------------------------------------------------------
+
+
+def test_the_real_app_tells_a_sink_what_did_not_come_up(tmp_path, monkeypatch):
+    """Through `build_app()`, which is the only thing that calls `report_start_up` in
+    production. Every test above calls it directly, and a test one layer beneath the real
+    caller cannot notice the real caller being removed.
+
+    It also pins the ordering the story asks for: the sink is a capability, so a sink that
+    had not loaded yet would hear nothing.
+    """
+    import harry.config
+    from harry.main import build_app
+
+    monkeypatch.delenv('HARRY_ICLOUD_APP_PASSWORD', raising=False)
+    harry.config.get_settings.cache_clear()
+    monkeypatch.setattr(harry.config, 'BUNDLED_CAPABILITIES', tmp_path / 'no-bundled')
+    root_with(tmp_path / '.harry', 'connectors/listener', 'connectors/icloud', 'connectors/weather')
+    monkeypatch.chdir(tmp_path)
+
+    try:
+        build_app()
+    finally:
+        harry.config.get_settings.cache_clear()
+
+    heard = (tmp_path / '.harry' / 'connectors' / 'listener' / 'heard.txt').read_text(encoding='utf-8').splitlines()
+
+    assert heard == ['Harry started without the icloud connector: required setting app_password is not set']
+
+
+def test_forgetting_keeps_the_record_from_growing_without_limit():
+    """`send()` is public. A caller keying on an article id in a process that runs for
+    months is the case this is for, and the capability keys of today would never show it."""
+    clock = Clock()
+    alerts = Alerts([Somewhere()], now=clock)
+
+    for day in range(5):
+        alerts.send('something', key=f'article:{day}')
+        clock.forward(hours=25)
+
+    assert len(alerts._said) == 1

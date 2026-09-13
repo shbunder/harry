@@ -26,7 +26,6 @@ dependencies = [
     "trafilatura>=2.0",     # article text extraction
     "playwright>=1.49",     # for sites that block scripted clients
     "weasyprint>=63",       # HTML + CSS to PDF, with a real outline
-    "slack-bolt>=1.21",     # Socket Mode
     "remarkapy>=0.2",       # reMarkable cloud. rmapy and rmcl are archived and dead.
 ]
 

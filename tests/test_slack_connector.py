@@ -86,16 +86,25 @@ def test_the_connector_registers_itself_as_somewhere_alerts_go(slack):
     assert route.call_count == 1
 
 
-@respx.mock
-def test_the_call_carries_a_five_second_ceiling(slack):
+def test_the_call_carries_an_explicit_ceiling(slack, monkeypatch):
     """Alerts are sent while Harry is starting, and a socket that hangs with no ceiling
-    holds up the restart somebody is watching."""
-    route = respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': True}))
+    holds up the restart somebody is watching.
+
+    Asserted on the argument rather than on the resolved request, because httpx's own
+    default is five seconds too — so a request with no `timeout=` at all produces
+    byte-identical extensions, and a test reading those passes whether the connector chose
+    anything or not.
+    """
+    passed: dict[str, object] = {}
+
+    def spy(url, **kwargs):
+        passed.update(kwargs)
+        return httpx.Response(200, json={'ok': True}, request=httpx.Request('POST', url))
+
+    monkeypatch.setattr(httpx, 'post', spy)
     connector(slack()).target.send('anything')
 
-    timeout = route.calls[0].request.extensions['timeout']
-    assert timeout['connect'] == 5.0
-    assert timeout['read'] == 5.0
+    assert passed['timeout'] == 5.0, 'the connector did not choose a ceiling of its own'
 
 
 # ---------------------------------------------------------------------------
