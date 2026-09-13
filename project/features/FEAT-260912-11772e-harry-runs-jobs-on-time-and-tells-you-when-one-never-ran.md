@@ -20,13 +20,18 @@ Harry owns the clock for its own heuristic work, and owns the deadline for work 
      traceability matrix from. -->
 
 - [ ] A trigger: schedule job fires at its cron time, in the timezone it declares, running what the capability registered
-- [ ] A job already running is not started a second time, and the skip is logged
+- [ ] A job already running is not started a second time, and harry.scheduler says so in its own words rather than leaving it to APScheduler
 - [ ] A job that raises is logged and alerted, keyed on the job, and the other jobs still run
-- [ ] harry_job_finished records when a job finished, and the record survives a restart
+- [ ] harry_mark_done records when a job finished, the record survives a restart, and it is always in the MCP roster because a brief cannot search for it
+- [ ] A trigger: claude brief ends by telling Claude to call harry_mark_done, because nothing else can tell Harry the work happened
+- [ ] The watchdog runs every five minutes and once at start-up, so a deadline missed while Harry was switched off is reported when it comes back
 - [ ] A deadline that passes with nothing finished since midnight in that job's timezone sends one alert naming the job and the time it was due
 - [ ] A deadline that passes after the job finished sends nothing, and yesterday's completion does not count as today's
 - [ ] A missed deadline is reported once per day even across a restart, because the date reported is written down beside the completion
 - [ ] No jobs, a disabled job, and a trigger: claude job with no deadline are all a working Harry that watches nothing
+- [ ] A store file that cannot be read starts Harry with an empty record and says so; one that cannot be written logs at WARNING and does not break the caller
+- [ ] An alert that could not be delivered does not mark the deadline reported, so the next check tries again
+- [ ] docs/operating.md describes the watchdog Harry actually runs, and docs/mcp.md names the second always-loaded tool
 
 ## Stories
 
