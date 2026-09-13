@@ -1,7 +1,25 @@
 {
-  "include": ["src", "project", "scripts", "tests", ".harry"],
-  "exclude": ["**/__pycache__", ".venv", "scratch", "build", "dist", "site"],
-  "extraPaths": ["src", "project", "scripts"],
+  "include": [
+    "src",
+    "project",
+    "scripts",
+    "tests",
+    ".harry"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".venv",
+    "scratch",
+    "build",
+    "dist",
+    "site",
+    "tests/fixtures"
+  ],
+  "extraPaths": [
+    "src",
+    "project",
+    "scripts"
+  ],
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.12",

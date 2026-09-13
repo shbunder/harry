@@ -19,9 +19,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from harry.config import env_key
+from harry.declaration import KINDS as DECLARED_KINDS, Malformed, read_body, read_frontmatter
 
 SUMMARY = (__doc__ or '').partition('\n')[0]
 
@@ -43,37 +42,13 @@ ANNOTATIONS = ('readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHi
 CRON_RE = re.compile(r'^\s*(\S+\s+){4}\S+\s*$')
 
 
-class Problem(Exception):
-    """One thing wrong with one declaration."""
+class Problem(Malformed):
+    """One thing wrong with one declaration.
 
-
-def read_frontmatter(path: Path) -> dict[str, Any]:
-    """The YAML header, or a Problem naming what is missing."""
-    text = path.read_text(encoding='utf-8')
-    if not text.startswith('---'):
-        raise Problem('no YAML frontmatter — the file must open with `---`')
-    _, _, rest = text.partition('---\n')
-    block, separator, _ = rest.partition('\n---')
-    if not separator:
-        raise Problem('the frontmatter block is never closed with `---`')
-    try:
-        loaded = yaml.safe_load(block)
-    except yaml.YAMLError as error:
-        raise Problem(f'the frontmatter is not valid YAML: {error}') from error
-    if not isinstance(loaded, dict):
-        raise Problem('the frontmatter must be a mapping of key to value')
-    return loaded
-
-
-def read_body(path: Path) -> str:
-    """Everything after the closing `---`.
-
-    Split on `\n---` rather than `---`: the opening delimiter is at offset 0 with no
-    newline before it, so the first match is always the closing one. An earlier version
-    partitioned twice and returned the empty string for every well-formed file — which
-    looked like every body being empty rather than like a bug.
+    A subclass of `Malformed` so `validate` can catch both with one name: the parse
+    errors come from `harry.declaration`, which the loader reads the same files with,
+    and everything below adds the rules on top of them.
     """
-    return path.read_text(encoding='utf-8').partition('\n---')[2].strip()
 
 
 def require(fields: dict[str, Any], key: str, kind: type | tuple[type, ...] = str) -> Any:
@@ -259,7 +234,9 @@ def check_requires(fields: dict[str, Any], connectors: set[str]) -> None:
         raise Problem(f'requires connectors that do not exist: {", ".join(missing)} (known: {known})')
 
 
-KINDS = (('connectors', 'CONNECTOR.md'), ('tools', 'TOOL.md'), ('jobs', 'JOB.md'))
+# The format itself lives in `harry.declaration`, so the gate and the loader cannot
+# disagree about where a declaration is or what it is called.
+KINDS = tuple((kind.folder, kind.declaration) for kind in DECLARED_KINDS)
 
 
 def declarations(kind: str, filename: str) -> list[Path]:
@@ -279,7 +256,7 @@ def validate(paths: list[Path], check, *args: Any) -> tuple[list[str], list[dict
             fields = read_frontmatter(path)
             check(path, fields, *args)
             valid.append(fields)
-        except Problem as problem:
+        except Malformed as problem:
             problems.append(f'{path.relative_to(ROOT)}: {problem}')
     return problems, valid
 

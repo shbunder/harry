@@ -235,8 +235,8 @@ def test_the_context_carries_the_declaration_body_verbatim(tmp_path):
 
 
 def test_config_for_resolves_one_persons_own_settings(tmp_path, monkeypatch):
-    """The seam ADR-260913-f38787 asks for. Registration has no principal because it is
-    not a call; a call that knows whose calendar it is asks here."""
+    """Registration has no principal because it is not a call. A call that knows whose
+    calendar it is asks here, and their own file under the data volume wins key by key."""
     import harry.config
 
     monkeypatch.delenv('HARRY_ICLOUD_USERNAME', raising=False)

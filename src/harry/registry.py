@@ -43,8 +43,9 @@ class Context:
     """What a capability is handed when it registers.
 
     `config` is resolved with no principal, because registration happens once, at
-    start-up, and is not a call. `config_for()` is the seam for the call that does know
-    whose calendar it is — see ADR-260913-f38787.
+    start-up, and is not a call. `config_for()` is for the call that does know whose
+    calendar it is: the NUC serves more than one person eventually, and a tool signature
+    with no caller in it is the retrofit nobody wants to do later.
     """
 
     name: str
@@ -195,10 +196,18 @@ class Catalogue:
         return [c for c in self.loaded if c.kind == kind]
 
     def get(self, kind: str, name: str) -> Capability | None:
-        for capability in self._found:
-            if capability.key == (kind, name):
+        """The capability in effect under this name.
+
+        A shadowed one shares its kind and name with the capability that replaced it, and
+        it is a record of what was displaced rather than something anything should reach.
+        So a loaded match wins, and `requires:` resolves against the version that is
+        actually running.
+        """
+        matches = [c for c in self._found if c.key == (kind, name)]
+        for capability in matches:
+            if capability.status == LOADED:
                 return capability
-        return None
+        return matches[-1] if matches else None
 
     def as_health(self) -> dict[str, Any]:
         """What `/health` answers with.
