@@ -252,4 +252,7 @@ def _say_what_happened(catalogue: Catalogue) -> None:
     if not len(catalogue):
         LOG.info('no capabilities found in %s', ', '.join(str(root) for root in catalogue.roots) or 'any root')
         return
-    LOG.info('%d capabilit(ies) loaded, %d skipped', len(catalogue.loaded), len(catalogue.skipped))
+    loaded = len(catalogue.loaded)
+    LOG.info(
+        '%d %s loaded, %d skipped', loaded, 'capability' if loaded == 1 else 'capabilities', len(catalogue.skipped)
+    )

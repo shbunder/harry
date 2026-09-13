@@ -17,6 +17,7 @@ code. Harry restarts to pick up a change, the way Home Assistant does.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -24,14 +25,34 @@ from typing import Any
 from fastapi import FastAPI, Request
 
 from harry import __version__
+from harry.config import get_settings
 from harry.loader import load
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Find and load every capability, once, before the first request is served."""
+    configure_logging()
     app.state.catalogue = load()
     yield
+
+
+def configure_logging() -> None:
+    """Make `HARRY_LOG_LEVEL` mean something for Harry's own loggers.
+
+    uvicorn configures its own three loggers and leaves the root logger alone, so without
+    this every line Harry logs below WARNING goes to logging's last-resort handler and is
+    dropped. This shipped that way for an afternoon: `HARRY_LOG_LEVEL=INFO` was in the
+    committed `.env`, `weather loaded` never appeared, and the setting looked applied
+    because uvicorn took the same value for its own output.
+
+    `basicConfig` adds a root handler only when there is none — true under uvicorn, false
+    under pytest — so this configures the server without pulling the handler out from
+    under a test that is capturing records.
+    """
+    level = get_settings().log_level.upper()
+    logging.basicConfig(level=level, format='%(levelname)s %(name)s: %(message)s')
+    logging.getLogger('harry').setLevel(level)
 
 
 def build_app() -> FastAPI:

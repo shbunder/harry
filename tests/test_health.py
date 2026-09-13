@@ -133,3 +133,46 @@ def test_health_reports_where_it_looked(harry):
         body = client.get('/health').json()
 
     assert any(root.endswith('.harry') for root in body['roots'])
+
+
+# ---------------------------------------------------------------------------
+# The other half of the answer: the log
+# ---------------------------------------------------------------------------
+
+
+def records_from_harry():
+    """A handler on Harry's own logger, so what is captured is what that logger let
+    through — not what pytest's root handler would have shown regardless."""
+    import logging
+
+    captured: list[logging.LogRecord] = []
+
+    class Collect(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            captured.append(record)
+
+    handler = Collect()
+    logging.getLogger('harry').addHandler(handler)
+    return captured, handler
+
+
+@pytest.mark.parametrize(('level', 'expect_start_up_lines'), [('INFO', True), ('WARNING', False)])
+def test_harrys_own_log_level_follows_the_setting(harry, tmp_path, monkeypatch, level, expect_start_up_lines):
+    """`HARRY_LOG_LEVEL` configured uvicorn and nothing of Harry's, so every line below
+    WARNING went to logging's last-resort handler and vanished. The skip warnings still
+    appeared, which is what made it look like the setting was applied."""
+    import logging
+
+    (tmp_path / '.env').write_text(f'HARRY_LOG_LEVEL={level}\n', encoding='utf-8')
+    client = harry('connectors/weather', 'connectors/broken')
+    captured, handler = records_from_harry()
+
+    try:
+        with client:
+            client.get('/health')
+    finally:
+        logging.getLogger('harry').removeHandler(handler)
+
+    said = [record.getMessage() for record in captured]
+    assert any('skipped' in message for message in said), 'a skip must be visible at any level'
+    assert any('weather loaded' in message for message in said) is expect_start_up_lines

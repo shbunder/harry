@@ -143,6 +143,7 @@ One key, in the root `.env`:
 | Key | Default | What it does |
 |---|---|---|
 | `HARRY_CAPABILITIES_DIR` | empty | A directory of capabilities outside this repository, loaded last, so it can replace anything in `.harry/` |
+| `HARRY_LOG_LEVEL` | `INFO` | At `INFO` every capability that loads says so at start-up. A skip is a WARNING and appears at any level |
 
 Empty means unset. A capability's own settings live in its own folder, not here — see
 [operating.md](operating.md) for the layering and `.harry/README.md` for the key names.
