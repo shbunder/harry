@@ -87,7 +87,8 @@ Harry has two tools of its own and both are always in the list. The other is
 other way of knowing it happened, and without it the deadline watchdog reports a miss about
 work you actually did. See [jobs.md](jobs.md).
 
-`harry_find_tools` is always in the list too. A list with nothing in it is
+`harry_find_tools` is always in the list too. Because those two are never deferred, every
+tool under `.harry/` may defer — the list is never empty. A list with nothing in it is
 rejected outright by the API, so the one tool that can never be deferred is not one anybody
 can delete.
 

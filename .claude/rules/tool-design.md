@@ -87,7 +87,9 @@ because choosing among them is the entire reason
   the bodies. Claude fetches the six it picked
 - **`always_load: true` only for what is needed nearly every run.** Everything else defers.
   The defer-plus-search pattern cuts tool-definition tokens by about 85% on MCP-heavy
-  workloads *and* improves selection accuracy. At least one tool must stay loaded
+  workloads *and* improves selection accuracy. Deferring every tool under `.harry/` is
+  fine — Harry publishes `harry_find_tools` and `harry_mark_done` itself and never defers
+  either, so the roster is never empty
 
 ## Why
 
@@ -112,7 +114,8 @@ rather than judgement calls, which is what makes them survive thirty tools.
 ## Enforcement
 
 `scripts/check_capabilities.py` in `make lint`: the namespace prefix, the underscore rule,
-a missing `readOnlyHint`, an unknown annotation, a near-empty description body, and a roster
-where every tool is deferred — which the API rejects outright. `tests/test_capabilities.py`
+a missing `readOnlyHint`, an unknown annotation, a near-empty description body, and — the one
+that makes exposure a rule rather than a sentence — **a tool namespaced after a connector
+that the connector does not list in `provides:`**. `tests/test_capabilities.py`
 makes each one fail. Severity: **Important**; **Critical** for a mode argument or a deferred
 roster.

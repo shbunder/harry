@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +58,18 @@ class Context:
     """The declaration's body, verbatim. Harry serves it and never reads it."""
     config: Mapping[str, Any]
     log: logging.Logger
+    connectors: Mapping[str, Any] = field(default_factory=dict)
+    """What `requires:` named, as the objects those connectors registered.
+
+    The other half of a contract that was only ever half enforced: `requires:` decided
+    whether this capability loaded, and handed it nothing. So a tool can use the connector
+    it declared **without importing it** — two folders that import each other are two
+    folders that cannot be swapped, and swapping is what the layout is for.
+
+    Exactly what was declared and nothing else. A capability that could reach any connector
+    would not have to declare what it needs, and then the loader could not refuse it at
+    start-up when something is missing — the failure would move to the first call at 06:30.
+    """
 
     def config_for(self, principal: Principal) -> dict[str, Any]:
         """The same settings, resolved for one person.

@@ -235,6 +235,48 @@ def check_config(fields: dict[str, Any], implementation: str, path: Path) -> Non
             raise Problem(f"{folder.relative_to(ROOT)}/.env.local is tracked by git. It holds this machine's secrets.")
 
 
+def check_exposure(connectors: list[dict[str, Any]], tools: list[dict[str, Any]]) -> list[str]:
+    """`provides:` is where a connector writes down what it chose to offer.
+
+    Two halves, and the second is the one that makes it more than decoration:
+
+    - Every name in a `provides:` must be a tool that exists. A renamed tool leaves a stale
+      list otherwise, and nothing would say so.
+    - **Every tool namespaced after a connector must be in that connector's `provides:`.**
+      `slack_post` is namespaced `slack` and there is a connector called `slack`, so the
+      slack connector has to have agreed to offer it. Without this half, exposure is a
+      field nobody has to fill in, and "a tool exists because someone would ask for it"
+      becomes a sentence rather than a rule.
+
+    A tool that composes several connectors — a digest built from a tablet, a feed and a
+    calendar — is namespaced after none of them and is nobody's to offer. That is why the
+    rule is about the namespace rather than about `requires:`.
+    """
+    problems: list[str] = []
+    declared = {str(tool['name']) for tool in tools}
+    by_name = {str(connector['name']): connector for connector in connectors}
+
+    for connector in connectors:
+        offered = connector.get('provides') or []
+        if not isinstance(offered, list):
+            problems.append(f'{connector["name"]}: `provides` must be a list of tool names')
+            continue
+        for name in offered:
+            if str(name) not in declared:
+                problems.append(f'{connector["name"]}: provides {name}, which is not a tool that exists')
+
+    for tool in tools:
+        namespace = str(tool.get('namespace', ''))
+        owner = by_name.get(namespace)
+        if owner is not None and str(tool['name']) not in (owner.get('provides') or []):
+            problems.append(
+                f'{tool["name"]}: the {namespace} connector does not list it in `provides:`. '
+                'Exposing a read path is a choice, and that list is where the choice is written down.'
+            )
+
+    return problems
+
+
 def check_requires(fields: dict[str, Any], connectors: set[str]) -> None:
     needed = fields.get('requires', [])
     if not isinstance(needed, list):
@@ -301,17 +343,19 @@ def main(argv: list[str] | None = None) -> int:
     job_problems, _ = validate(job_files, check_job, connectors)
     tool_problems, valid_tools = validate(tool_files, check_tool, connectors)
     problems += job_problems + tool_problems
+    problems += check_exposure(valid_connectors, valid_tools)
 
     loaded = sum(1 for f in valid_tools if f.get('always_load') and f.get('enabled'))
 
-    # Deferring every tool is a 400 from the API, not a slow path: the search tool needs
-    # something already in the roster to sit alongside. Catching it here beats catching it
-    # on the first call of the morning.
-    if tool_files and not loaded and not problems:
-        problems.append(
-            '.harry/tools: every tool is deferred or disabled. At least one enabled tool must set '
-            '`always_load: true`, or the API rejects the whole roster.'
-        )
+    # There used to be a rule here refusing an all-deferred `.harry/tools/`, because an
+    # empty roster is a 400 from the API rather than a slow path. That was true when it was
+    # written and the only tools were these. Harry now publishes two of its own that are
+    # never deferred — the tool search and the job-done report — so the roster is never
+    # empty and the premise is gone.
+    #
+    # `tests/test_mcp.py::test_the_roster_is_never_empty_even_when_every_tool_is_deferred`
+    # is what keeps that true; if core ever stops guaranteeing a loaded tool, that test goes
+    # red and this rule comes back.
 
     problems += orphan_folders()
 

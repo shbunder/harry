@@ -98,6 +98,7 @@ def _load_one(capability: Capability, catalogue: Catalogue) -> None:
     try:
         fields, body = _declaration(capability, kind)
         config = _settings(capability, fields)
+        connectors = _connectors_for(fields, catalogue)
         # Built before anything that could fail with a credential in its message, because
         # the Context is what knows which values are secret and scrubs them.
         capability.context = Context(
@@ -108,8 +109,8 @@ def _load_one(capability: Capability, catalogue: Catalogue) -> None:
             body=body,
             config=config,
             log=logging.getLogger(f'harry.capability.{capability.name}'),
+            connectors=connectors,
         )
-        _check_requirements(capability, fields, catalogue)
         _register(capability, kind)
     except Skip as skip:
         _record_skip(catalogue, capability, str(skip))
@@ -165,19 +166,31 @@ def _settings(capability: Capability, fields: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-def _check_requirements(capability: Capability, fields: dict[str, Any], catalogue: Catalogue) -> None:
-    """A tool or a job whose connector did not load does not load either.
+def _connectors_for(fields: dict[str, Any], catalogue: Catalogue) -> dict[str, Any]:
+    """What `requires:` named, resolved to what those connectors registered.
 
-    It would otherwise register, look healthy, and fail on its first call — which is a
-    worse version of the same outcome, arriving later and somewhere less obvious.
+    One resolution rather than two: the same walk decides whether this capability may load
+    at all and what it is handed. A tool whose connector did not load would otherwise
+    register, look healthy, and fail on its first call — a worse version of the same
+    outcome, arriving later and somewhere less obvious.
     """
-    unmet = [
-        str(name)
-        for name in fields.get('requires') or []
-        if (connector := catalogue.get('connector', str(name))) is None or connector.status != LOADED
-    ]
-    if unmet:
-        raise Skip(f'needs {", ".join(sorted(unmet))}, which did not load')
+    wanted = [str(name) for name in fields.get('requires') or []]
+
+    missing = sorted(
+        name for name in wanted if (found := catalogue.get('connector', name)) is None or found.status != LOADED
+    )
+    if missing:
+        raise Skip(f'needs {", ".join(missing)}, which did not load')
+
+    handed = {name: catalogue.get('connector', name) for name in wanted}
+    empty = sorted(name for name, found in handed.items() if found is None or found.target is None)
+    if empty:
+        # A connector with nothing to hand over is refused here rather than left out of the
+        # mapping, because the alternative is `KeyError: 'slack'` in /health — in front of
+        # somebody who is not debugging.
+        raise Skip(f'needs {", ".join(empty)}, which registered nothing to use')
+
+    return {name: found.target for name, found in handed.items() if found is not None}
 
 
 def _register(capability: Capability, kind: Kind) -> None:

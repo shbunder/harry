@@ -19,6 +19,17 @@ TIMEOUT = 5.0
 """Seconds. Alerts are sent while Harry is starting, and a socket that hangs with no
 ceiling holds up the restart somebody is watching."""
 
+WHAT_TO_DO = {
+    'not_in_channel': 'invite the bot to {channel} (/invite @Harry in that channel), then try again',
+    'channel_not_found': 'check the channel — {channel} is not one this bot can see. A private channel needs the bot invited before it exists to the bot',
+    'invalid_auth': 'the bot token was revoked or rotated. Reinstall the Slack app and put the new token in .env.local',
+}
+"""Slack's code against the fix, which is the runbook beside this file with one caller.
+
+A lookup table, not Harry deciding anything: each of these has exactly one answer and the
+answer never depends on the situation. The code alone sends somebody to a search engine;
+the sentence is what they actually needed."""
+
 
 class Slack:
     """A bot token, a channel, and one verb."""
@@ -28,23 +39,33 @@ class Slack:
         self._channel = channel
         self._log = log
 
-    def send(self, message: str) -> None:
-        """Post one line, or raise saying why not.
+    @property
+    def default_channel(self) -> str:
+        """Where a message goes when nobody chose. Alerts never choose."""
+        return self._channel
+
+    def send(self, message: str, channel: str | None = None) -> str:
+        """Post one line, or raise saying why not. Returns the channel it went to.
 
         Raising rather than swallowing is the contract `registry.alerts` asks for: a sink
         that returns quietly on a failure makes a fault nobody heard about look exactly
         like one that was reported.
+
+        `channel` is optional because the alert path never passes one — deciding where a
+        failure belongs is judgement, and Harry does not do judgement.
         """
+        where = channel or self._channel
         response = httpx.post(
             POST_MESSAGE,
             timeout=TIMEOUT,
             headers={'Authorization': f'Bearer {self._token}'},
-            json={'channel': self._channel, 'text': message},
+            json={'channel': where, 'text': message},
         )
-        self._check(response)
-        self._log.debug('told %s', self._channel)
+        self._check(response, where)
+        self._log.debug('told %s', where)
+        return where
 
-    def _check(self, response: httpx.Response) -> None:
+    def _check(self, response: httpx.Response, channel: str) -> None:
         """Slack's error code, and nothing else from the response.
 
         **Never the body.** Slack echoes parts of a rejected request back, and the request
@@ -59,7 +80,9 @@ class Slack:
 
         if not isinstance(answered, dict) or not answered.get('ok'):
             code = answered.get('error') if isinstance(answered, dict) else None
-            raise RuntimeError(f'slack refused the message: {code or f"HTTP {response.status_code}"}')
+            said = code or f'HTTP {response.status_code}'
+            advice = WHAT_TO_DO.get(str(code), '').format(channel=channel)
+            raise RuntimeError(f'slack refused the message: {said}' + (f' — {advice}' if advice else ''))
 
 
 def register(registry: Registry, context: Context) -> None:

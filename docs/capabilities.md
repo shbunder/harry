@@ -62,6 +62,19 @@ def register(registry: Registry, context: Context) -> None:
         return {'day': day, 'summary': 'grey, as ever'}
 ```
 
+`connectors` is the other half of `requires:`. Declare what you need and it is handed to
+you — you never import another capability, because two folders that import each other are
+two folders that cannot be swapped:
+
+```python
+def register(registry: Registry, context: Context) -> None:
+    slack = context.connectors['slack']
+```
+
+You get exactly what you declared. A connector that did not load, or that registered
+nothing to hand over, means this capability is skipped at start-up with the reason — rather
+than failing on its first call.
+
 A capability may also take on a **role** alongside its kind. There is one today:
 `registry.alerts(fn)` offers this capability as somewhere Harry can report a fault, and it
 does not use up the folder's one implementation — see [alerting.md](alerting.md).
@@ -76,6 +89,7 @@ does not use up the folder's one implementation — see [alerting.md](alerting.m
 | `body` | The declaration's body, verbatim |
 | `config` | Its settings, resolved |
 | `config_for(principal)` | The same settings for one person — the NUC serves more than one |
+| `connectors` | What `requires:` named, as the objects those connectors registered |
 | `log` | A logger named for this capability |
 
 **Only `harry.sdk` may be imported.** Reaching for `harry.scheduler`, `harry.store`,

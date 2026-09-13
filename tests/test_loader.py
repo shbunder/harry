@@ -514,3 +514,54 @@ def test_the_summary_says_how_many_loaded_and_how_many_did_not(tmp_path, caplog)
         load([root])
 
     assert '1 capability loaded, 1 skipped' in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# The other half of `requires:`
+# ---------------------------------------------------------------------------
+
+
+def test_a_tool_is_handed_the_connector_it_declared(tmp_path):
+    """`requires:` decided whether a capability loaded and handed it nothing. A tool that
+    cannot reach the connector it declared has to import it, and two folders that import
+    each other are two folders that cannot be swapped."""
+    root = root_with(tmp_path / 'root', 'connectors/weather', 'tools/weather_report')
+
+    tool = load([root]).get('tool', 'weather_report')
+
+    assert tool is not None and tool.status == 'loaded', tool.reason if tool else 'not found'
+    assert tool.target is not None
+    assert tool.target() == {'today': {'place': 'Leuven', 'summary': 'grey, as ever'}, 'declared': ['weather']}
+
+
+def test_a_capability_is_handed_nothing_it_did_not_declare(tmp_path):
+    """Exactly what `requires:` named. A capability that could reach any connector would
+    not have to declare what it needs, and then the loader could not refuse it at start-up
+    when something is missing — the failure would move to the first call at 06:30."""
+    root = root_with(tmp_path / 'root', 'connectors/weather', 'connectors/layered', 'tools/weather_report')
+
+    tool = load([root]).get('tool', 'weather_report')
+
+    assert tool is not None and tool.target is not None
+    assert tool.target()['declared'] == ['weather'], 'a connector it never asked for was handed over'
+
+
+def test_a_capability_with_no_requires_gets_an_empty_mapping(tmp_path):
+    """Not an error, and not None. Most capabilities need nothing."""
+    root = root_with(tmp_path / 'root', 'connectors/introspect')
+
+    capability = load([root]).get('connector', 'introspect')
+
+    assert capability is not None and capability.target is not None
+    assert capability.target.connectors == {}
+
+
+def test_a_connector_that_registered_nothing_is_refused_in_words(tmp_path):
+    """`KeyError: 'slack'` is what an unhandled lookup would put in /health, in front of
+    somebody who is not debugging. The loader says it instead."""
+    root = root_with(tmp_path / 'root', 'connectors/quiet', 'tools/quiet_report', 'connectors/weather')
+
+    catalogue = load([root])
+
+    assert reasons(catalogue)['quiet_report'] == 'needs quiet, which registered nothing to use'
+    assert catalogue.get('connector', 'quiet') is not None, 'the connector itself is fine'
