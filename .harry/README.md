@@ -41,6 +41,37 @@ it; `trigger:` says which kind it is.
 Everything here is validated by `scripts/check_capabilities.py`, which `make lint` runs. A
 malformed header fails at the gate rather than at 06:30.
 
+## The code beside it
+
+One file, named after the kind — `connector.py`, `tool.py`, `job.py` — with one function:
+
+```python
+from harry.sdk import Context, Registry
+
+
+def register(registry: Registry, context: Context) -> None:
+    registry.connector(Forecast(context.config['place']))
+```
+
+`registry` has three methods, `connector()`, `tool()` and `job()`, and **none of them takes
+a name**: the name, the description and the annotations are in the declaration Harry has
+already read. Each returns what you passed, so `@registry.tool` over the function works.
+
+`context` carries `name`, `kind`, `folder`, `declaration`, `body`, `config`,
+`config_for(principal)` and `log`.
+
+**Only `harry.sdk` may be imported.** Reaching for `harry.scheduler`, `harry.store`,
+`harry.mcp`, `harry.main` — or bare `harry` — is refused before your module runs. Files
+beside the entry module are read by that check too, and relative imports between them are
+fine: a capability is a folder, and the client usually lives in a second file.
+
+**A folder with no Python is a whole capability.** That is how a `trigger: claude` job is
+one markdown file.
+
+Every capability loads inside its own try/except, so a half-written one is logged, skipped,
+and listed in `/health` with the reason. The rest come up. See
+[docs/capabilities.md](../docs/capabilities.md).
+
 ## A job
 
 `.harry/jobs/morning-page/JOB.md`
@@ -133,10 +164,14 @@ is [.claude/rules/tool-design.md](../.claude/rules/tool-design.md).
 ---
 name: tijd
 description: De Tijd — full article text, through a logged-in browser session
-requires_env: [TIJD_STORAGE_STATE]
 provides: [fetch_article]
 expires: session                # never | manual | session
 enabled: true
+config:
+  storage_state:
+    description: Path to the saved browser session. Refresh with `make tijd-login`.
+    secret: true
+    required: true
 ---
 
 De Tijd returns 403 to any non-browser client, even for free articles. There is no header
