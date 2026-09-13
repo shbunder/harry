@@ -1,5 +1,10 @@
 """`.env` still describes the Harry that exists.
 
+It carries core's settings and nothing else. Every capability keeps its own pair inside
+its folder, generated from its `config:` block — so a key belonging to a connector, a
+tool or a job appearing here is not a value in the wrong place, it is a capability that
+is not self-contained.
+
 `.env` is committed, so it is documentation that ships — and documentation that ships is
 documentation that goes stale. Two architectural decisions have since retired keys that
 are still in it, and a reader who trusts the file would configure something that nothing
