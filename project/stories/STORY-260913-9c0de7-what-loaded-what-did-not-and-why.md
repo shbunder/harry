@@ -21,10 +21,10 @@ The endpoint that makes a skipped capability visible. Without it the difference 
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] GET /health returns 200 with every capability, its kind, and loaded or skipped
-- [ ] Every skipped one carries its reason
-- [ ] Harry running with four of five capabilities is 200, not an error — a skip is information
-- [ ] No secret appears in any field of the response, asserted against a capability that has one
+- [x] GET /health returns 200 with every capability, its kind, and loaded or skipped
+- [x] Every skipped one carries its reason
+- [x] Harry running with four of five capabilities is 200, not an error — a skip is information
+- [x] No secret appears in any field of the response, asserted against a capability that has one
 
 ## Subtasks
 

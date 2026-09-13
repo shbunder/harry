@@ -21,11 +21,11 @@ The property the whole design rests on. A half-written folder is the normal stat
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A capability that raises at import is skipped and Harry still serves
-- [ ] Every other capability still registers
-- [ ] The failure is recorded with the exception type and message
-- [ ] A capability whose required setting is absent is skipped, and the reason names the setting
-- [ ] Each of these is tested by making it happen, with a fixture capability that really is broken
+- [x] A capability that raises at import is skipped and Harry still serves
+- [x] Every other capability still registers
+- [x] The failure is recorded with the exception type and message
+- [x] A capability whose required setting is absent is skipped, and the reason names the setting
+- [x] Each of these is tested by making it happen, with a fixture capability that really is broken
 
 ## Subtasks
 

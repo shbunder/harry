@@ -21,10 +21,10 @@ What a capability is allowed to reach, and the run-time check that it did not re
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] `harry.sdk` exposes the Registry and the Context a capability is handed, and nothing else
-- [ ] A capability importing harry.scheduler, harry.store, harry.mcp or harry.main is skipped, with a reason naming the import
-- [ ] The SDK imports nothing from a capability, in either direction
-- [ ] A capability that imports only harry.sdk loads
+- [x] `harry.sdk` exposes the Registry and the Context a capability is handed, and nothing else
+- [x] A capability importing harry.scheduler, harry.store, harry.mcp or harry.main is skipped, with a reason naming the import
+- [x] The SDK imports nothing from a capability, in either direction
+- [x] A capability that imports only harry.sdk loads
 
 ## Subtasks
 
