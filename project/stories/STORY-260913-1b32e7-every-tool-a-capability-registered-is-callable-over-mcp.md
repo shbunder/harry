@@ -21,14 +21,14 @@ Publishing what the loader registered: the name, the body as the description, th
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A loaded tool is callable over MCP, and calling it runs the function the capability registered
-- [ ] Its description is the TOOL.md body verbatim — Harry never edits, summarises or templates it
-- [ ] Its annotations are the ones in the frontmatter, readOnlyHint included
-- [ ] Its input schema comes from the typed Python signature and is declared nowhere else
-- [ ] A tool the loader skipped is not published, while /health still says why it was skipped
-- [ ] Two consecutive list calls return the same tools in name order
-- [ ] A tool that raises comes back as an error carrying the tool's name and the exception's own message, with no traceback, file path or line number, and the other tools still work
-- [ ] A real MCP client reaching Harry over HTTP with the configured token gets the same roster the in-process one does
+- [x] A loaded tool is callable over MCP, and calling it runs the function the capability registered
+- [x] Its description is the TOOL.md body verbatim — Harry never edits, summarises or templates it
+- [x] Its annotations are the ones in the frontmatter, readOnlyHint included
+- [x] Its input schema comes from the typed Python signature and is declared nowhere else
+- [x] A tool the loader skipped is not published, while /health still says why it was skipped
+- [x] Two consecutive list calls return the same tools in name order
+- [x] A tool that raises comes back as an error carrying the tool's name and the exception's own message, with no traceback, file path or line number, and the other tools still work
+- [x] A real MCP client reaching Harry over HTTP with the configured token gets the same roster the in-process one does
 
 ## Subtasks
 
