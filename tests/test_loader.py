@@ -35,6 +35,24 @@ def root_with(where: Path, *capabilities: str) -> Path:
     return where
 
 
+def capability_names() -> set[str]:
+    """Every capability name this repository knows about — the fixtures and the real tree.
+
+    `.harry/` is empty today. When it is not, the names in it are exactly the ones core
+    must not learn, so the roster has to grow with the tree rather than with the fixtures.
+    """
+    roots = (FIXTURES, REPO / '.harry', REPO / 'src' / 'harry' / 'capabilities')
+    return {
+        folder.name
+        for root in roots
+        if root.is_dir()
+        for kind in root.iterdir()
+        if kind.is_dir()
+        for folder in kind.iterdir()
+        if folder.is_dir()
+    }
+
+
 def reasons(catalogue) -> dict[str, str]:
     return {capability.name: capability.reason for capability in catalogue.skipped}
 
@@ -81,9 +99,13 @@ def test_core_names_no_capability():
     `if name == 'weather'` is the violation and is caught; the sentence "one broken
     connector is logged and skipped" is prose, and a substring search would fail on the
     word `broken` for a reason that has nothing to do with the rule.
+
+    The names come from the real tree as well as the fixtures. Checking fixtures alone
+    passes today only because `.harry/` is empty — the first real connector would not be
+    covered, silently, which is the failure this check exists to prevent.
     """
-    capabilities = {path.name for kind in FIXTURES.iterdir() if kind.is_dir() for path in kind.iterdir()}
-    assert capabilities, 'no fixture capabilities to check against'
+    capabilities = capability_names()
+    assert capabilities, 'no capabilities to check against'
 
     offences = [
         f'{source.relative_to(REPO)} names {named}'
@@ -392,3 +414,103 @@ def test_an_out_of_tree_capability_reads_its_settings_from_its_own_folder(tmp_pa
 
     assert weather is not None and weather.target is not None
     assert weather.target.place == 'Ghent'
+
+
+# ---------------------------------------------------------------------------
+# The contract, as the loader builds it
+# ---------------------------------------------------------------------------
+
+
+def test_the_context_the_loader_builds_carries_all_eight_fields(tmp_path, monkeypatch):
+    """Checked on a Context the loader produced, not one a test wrote.
+
+    `config_for()` resolves from `self.folder` and `self.name`, so a wrong folder does not
+    raise — it quietly reads somebody else's directory, finds nothing, and falls back to
+    the defaults. That is the seam the whole multi-person design rests on, and it fails
+    silently in exactly the way nobody notices.
+    """
+    import harry.config
+
+    monkeypatch.delenv('HARRY_INTROSPECT_PLACE', raising=False)
+    made = harry.config.Settings(data_dir=tmp_path / 'data')
+    monkeypatch.setattr(harry.config, 'get_settings', lambda: made)
+
+    root = root_with(tmp_path / 'root', 'connectors/introspect')
+    folder = root / 'connectors' / 'introspect'
+
+    renee = harry.config.Principal(id='renee', name='Renée')
+    hers = harry.config.user_data_dir(renee) / 'connectors'
+    hers.mkdir(parents=True)
+    (hers / 'introspect.env').write_text('PLACE=Ghent\n', encoding='utf-8')
+
+    capability = load([root]).get('connector', 'introspect')
+    assert capability is not None and capability.status == 'loaded'
+    context = capability.target
+    assert context is not None
+
+    assert context.name == 'introspect'
+    assert context.kind == 'connector'
+    assert context.folder == folder
+    assert context.declaration['expires'] == 'never'
+    assert context.body.startswith('The eight fields on Context')
+    assert context.config == {'place': 'Leuven'}
+    assert context.log.name == 'harry.capability.introspect'
+    assert context.config_for(renee) == {'place': 'Ghent'}
+
+
+def test_loading_the_same_name_twice_does_not_reuse_the_first_ones_sibling_module(tmp_path):
+    """Every module under a capability's name is dropped before it is loaded again.
+
+    Without that, Python's cache answers for the second one: the entry module is rebuilt
+    but `<name>.client` is not, so the code that runs is the first root's. A shadowed
+    capability and its replacement share a name by definition, which is how a swap would
+    quietly do nothing.
+    """
+
+    def a_root(at: str, answer: str) -> Path:
+        root = root_with(tmp_path / at, 'connectors/layered')
+        (root / 'connectors' / 'layered' / 'client.py').write_text(
+            f'class Client:\n    def fetch(self) -> str:\n        return {answer!r}\n',
+            encoding='utf-8',
+        )
+        return root
+
+    first = load([a_root('first', 'the first root')]).get('connector', 'layered')
+    second = load([a_root('second', 'the second root')]).get('connector', 'layered')
+
+    assert first is not None and first.target is not None
+    assert second is not None and second.target is not None
+    assert first.target.fetch() == 'the first root'
+    assert second.target.fetch() == 'the second root'
+
+
+def test_a_capability_that_fails_leaves_nothing_behind_in_the_import_cache(tmp_path):
+    """A half-executed module left under its own name is one a later load would find and
+    trust. Nothing reloads today, so this costs nothing today — which is the whole reason
+    it would go unnoticed."""
+    import sys
+
+    load([root_with(tmp_path / 'root', 'connectors/broken')])
+
+    assert not [name for name in sys.modules if name.startswith('harry_capabilities.connector.broken')]
+
+
+def test_python_that_does_not_parse_is_skipped_like_anything_else(tmp_path):
+    """The most ordinary way for a capability to be broken: saved mid-sentence. The import
+    check reads the file first, so this is where it surfaces."""
+    root = root_with(tmp_path / 'root', 'connectors/halfwritten', 'connectors/weather')
+
+    catalogue = load([root])
+
+    assert [c.name for c in catalogue.loaded] == ['weather']
+    assert 'SyntaxError' in reasons(catalogue)['halfwritten']
+
+
+def test_the_summary_says_how_many_loaded_and_how_many_did_not(tmp_path, caplog):
+    """One line on a restart, so the damage shows without anyone asking for it."""
+    root = root_with(tmp_path / 'root', 'connectors/weather', 'connectors/broken')
+
+    with caplog.at_level(logging.INFO, logger='harry.loader'):
+        load([root])
+
+    assert '1 capability loaded, 1 skipped' in caplog.text

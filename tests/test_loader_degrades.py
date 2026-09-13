@@ -27,6 +27,9 @@ EVERYTHING = (
     'connectors/mismatched',
     'connectors/disabled',
     'connectors/layered',
+    'connectors/introspect',
+    'connectors/wrongkind',
+    'connectors/halfwritten',
     'tools/weather_forecast',
     'tools/icloud_list_events',
     'jobs/refresh',
@@ -69,12 +72,13 @@ def test_a_capability_that_raises_while_registering_is_skipped_too(tmp_path):
 
 
 def test_one_broken_capability_among_many_costs_exactly_itself(tmp_path):
-    """Ten ways to be broken in one tree, and the three that work still work. This is the
+    """Eleven ways to be broken in one tree, and the six that work still work. This is the
     claim the design is built on, so it is asserted against every failure at once rather
     than one at a time in isolation."""
     catalogue = load([root_with(tmp_path / 'root', *EVERYTHING)])
 
     assert sorted(c.name for c in catalogue.loaded) == [
+        'introspect',
         'layered',
         'morning-page',
         'refresh',
@@ -84,6 +88,7 @@ def test_one_broken_capability_among_many_costs_exactly_itself(tmp_path):
     assert sorted(c.name for c in catalogue.skipped) == [
         'broken',
         'disabled',
+        'halfwritten',
         'icloud',
         'icloud_list_events',
         'mismatched',
@@ -91,6 +96,7 @@ def test_one_broken_capability_among_many_costs_exactly_itself(tmp_path):
         'nosy',
         'orphan',
         'unparseable',
+        'wrongkind',
     ]
     assert all(capability.reason for capability in catalogue.skipped), 'a skip with no reason is a silent one'
 
@@ -253,3 +259,17 @@ def test_every_fixture_capability_is_used_by_a_test():
 
     unused = sorted(name for name in on_disk if name not in tests)
     assert unused == [], f'fixtures no test loads: {unused}'
+
+
+def test_registering_the_wrong_kind_costs_only_that_capability(tmp_path):
+    """The registry refuses it; the loader has to turn that refusal into a skip with a
+    readable reason rather than a traceback. Reached through load(), which is the only
+    way production ever reaches those guards."""
+    root = root_with(tmp_path / 'root', 'connectors/wrongkind', 'connectors/weather')
+
+    catalogue = load([root])
+
+    assert [c.name for c in catalogue.loaded] == ['weather']
+    reason = reasons(catalogue)['wrongkind']
+    assert reason.startswith('ContractError: registered a tool from a connector folder')
+    assert 'provides:' in reason

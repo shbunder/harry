@@ -34,7 +34,7 @@ from typing import Any
 
 from harry.boundary import forbidden_imports
 from harry.config import capability_roots, read_capability_config
-from harry.declaration import BY_NAME, KINDS, Kind, read_body, read_frontmatter
+from harry.declaration import BY_NAME, KINDS, Kind, Malformed, read_body, read_frontmatter
 from harry.registry import LOADED, Capability, Catalogue, Context, Registry
 
 LOG = logging.getLogger('harry.loader')
@@ -125,7 +125,12 @@ def _declaration(capability: Capability, kind: Kind) -> tuple[dict[str, Any], st
     if not path.is_file():
         raise Skip(f'no {kind.declaration}, so nothing here is loaded')
 
-    fields = read_frontmatter(path)
+    try:
+        fields = read_frontmatter(path)
+    except Malformed as bad:
+        # Re-raised as a skip so the reason is the sentence and not `Malformed: <sentence>`.
+        # Whoever reads it in /health wants the fault, not the class name.
+        raise Skip(str(bad)) from bad
     declared = str(fields.get('name', ''))
     if declared != capability.name:
         raise Skip(f'its declaration is named {declared!r} but the folder is {capability.name!r}')

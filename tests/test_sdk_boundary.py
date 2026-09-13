@@ -273,16 +273,25 @@ def test_the_catalogue_separates_what_loaded_from_what_did_not(tmp_path):
     assert len(catalogue) == 2
 
 
-def test_of_kind_is_how_the_mcp_server_and_the_scheduler_will_ask(tmp_path):
-    """Rather than either of them walking directories again, which is two more places
-    that would have to know what a capability looks like."""
-    catalogue = Catalogue()
-    catalogue.add(a_capability(kind='connector', name='icloud'))
-    catalogue.add(a_capability(kind='tool', name='icloud_list_events'))
-    catalogue.skip(a_capability(kind='tool', name='icloud_list_todos'), 'nope')
+def test_get_returns_the_capability_in_effect_whatever_order_it_was_recorded(tmp_path):
+    """A shadowed capability shares its kind and name with the one that replaced it. `get`
+    has to answer with the version that is running — `requires:` resolves through it, and
+    a tool told its connector failed when the replacement loaded fine is a tool that never
+    comes up.
 
-    assert [c.name for c in catalogue.of_kind('tool')] == ['icloud_list_events']
-    assert [c.name for c in catalogue.of_kind('job')] == []
+    Recorded loaded-first here on purpose: the loader happens to record the shadow first
+    today, so relying on order would make this correct by accident.
+    """
+    catalogue = Catalogue()
+    catalogue.add(a_capability(name='icloud', folder=tmp_path / 'instance'))
+    displaced = a_capability(name='icloud', folder=tmp_path / 'bundled')
+    displaced.shadowed_by = tmp_path / 'instance'
+    catalogue.skip(displaced, f'replaced by {tmp_path / "instance"}')
+
+    found = catalogue.get('connector', 'icloud')
+    assert found is not None
+    assert found.folder == tmp_path / 'instance'
+    assert found.status == 'loaded'
 
 
 def test_a_tool_and_a_connector_may_share_a_name(tmp_path):

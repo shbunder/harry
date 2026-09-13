@@ -190,11 +190,6 @@ class Catalogue:
     def skipped(self) -> list[Capability]:
         return [c for c in self._found if c.status == SKIPPED]
 
-    def of_kind(self, kind: str) -> list[Capability]:
-        """Every loaded capability of one kind. What the MCP server and the scheduler
-        will each ask for, rather than either of them walking directories again."""
-        return [c for c in self.loaded if c.kind == kind]
-
     def get(self, kind: str, name: str) -> Capability | None:
         """The capability in effect under this name.
 

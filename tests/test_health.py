@@ -7,10 +7,12 @@ catalogue directly would answer a question nobody asks.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 
-from harry.main import build_app
+from harry.main import build_app, configure_logging
 
 from .test_loader import root_with
 
@@ -143,8 +145,6 @@ def test_health_reports_where_it_looked(harry):
 def records_from_harry():
     """A handler on Harry's own logger, so what is captured is what that logger let
     through — not what pytest's root handler would have shown regardless."""
-    import logging
-
     captured: list[logging.LogRecord] = []
 
     class Collect(logging.Handler):
@@ -161,8 +161,6 @@ def test_harrys_own_log_level_follows_the_setting(harry, tmp_path, monkeypatch, 
     """`HARRY_LOG_LEVEL` configured uvicorn and nothing of Harry's, so every line below
     WARNING went to logging's last-resort handler and vanished. The skip warnings still
     appeared, which is what made it look like the setting was applied."""
-    import logging
-
     (tmp_path / '.env').write_text(f'HARRY_LOG_LEVEL={level}\n', encoding='utf-8')
     client = harry('connectors/weather', 'connectors/broken')
     captured, handler = records_from_harry()
@@ -176,3 +174,29 @@ def test_harrys_own_log_level_follows_the_setting(harry, tmp_path, monkeypatch, 
     said = [record.getMessage() for record in captured]
     assert any('skipped' in message for message in said), 'a skip must be visible at any level'
     assert any('weather loaded' in message for message in said) is expect_start_up_lines
+
+
+def test_harry_gives_the_root_a_handler_when_nothing_else_has(monkeypatch, tmp_path):
+    """The other half of the fix, and the half a test cannot see by accident. uvicorn
+    configures its own three loggers and leaves the root alone, so without a handler
+    there every line Harry logs goes to logging's last-resort one, which drops anything
+    below WARNING.
+
+    pytest installs its own root handler, so this removes them first — which is also why
+    `basicConfig` is safe to call in the lifespan: it adds nothing when one is already
+    there."""
+    import harry.config
+
+    (tmp_path / '.env').write_text('HARRY_LOG_LEVEL=INFO\n', encoding='utf-8')
+    monkeypatch.chdir(tmp_path)
+    harry.config.get_settings.cache_clear()
+
+    root = logging.getLogger()
+    existing = root.handlers[:]
+    root.handlers.clear()
+    try:
+        configure_logging()
+        assert root.handlers, 'nothing Harry logs below WARNING would reach stderr'
+    finally:
+        root.handlers[:] = existing
+        harry.config.get_settings.cache_clear()
