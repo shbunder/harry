@@ -22,13 +22,14 @@ The surface Harry exists to offer. Tools declared under .harry/tools/ become MCP
 - [ ] A declared tool is callable over MCP with its TOOL.md body as the description, its frontmatter annotations, and a schema derived from the typed signature
 - [ ] A capability the loader skipped is not published, while /health still explains why
 - [ ] The roster comes back in name order, identical on every request
-- [ ] A tool with always_load false is absent from the roster until harry_find_tools reveals it, after which it lists and calls
+- [ ] A tool with always_load false is absent from the roster until harry_find_tools reveals it, after which it lists and calls; a restart puts it back out
 - [ ] The roster is never empty: harry_find_tools is always there, so an all-deferred roster cannot happen at run time
 - [ ] A trigger: claude job's brief is an MCP prompt named for the job, rendered verbatim; a trigger: schedule job has none
 - [ ] A request with no bearer token, or the wrong one, is refused; the configured one gets the roster
 - [ ] A tool whose signature declares a principal is handed the caller's, and principal is absent from its input schema
 - [ ] A tool that raises returns an error with no traceback and no file path, and every other tool still works
-- [ ] `claude mcp add` against a running Harry connects, and `claude mcp list` shows it connected
+- [ ] A client reaching a running Harry over HTTP at /mcp with the configured token gets the roster
+- [ ] `claude mcp list` shows harry connected — by inspection: needs a real Claude Code session, which a test client cannot stand in for
 
 ## Stories
 
@@ -41,6 +42,7 @@ The surface Harry exists to offer. Tools declared under .harry/tools/ become MCP
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-13** — plan-verifier: WARN, no BLOCK. Five findings acted on: the harry_find_tools matching rule and its cap are now written down as a rule rather than left to taste; the restart that clears a reveal has a scenario; scenario 9 says what the error message contains and that steering text is the tool's job, not the transport's; the empty-search case has a line; and the claude mcp criterion is split into an automatable HTTP half and a 'by inspection' half. One correction to the verifier: its contract check reads registry.py:44-67 as Capability, but those lines are Context. Capability carries no declaration and no body, and the loader drops the Context it builds — so core/registry in touches is necessary, not defensive.
 
 ## Links
 

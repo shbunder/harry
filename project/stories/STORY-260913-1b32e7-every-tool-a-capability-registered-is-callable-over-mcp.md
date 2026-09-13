@@ -27,7 +27,8 @@ Publishing what the loader registered: the name, the body as the description, th
 - [ ] Its input schema comes from the typed Python signature and is declared nowhere else
 - [ ] A tool the loader skipped is not published, while /health still says why it was skipped
 - [ ] Two consecutive list calls return the same tools in name order
-- [ ] A tool that raises comes back as an error with no traceback and no file path, and the other tools still work
+- [ ] A tool that raises comes back as an error carrying the tool's name and the exception's own message, with no traceback, file path or line number, and the other tools still work
+- [ ] A real MCP client reaching Harry over HTTP with the configured token gets the same roster the in-process one does
 
 ## Subtasks
 

@@ -27,7 +27,10 @@ The roster is sent on every request, so every tool in it and unused is rent paid
 - [ ] A revealed tool appears in the next listing and can then be called
 - [ ] Revealing sends a tools/list_changed notification, so a client knows to look again
 - [ ] harry_find_tools is in the roster even when every declared tool is deferred
-- [ ] Searching for something that matches nothing says so, and names no tool
+- [ ] Searching for something that matches nothing says so, names no tool, and reveals none
+- [ ] The match is a case-insensitive substring of the name, the namespace or the body — no ranking, results in name order
+- [ ] limit defaults to 10 and refuses more than 50, and a capped answer says to search more narrowly
+- [ ] A restart puts every revealed tool back out of the roster
 
 ## Subtasks
 
