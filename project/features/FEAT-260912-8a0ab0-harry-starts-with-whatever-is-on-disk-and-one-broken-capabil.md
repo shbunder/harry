@@ -19,7 +19,7 @@ The core contract, and the property everything else rests on: a half-written cap
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] A connector, a tool and a job in a capability root all load at start-up, and `git grep -n <name> -- src/harry/` finds nothing
+- [ ] A connector, a tool and a job in a capability root all load at start-up, and no file under src/harry/ names any of them in code
 - [ ] A capability that raises on import is logged and skipped, and every other one still loads
 - [ ] A declaration that does not parse is skipped with its parse error, not raised
 - [ ] A capability whose required config is absent disables itself, names the setting, and Harry still starts
