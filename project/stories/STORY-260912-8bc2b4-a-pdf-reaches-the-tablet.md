@@ -22,7 +22,7 @@ Settles the free-tier question two independent implementers disagree about, and 
            summary, and the page still renders -->
 
 - [x] A device is paired with rmapi using a code from my.remarkable.com
-- [ ] A one-page PDF pushed with remarkapy appears on the tablet
+- [x] A one-page PDF pushed with remarkapy appears on the tablet
 - [x] Whether this account needs a Connect subscription for that to work is recorded either way
 - [x] The exact rmapi and remarkapy versions that worked are recorded, to be pinned
 - [x] Where rmapi wrote the device token is named, and it is outside the repo — that token is complete read
