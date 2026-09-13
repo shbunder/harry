@@ -21,13 +21,15 @@ The half that only exists because Harry does not own the clock. An external trig
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A trigger: claude job with a deadline is checked at that time, in that job's timezone
-- [ ] Nothing finished since midnight in that timezone sends one alert: "<job> has not run today. It was due by <time>."
-- [ ] A completion earlier the same morning sends nothing
-- [ ] Yesterday's completion does not count as today's
-- [ ] The same missed deadline is not reported twice on the same day, even across a restart
-- [ ] A failed alert does not mark the deadline reported, so the next check tries again
-- [ ] A disabled job, and a trigger: claude job with no deadline, are not watched
+- [x] The watchdog runs every five minutes and once at start-up, so a deadline missed while Harry was down is reported when it comes back
+- [x] A trigger: claude job with a deadline is checked against that time in that job's own timezone
+- [x] Nothing finished since midnight in that timezone sends one alert: "<job> has not run today. It was due by <time>."
+- [x] A completion earlier the same morning sends nothing
+- [x] Yesterday's completion does not count as today's
+- [x] The same missed deadline is not reported twice on the same day, even across a restart
+- [x] A failed alert does not mark the deadline reported, so the next check tries again
+- [x] A disabled job, and a trigger: claude job with no deadline, are not watched
+- [x] docs/operating.md says what the watchdog actually checks, replacing the "since 05:00" rule written before it existed
 
 ## Subtasks
 

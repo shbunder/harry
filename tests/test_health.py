@@ -140,7 +140,14 @@ def test_no_capabilities_at_all_is_a_valid_start(harry):
     with harry() as client:
         body = client.get('/health').json()
 
-    assert body == {'status': 'ok', 'roots': body['roots'], 'loaded': 0, 'skipped': 0, 'capabilities': []}
+    assert body == {
+        'status': 'ok',
+        'roots': body['roots'],
+        'loaded': 0,
+        'skipped': 0,
+        'capabilities': [],
+        'jobs': {'scheduled': [], 'watched': []},
+    }
 
 
 def test_health_reports_where_it_looked(harry):
@@ -216,3 +223,17 @@ def test_harry_gives_the_root_a_handler_when_nothing_else_has(monkeypatch, tmp_p
     finally:
         root.handlers[:] = existing
         harry.config.get_settings.cache_clear()
+
+
+def test_health_says_what_the_clock_is_doing(harry, tmp_path):
+    """ "The watchdog has been quiet — is it even watching?" is a real question at 07:10, and
+    the answer has to be somewhere other than a log line from this morning."""
+    with harry('jobs/ticker', 'jobs/morning-page') as client:
+        jobs = client.get('/health').json()['jobs']
+
+    assert [row['name'] for row in jobs['scheduled']] == ['ticker']
+    assert jobs['scheduled'][0]['next_run'] is not None
+
+    assert [row['name'] for row in jobs['watched']] == ['morning-page']
+    assert jobs['watched'][0]['deadline'] == '07:00'
+    assert jobs['watched'][0]['last_finished'] is None

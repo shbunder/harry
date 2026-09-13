@@ -102,7 +102,7 @@ The standard every change is held to, and the name every review finding cites.
 | `harry.registry` | The contract. **Kinds** — `connector`, `tool`, `job`: what a folder *is*, one each. **Roles** — `alerts`, and later `route`, `slack_action`, `on`: what it can additionally *do* | Know what any individual capability does |
 | `harry.mcp` | FastMCP at `/mcp`, bearer auth | Implement a tool |
 | `harry.scheduler` | APScheduler, and the deadline watchdog | Decide what a job does |
-| `harry.store` | SQLite and files under `/data` | Reach the network |
+| `harry.store` | What Harry remembers between restarts, under `/data`. One JSON file today — two facts per job; SQLite arrives with the first thing that needs a query | Reach the network |
 | `harry.sdk` | What a capability is allowed to import | Import a capability |
 | `.harry/connectors/*` | One external thing each: its credential, its client, its runbook | Import another capability, or `harry.core.*` |
 | | Chooses which of its read paths become tools, in `provides:` | Hand over a protocol and call it a tool |

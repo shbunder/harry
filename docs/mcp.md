@@ -82,7 +82,12 @@ and a capped answer says to search more narrowly.
 That is deliberately a rule and not a relevance score. A score is an opinion, and opinions
 belong on Claude's side of the boundary.
 
-`harry_find_tools` is Harry's own and is always in the list. A list with nothing in it is
+Harry has two tools of its own and both are always in the list. The other is
+`harry_mark_done`, which a job's brief asks you to call when the work is done — Harry has no
+other way of knowing it happened, and without it the deadline watchdog reports a miss about
+work you actually did. See [jobs.md](jobs.md).
+
+`harry_find_tools` is always in the list too. A list with nothing in it is
 rejected outright by the API, so the one tool that can never be deferred is not one anybody
 can delete.
 

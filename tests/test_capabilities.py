@@ -39,7 +39,7 @@ requires: [remarkable]
 enabled: true
 ---
 
-Pick the six that matter and call build_digest.
+Pick the six that matter and call build_digest. Then call harry_mark_done("morning-page").
 """
 
 SCHEDULED_JOB = """\
@@ -424,4 +424,22 @@ def test_a_job_and_a_tool_may_declare_config_too(harry, capsys):
     harry('jobs', 'refresh-feeds', job)
     harry('connectors', 'remarkable', CONNECTOR)
     harry('tools', 'digest_list_candidates', TOOL)
+    assert cap.main([]) == 0
+
+
+def test_a_claude_brief_that_never_asks_to_be_marked_done_is_refused(harry, capsys):
+    """Harry does not fire these jobs, so the sentence in the brief is the only way it can
+    learn the work happened. Without it the deadline reports a miss every day, about work
+    that was done — a false alarm arriving daily, which empties the channel."""
+    harry('connectors', 'remarkable', CONNECTOR)
+    harry('jobs', 'morning-page', CLAUDE_JOB.replace(' Then call harry_mark_done("morning-page").', ''))
+
+    assert cap.main([]) == 1
+    assert 'harry_mark_done' in capsys.readouterr().err
+
+
+def test_a_scheduled_job_needs_no_such_sentence(harry, capsys):
+    """Harry fires those itself, so it knows."""
+    harry('jobs', 'refresh-feeds', SCHEDULED_JOB)
+
     assert cap.main([]) == 0
