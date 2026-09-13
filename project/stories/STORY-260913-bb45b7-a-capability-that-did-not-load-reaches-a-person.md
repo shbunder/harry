@@ -21,11 +21,11 @@ The first real caller, and the case three features have handed forward. A capabi
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A capability skipped at start-up produces one alert naming it, its kind and the reason
-- [ ] A capability that loaded produces none
-- [ ] The alert is keyed on the capability, so a restart loop does not repeat it within the day
-- [ ] Alerts are raised after loading finishes, because a sink is a capability and has to load first
-- [ ] A skipped capability whose reason held a secret has it redacted in the alert too
+- [x] A capability skipped at start-up produces one alert reading "Harry started without the <name> <kind>: <reason>"
+- [x] A capability that loaded produces none
+- [x] The alert is keyed on the capability, so a restart loop does not repeat it within the day
+- [x] Alerts are raised after loading finishes, because a sink is a capability and has to load first
+- [x] A skipped capability whose reason held a secret has it redacted in the alert too
 
 ## Subtasks
 

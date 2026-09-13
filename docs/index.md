@@ -4,6 +4,7 @@
 |---|---|
 | [operating.md](operating.md) | Running Harry on the NUC, and renewing the two credentials that expire |
 | [mcp.md](mcp.md) | Registering Harry with Claude, what gets published, why most tools are not in the list, and what a caller gets when something fails |
+| [alerting.md](alerting.md) | Setting up Slack, what a message looks like, why the same fault does not tell you twice, and the two holes it cannot close |
 | [capabilities.md](capabilities.md) | How Harry finds what it can do, what a capability writes, and what `/health` says when one is skipped |
 
 A module gets its own page here when it lands, saying: what it does, what it needs in

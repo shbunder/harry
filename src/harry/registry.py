@@ -103,6 +103,12 @@ class Capability:
     shadowed_by: Path | None = None
     target: Any | None = None
     """Whatever the capability registered, or None when it is a declaration alone."""
+    alert_sink: Any | None = None
+    """Somewhere a fault can be said out loud, when this capability offered to carry one.
+
+    Separate from `target` because it is a **role** and not a kind: a connector is still a
+    connector, and being somewhere alerts go is something it can additionally do.
+    """
     context: Context | None = None
     """What the capability was handed, kept rather than dropped.
 
@@ -163,6 +169,25 @@ class Registry:
     def job(self, target: Any) -> Any:
         """What this job runs. A `trigger: claude` job registers nothing and needs none."""
         return self._bind('job', target)
+
+    def alerts(self, target: Any) -> Any:
+        """Somewhere Harry can say that something went wrong.
+
+        **A role, not a kind.** The three above say what this folder *is*, and there is
+        exactly one. This says what it can additionally *do*, and sits alongside — so a
+        connector registers its client and its sink and neither refuses the other.
+
+        The function is called with one string and is expected to **raise if it could not
+        deliver**. Returning quietly on a failure would make a fault that nobody heard
+        about look exactly like one that was reported.
+        """
+        if self._capability.alert_sink is not None:
+            raise ContractError(
+                'registered a second alert sink. One folder is one place for alerts to go; '
+                'a second somewhere needs a second folder.'
+            )
+        self._capability.alert_sink = target
+        return target
 
     def _bind(self, kind: str, target: Any) -> Any:
         if kind != self._capability.kind:

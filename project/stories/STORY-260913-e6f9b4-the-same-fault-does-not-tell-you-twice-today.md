@@ -21,10 +21,10 @@ Suppression, so a fault that repeats every five minutes does not. In memory, and
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] An alert carrying a key is sent once, and the same key within 24 hours is not sent
-- [ ] The same key 24 hours later is sent again
-- [ ] An alert with no key is always sent, however often it repeats
-- [ ] Two different keys do not suppress each other
+- [x] An alert carrying a key is sent once, and the same key within 24 hours is not sent
+- [x] The same key 24 hours later is sent again
+- [x] An alert with no key is always sent, however often it repeats
+- [x] Two different keys do not suppress each other
 
 ## Subtasks
 

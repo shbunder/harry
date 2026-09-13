@@ -27,6 +27,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 
 from harry import __version__, config
+from harry.alerts import Alerts, report_start_up
 from harry.loader import load
 from harry.mcp import build_server
 
@@ -59,6 +60,12 @@ def build_app() -> FastAPI:
     """
     configure_logging()
     catalogue = load()
+
+    # Built after loading and not before: a sink is a capability, so it has to load before
+    # it can carry news about anything — including about the capabilities beside it.
+    alerts = Alerts.from_catalogue(catalogue)
+    report_start_up(catalogue, alerts)
+
     mcp_app = build_server(catalogue).http_app(path='/')
 
     @asynccontextmanager
@@ -71,6 +78,7 @@ def build_app() -> FastAPI:
 
     app = FastAPI(title='Harry', version=__version__, lifespan=lifespan)
     app.state.catalogue = catalogue
+    app.state.alerts = alerts
 
     @app.get('/health')
     async def health(request: Request) -> dict[str, Any]:

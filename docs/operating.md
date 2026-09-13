@@ -18,6 +18,10 @@ Two files, and `.env.local` wins:
 | `.env` | Yes — it arrives with the checkout | Every key with its working default, secrets empty |
 | `.env.local` | No | The three credentials, and anything that differs on this machine |
 
+A capability's own settings live in its own folder, not here: `.harry/connectors/slack/.env.local`
+holds the Slack bot token, beside a committed `.env` that `make env-template` generates.
+See [alerting.md](alerting.md) and [capabilities.md](capabilities.md).
+
 You never copy `.env`. You create `.env.local` beside it with only what differs, so a key
 added to `.env` later reaches this machine without anyone editing it twice.
 

@@ -99,7 +99,7 @@ The standard every change is held to, and the name every review finding cites.
 
 | Piece | Owns | Never does |
 |---|---|---|
-| `harry.registry` | The contract: `connector`, `tool`, `job`, `route`, `slack_action`, `on` | Know what any individual capability does |
+| `harry.registry` | The contract. **Kinds** — `connector`, `tool`, `job`: what a folder *is*, one each. **Roles** — `alerts`, and later `route`, `slack_action`, `on`: what it can additionally *do* | Know what any individual capability does |
 | `harry.mcp` | FastMCP at `/mcp`, bearer auth | Implement a tool |
 | `harry.scheduler` | APScheduler, and the deadline watchdog | Decide what a job does |
 | `harry.store` | SQLite and files under `/data` | Reach the network |
