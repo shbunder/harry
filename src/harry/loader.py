@@ -39,8 +39,6 @@ from harry.registry import LOADED, Capability, Catalogue, Context, Registry
 
 LOG = logging.getLogger('harry.loader')
 
-REDACTED = '[redacted]'
-
 
 class Skip(Exception):
     """This capability is not going to run, and here is the sentence explaining why.
@@ -97,12 +95,11 @@ def _load_one(capability: Capability, catalogue: Catalogue) -> None:
     itself.
     """
     kind = BY_NAME[capability.kind]
-    secrets: list[str] = []
     try:
         fields, body = _declaration(capability, kind)
         config = _settings(capability, fields)
-        secrets = _secret_values(fields, config)
-        _check_requirements(capability, fields, catalogue)
+        # Built before anything that could fail with a credential in its message, because
+        # the Context is what knows which values are secret and scrubs them.
         capability.context = Context(
             name=capability.name,
             kind=capability.kind,
@@ -112,20 +109,20 @@ def _load_one(capability: Capability, catalogue: Catalogue) -> None:
             config=config,
             log=logging.getLogger(f'harry.capability.{capability.name}'),
         )
+        _check_requirements(capability, fields, catalogue)
         _register(capability, kind)
     except Skip as skip:
-        _record_skip(catalogue, capability, str(skip), secrets)
+        _record_skip(catalogue, capability, str(skip))
     except Exception as error:  # noqa: BLE001 — the whole point: one failure, one capability
-        _record_skip(catalogue, capability, f'{type(error).__name__}: {error}', secrets)
+        _record_skip(catalogue, capability, f'{type(error).__name__}: {error}')
     else:
         catalogue.add(capability)
         LOG.info('%s %s loaded from %s', capability.kind, capability.name, capability.folder)
 
 
-def _record_skip(catalogue: Catalogue, capability: Capability, reason: str, secrets: Iterable[str]) -> None:
-    reason = _redact(reason, secrets)
-    LOG.warning('%s %s skipped: %s', capability.kind, capability.name, reason)
+def _record_skip(catalogue: Catalogue, capability: Capability, reason: str) -> None:
     catalogue.skip(capability, reason)
+    LOG.warning('%s %s skipped: %s', capability.kind, capability.name, capability.reason)
 
 
 def _declaration(capability: Capability, kind: Kind) -> tuple[dict[str, Any], str]:
@@ -162,23 +159,6 @@ def _settings(capability: Capability, fields: dict[str, Any]) -> dict[str, Any]:
         setting = 'setting' if len(missing) == 1 else 'settings'
         raise Skip(f'required {setting} {", ".join(missing)} is not set')
     return config
-
-
-def _secret_values(fields: dict[str, Any], config: dict[str, Any]) -> list[str]:
-    """Every resolved value this capability declared `secret: true`.
-
-    Collected so they can be scrubbed out of anything that reaches `/health` or the log.
-    The message that goes wrong is never the one somebody was careful with — it is
-    `raise ValueError(f'the service rejected {token}')`, written in a hurry.
-    """
-    schema = fields.get('config') or {}
-    return [str(config[name]) for name, spec in schema.items() if spec.get('secret') and config.get(name)]
-
-
-def _redact(text: str, secrets: Iterable[str]) -> str:
-    for secret in secrets:
-        text = text.replace(secret, REDACTED)
-    return text
 
 
 def _check_requirements(capability: Capability, fields: dict[str, Any], catalogue: Catalogue) -> None:

@@ -12,9 +12,18 @@ claude mcp add --transport http harry http://localhost:7430/mcp \
 claude mcp list
 ```
 
-This repository already registers it in `.mcp.json`, so a session started here finds it
-without any of the above. Off the machine, the URL is `HARRY_PUBLIC_URL` instead of
-localhost.
+Off the machine, the URL is `HARRY_PUBLIC_URL` instead of localhost.
+
+**`.mcp.json` in this repository is not a shortcut past that.** It registers Harry at
+`localhost:7430` with `Bearer ${HARRY_API_TOKEN:-probe-token-not-a-secret}`, expanded from
+the **shell environment** — and nothing here exports `.env.local`, by design: `config.py` is
+the only reader, which is what keeps its precedence true. So a session started in this
+repository sends the probe's placeholder token and Harry answers 401 to its own owner,
+correctly. Either export the real token in your shell before starting the session, or use
+the `claude mcp add` recipe above, which reads the file.
+
+Port 7430 is also where `make probe` serves. If `/health` there returns 404, what is
+answering is the probe and not Harry.
 
 ## Settings
 

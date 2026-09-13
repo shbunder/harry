@@ -164,3 +164,16 @@ async def test_health_is_served_alongside_the_mcp_endpoint(serving):
     skipped = {row['name']: row for row in health['capabilities'] if row['status'] == 'skipped'}
     assert skipped['icloud']['reason'] == 'required setting app_password is not set'
     assert health['loaded'] == 2
+
+
+async def test_an_async_tool_is_handed_the_caller_too(serving):
+    """Every tool that fetches anything over the network will be async, so that is the
+    branch production mostly takes — and it was the one with no test."""
+    url = serving('tools/account_describe')
+
+    async with Client(url, auth=bearer(TOKEN)) as connected:
+        published = {tool.name: tool for tool in await connected.list_tools()}['account_describe']
+        result = await connected.call_tool('account_describe', {})
+
+    assert result.data == {'id': 'owner', 'name': 'the owner', 'awaited': True}
+    assert 'principal' not in published.input_schema.get('properties', {})

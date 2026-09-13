@@ -71,13 +71,24 @@ def build_server(catalogue: Catalogue) -> FastMCP:
     deferred: dict[str, Capability] = {}
     published = 0
     for capability in catalogue.loaded:
-        if capability.kind == 'tool':
-            if not _is_always_loaded(capability):
-                deferred[capability.name] = capability
-            _publish_tool(server, capability)
-            published += 1
-        elif capability.kind == 'job':
-            _publish_prompt(server, capability)
+        # Publishing happens after loading, so it can fail on its own: annotations that do
+        # not validate, a signature FastMCP cannot derive a schema from. Without this the
+        # failure escapes and Harry does not start at all — and the one endpoint that would
+        # have named the broken capability is gone with it. One broken capability costs
+        # exactly itself here too.
+        try:
+            if capability.kind == 'tool':
+                _publish_tool(server, capability)
+                published += 1
+                if not _is_always_loaded(capability):
+                    deferred[capability.name] = capability
+            elif capability.kind == 'job':
+                _publish_prompt(server, capability)
+        except Exception as error:  # noqa: BLE001 — see the comment above
+            catalogue.withdraw(capability, f'{type(error).__name__}: {error}')
+            deferred.pop(capability.name, None)
+            published -= 1 if capability.kind == 'tool' else 0
+            LOG.warning('%s %s could not be published: %s', capability.kind, capability.name, capability.reason)
 
     server.add_tool(_find_tools_tool(server, deferred))
     if deferred:
@@ -140,6 +151,9 @@ def _filling_in_the_principal(function: Callable[..., Any]) -> Callable[..., Any
         async def call_async(*args: Any, **kwargs: Any) -> Any:
             return await function(*args, principal=caller(), **kwargs)
 
+            # Set after `wraps`, which copies `__wrapped__` and would otherwise send
+
+        # `inspect.signature` back to the original — principal and all.
         call_async.__signature__ = without  # type: ignore[attr-defined]
         return call_async
 
@@ -147,8 +161,7 @@ def _filling_in_the_principal(function: Callable[..., Any]) -> Callable[..., Any
     def call(*args: Any, **kwargs: Any) -> Any:
         return function(*args, principal=caller(), **kwargs)
 
-    # After `wraps`, which copies `__wrapped__` and would otherwise send
-    # `inspect.signature` back to the original — principal and all.
+    # Same reason as the async branch above.
     call.__signature__ = without  # type: ignore[attr-defined]
     return call
 

@@ -14,6 +14,9 @@ from fastmcp.exceptions import ToolError
 from mcp.types import TextContent
 from pydantic import SecretStr
 
+# Imported as a module as well as by name: the fixture below is called `harry`, so an
+# `import harry.mcp` inside a test would shadow it with the package.
+from harry import mcp as mcp_module
 from harry.loader import load
 from harry.mcp import DEFAULT_LIMIT, FIND_TOOLS, MAX_LIMIT, build_server
 
@@ -335,3 +338,93 @@ async def test_a_job_the_loader_skipped_has_no_prompt(harry, tmp_path):
 
     async with client(build_server(load([root]))) as connected:
         assert await connected.list_prompts() == []
+
+
+# ---------------------------------------------------------------------------
+# The claims that were ticked and not asserted
+# ---------------------------------------------------------------------------
+
+
+async def test_the_description_is_the_body_and_not_a_version_of_it(harry, tmp_path):
+    """Equality, not a prefix. The body is the text Claude reads to choose, and a check
+    that only looks at the first line passes just as happily against a Harry that
+    summarises every description down to its first sentence."""
+    server = harry('connectors/weather', 'tools/weather_forecast')
+    declaration = (tmp_path / 'root' / 'tools' / 'weather_forecast' / 'TOOL.md').read_text(encoding='utf-8')
+    body = declaration.partition('\n---')[2].strip()
+
+    async with client(server) as connected:
+        published = {tool.name: tool for tool in await connected.list_tools()}['weather_forecast']
+
+    assert published.description == body
+    assert '\n' in body, 'a one-line body would make this assertion weaker than it looks'
+
+
+async def test_an_empty_query_reveals_nothing(harry):
+    """Deferral is the whole cost argument, and one empty-string call would defeat it:
+    every deferred tool into the roster at once, for free."""
+    server = harry('tools/notes_search')
+
+    async with client(server) as connected:
+        for query in ('', '   ', '\t\n'):
+            answer = (await connected.call_tool(FIND_TOOLS, {'query': query})).data
+            assert answer['found'] == [], f'{query!r} revealed something'
+        assert [t.name for t in await connected.list_tools()] == [FIND_TOOLS]
+
+
+async def test_a_capability_that_cannot_be_published_costs_only_itself(harry):
+    """Loading and publishing are two moments, and the loader's try/except only covers the
+    first. A tool whose annotations do not validate loads cleanly and fails here — and
+    before this was guarded it took Harry down, /health with it."""
+    server = harry('tools/broken_hints', 'connectors/weather', 'tools/weather_forecast')
+
+    listed = await roster(server)
+
+    assert 'broken_hints' not in listed
+    assert 'weather_forecast' in listed
+
+
+async def test_health_says_why_a_capability_could_not_be_published(harry, tmp_path):
+    """Otherwise it is the one failure Harry hides: loaded as far as anything can see, and
+    absent from the roster with no reason anywhere."""
+    root = root_with(tmp_path / 'root', 'tools/broken_hints', 'connectors/weather', 'tools/weather_forecast')
+    catalogue = load([root])
+    build_server(catalogue)
+
+    rows = {row['name']: row for row in catalogue.as_health()['capabilities']}
+    assert rows['broken_hints']['status'] == 'skipped'
+    assert 'readOnlyHint' in rows['broken_hints']['reason']
+    assert rows['weather_forecast']['status'] == 'loaded'
+
+
+async def test_a_call_with_no_recognised_token_is_refused_inside_the_tool(harry, monkeypatch):
+    """The last line between a tool and an unidentified caller. In process there is no
+    token at all, which is exactly the shape of a request that got past the door with
+    nothing on it."""
+    monkeypatch.setattr(mcp_module, 'get_access_token', lambda: None)
+    server = harry('tools/account_whoami')
+
+    async with client(server) as connected:
+        with pytest.raises(ToolError, match='recognises'):
+            await connected.call_tool('account_whoami', {})
+
+
+async def test_a_reveal_survives_a_notification_that_cannot_be_sent(harry, monkeypatch, caplog):
+    """The notification is a courtesy — the answer already names what was revealed. Failing
+    the search because the courtesy did not go out would be the wrong trade."""
+    import logging
+
+    async def refuse(*args, **kwargs):
+        raise RuntimeError('the client hung up')
+
+    monkeypatch.setattr(mcp_module.CallContext, 'send_notification', refuse)
+    server = harry('tools/notes_search')
+
+    with caplog.at_level(logging.WARNING, logger='harry.mcp'):
+        async with client(server) as connected:
+            answer = (await connected.call_tool(FIND_TOOLS, {'query': 'note'})).data
+            listed = [t.name for t in await connected.list_tools()]
+
+    assert [found['name'] for found in answer['found']] == ['notes_search']
+    assert 'notes_search' in listed, 'the reveal was lost with the notification'
+    assert 'could not send tools/list_changed' in caplog.text
