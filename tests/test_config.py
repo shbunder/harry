@@ -135,9 +135,15 @@ def test_the_repo_env_file_is_real_configuration(monkeypatch):
         pytest.skip('no committed .env in this tree')
 
     monkeypatch.delenv('HARRY_LOCATION_TZ', raising=False)
+    monkeypatch.delenv('HARRY_PORT', raising=False)
     settings = settings_from(repo / '.env')
     assert settings.timezone == 'Europe/Brussels'
-    assert settings.port > 0
+    # `== 7430`, not `> 0`. Reading `.env` alone is what fixed the worktree failure, and
+    # once it reads that file alone a worktree's 7431 cannot leak in — so the strict
+    # assertion was correct all along and `> 0` weakened it for nothing. `> 0` also
+    # passes when the file has no HARRY_PORT line at all, because the field defaults to
+    # 7430, which makes it a test of the default rather than of the file.
+    assert settings.port == 7430
 
 
 # ---------------------------------------------------------------------------

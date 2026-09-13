@@ -1,3 +1,8 @@
+# pyright: reportPrivateUsage=false
+#
+# `_call` and `_is_unreachable` are private and are exactly what needs testing: the
+# first is the path that reports PASS, the second decides UNKNOWN against FAIL, and
+# both shipped wrong once already.
 """The MCP probe.
 
 It is the thing that answers "can this client reach Harry", so the failure that matters
@@ -23,7 +28,7 @@ import mcp_probe
 def probe_log(tmp_path, monkeypatch):
     """Point the call log somewhere throwaway. Every test gets a clean one."""
     path = tmp_path / 'calls.jsonl'
-    monkeypatch.setenv('HARRY_PROBE_LOG', str(path))
+    monkeypatch.setattr(mcp_probe, 'LOG_PATH', path)
     return path
 
 
@@ -53,11 +58,18 @@ def test_sleep_records_both_ends(probe_log):
     assert 'still returned' in entries[1]['detail']
 
 
-def test_a_log_it_cannot_write_does_not_break_the_probe(monkeypatch, tmp_path):
-    """Best effort by design — a probe that cannot write its log still answers."""
-    monkeypatch.setenv('HARRY_PROBE_LOG', str(tmp_path / 'nope' / 'calls.jsonl'))
+def test_a_log_it_cannot_write_says_so_rather_than_failing_silently(monkeypatch, tmp_path, capsys):
+    """Best effort, but never silent.
+
+    If this swallowed the error, `calls` would afterwards report "nothing has called the
+    probe" for a probe that was reached every time — and the false negative is
+    indistinguishable from the real one, which is the whole question `calls` answers.
+    """
+    monkeypatch.setattr(mcp_probe, 'LOG_PATH', tmp_path / 'nope' / 'calls.jsonl')
     monkeypatch.setattr(mcp_probe.Path, 'mkdir', lambda *a, **k: (_ for _ in ()).throw(OSError('read-only')))
+
     assert 'pong from' in mcp_probe.ping()
+    assert 'could not write the call log' in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +161,7 @@ def test_a_corrupt_line_is_skipped_rather_than_fatal(probe_log, capsys):
 def test_call_needs_to_be_told_what_to_do(probe_log, capsys):
     with pytest.raises(SystemExit):
         mcp_probe.main(['call'])
-    assert 'pass --ping or --sleep' in capsys.readouterr().err
+    assert 'pass --ping, --sleep SECONDS or --sleep-reporting' in capsys.readouterr().err
 
 
 def test_serve_is_wired_to_the_transport_it_says(probe_log, monkeypatch):
@@ -164,11 +176,36 @@ def test_serve_is_wired_to_the_transport_it_says(probe_log, monkeypatch):
     assert seen == {'transport': 'stdio'}
 
 
-def test_the_bearer_token_comes_from_the_environment(monkeypatch):
-    monkeypatch.delenv('HARRY_API_TOKEN', raising=False)
-    assert mcp_probe.token() == mcp_probe.DEFAULT_TOKEN
-    monkeypatch.setenv('HARRY_API_TOKEN', 'from-the-env')
-    assert mcp_probe.token() == 'from-the-env'
+def test_the_token_and_port_come_from_harrys_own_settings(monkeypatch):
+    """Through config.py, never os.environ.
+
+    This is not style. `os.environ` does not read `.env.local`, so the earlier version
+    returned the hardcoded default on a machine with a real token configured — and read
+    port 7430 inside a worktree whose `.env.local` says 7431, binding the primary
+    checkout's port. That is the collision `make worktree` exists to prevent.
+    """
+    from pydantic import SecretStr
+
+    from harry.config import Settings
+
+    def fake(port: int, token: str):
+        settings = Settings(port=port, api_token=SecretStr(token))
+        monkeypatch.setattr(mcp_probe, 'get_settings', lambda: settings)
+
+    fake(7431, 'from-dot-env-local')
+    assert mcp_probe.port() == 7431
+    assert mcp_probe.token() == 'from-dot-env-local'
+
+    fake(7430, '')
+    assert mcp_probe.token() == mcp_probe.DEFAULT_TOKEN, 'an unset token falls back, it does not blow up'
+
+
+def test_the_probe_and_harry_never_disagree_about_the_port(monkeypatch):
+    """One owner. Asserted by asking both and comparing, not by reading the code."""
+    from harry.config import Settings
+
+    monkeypatch.setattr(mcp_probe, 'get_settings', lambda: Settings(port=7499))
+    assert mcp_probe.port() == Settings(port=7499).port == 7499
 
 
 async def test_a_wrong_token_does_not_reach_the_tools(probe_log):
@@ -181,15 +218,66 @@ async def test_a_wrong_token_does_not_reach_the_tools(probe_log):
     assert await verifier.verify_token('the-wrong-one') is None
 
 
-async def test_a_server_that_is_not_there_reports_unknown_not_a_finding(probe_log, capsys):
-    """The half that decides what a run means. A refused connection and a call that
-    timed out at a specific length are different answers, and the probe has to say which
-    — otherwise "the tunnel is down" gets written up as "blocking calls do not work"."""
-    # Port 1 is reserved and nothing listens on it, so this refuses immediately.
+async def test_a_server_that_is_not_there_reports_unknown_not_fail(probe_log, capsys):
+    """The half that decides what a run means.
+
+    A refused connection and a call that gave up at a length are different answers, and
+    the probe has to say which — otherwise "the tunnel was down" gets written up as
+    "blocking calls do not work", which would have rewritten a design.
+
+    Port 1 is reserved and nothing listens on it, so this refuses immediately rather
+    than reaching the network.
+    """
     assert await mcp_probe._call('http://127.0.0.1:1/mcp', 'token', None, timeout=5.0) == 1
     err = capsys.readouterr().err
-    assert err.startswith('FAIL')
-    assert 'UNKNOWN, not a finding' in err
+    assert err.startswith('UNKNOWN'), f'a refused connection is not a finding: {err}'
+    assert 'Not a finding' in err
+
+
+def test_a_refused_connection_is_recognised_through_its_cause_chain():
+    """The outer exception is a RuntimeError; the real cause is chained underneath, so
+    an isinstance check on the outer one reported a refusal as FAIL."""
+    refused = RuntimeError('Client failed to connect: All connection attempts failed')
+    refused.__cause__ = ConnectionError('nope')
+    assert mcp_probe._is_unreachable(refused)
+
+    assert mcp_probe._is_unreachable(TimeoutError('slow'))
+    assert not mcp_probe._is_unreachable(ValueError('the tool raised'))
+
+
+def test_the_pass_path_runs_end_to_end_through_the_command_line(probe_log, monkeypatch, capsys):
+    """The thing this script exists to do had no test: connect, list, call, print PASS.
+
+    Driven through `main()` against a real in-process server, so it goes the way somebody
+    typing `make probe ARGS="call --ping"` goes rather than round the side. Synchronous
+    on purpose: `main()` owns the event loop, and an async test would already be in one.
+    """
+    server = mcp_probe.build_server(bearer='test-token')
+
+    async def in_process(url, bearer, seconds, timeout, reporting=None, every=30):
+        async with Client(server) as client:
+            result = await client.call_tool('ping', {})
+            print(f'PASS — ping returned: {result.data}')
+            return 0
+
+    monkeypatch.setattr(mcp_probe, '_call', in_process)
+    assert mcp_probe.main(['call', '--ping']) == 0
+    assert 'PASS' in capsys.readouterr().out
+
+
+def test_sleep_reporting_is_reachable_from_the_command_line(probe_log, monkeypatch):
+    """It shipped as a flag that did nothing: `cmd_call` never read `args.reporting`, so
+    the finding this feature exists to reproduce could not be reproduced through the
+    interface built to reproduce it."""
+    seen: dict = {}
+
+    async def capture(url, bearer, seconds, timeout, reporting=None, every=30):
+        seen.update(reporting=reporting, every=every, seconds=seconds)
+        return 0
+
+    monkeypatch.setattr(mcp_probe, '_call', capture)
+    assert mcp_probe.main(['call', '--sleep-reporting', '660', '--every', '30']) == 0
+    assert seen == {'reporting': 660, 'every': 30, 'seconds': None}
 
 
 async def test_sleep_reporting_emits_progress_while_it_blocks(probe_log):

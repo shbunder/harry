@@ -40,19 +40,40 @@ from fastmcp import Client, Context, FastMCP
 # Not `providers.bearer`, which is where you look first and where it is not.
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 
+from harry.config import get_settings
+
 SUMMARY = (__doc__ or '').partition('\n')[0]
 
 DEFAULT_TOKEN = 'probe-token-not-a-secret'
-DEFAULT_LOG = Path.home() / '.harry-probe' / 'calls.jsonl'
+
+# A plain constant, not a setting. It is where this script keeps its own notes; Harry
+# never reads it, so putting it in `config.py` would add a key nobody configures.
+LOG_PATH = Path.home() / '.harry-probe' / 'calls.jsonl'
 
 
 def token() -> str:
-    """The bearer token. Read at call time, not import time, so tests can set it."""
-    return os.environ.get('HARRY_API_TOKEN') or DEFAULT_TOKEN
+    """The bearer token, from Harry's own settings.
+
+    Through `config.py`, never `os.environ` — that is the rule in
+    `.claude/rules/secrets-and-config.md`, and it is not theoretical here. `os.environ`
+    does not read `.env.local`, so a machine with a real token configured would have got
+    the hardcoded default below and never known.
+    """
+    return get_settings().api_token.get_secret_value() or DEFAULT_TOKEN
+
+
+def port() -> int:
+    """Harry's port, from the one place that owns it.
+
+    Reading `HARRY_PORT` from the environment instead gave 7430 inside a worktree whose
+    `.env.local` says 7431 — binding the primary checkout's port, which is the exact
+    collision `make worktree` exists to prevent.
+    """
+    return get_settings().port
 
 
 def log_path() -> Path:
-    return Path(os.environ.get('HARRY_PROBE_LOG') or DEFAULT_LOG)
+    return LOG_PATH
 
 
 def record(tool: str, detail: str) -> None:
@@ -63,8 +84,10 @@ def record(tool: str, detail: str) -> None:
         entry = {'at': dt.datetime.now().isoformat(timespec='seconds'), 'tool': tool, 'detail': detail}
         with path.open('a', encoding='utf-8') as handle:
             handle.write(json.dumps(entry) + '\n')
-    except OSError:
-        pass
+    except OSError as error:
+        # Never silently: `calls` would then report "nothing has called the probe" for a
+        # probe that was reached every time, and the two look identical from outside.
+        print(f'warning: could not write the call log at {path}: {error}', file=sys.stderr)
 
 
 def read_calls(since_hours: int) -> list[dict[str, Any]]:
@@ -115,7 +138,14 @@ def sleep(seconds: int = 300) -> str:
     return answer
 
 
-async def sleep_reporting(seconds: int = 600, every: int = 30, context: Context | None = None) -> str:
+# 30s against Claude Code's 300s idle default — a tenfold margin, and no client has to
+# configure anything to get it.
+DEFAULT_PROGRESS_INTERVAL = 30
+
+
+async def sleep_reporting(
+    seconds: int = 600, every: int = DEFAULT_PROGRESS_INTERVAL, context: Context | None = None
+) -> str:
     """Block for `seconds`, sending a progress notification every `every` seconds.
 
     The same question as `sleep`, with the one lever that might defeat the client's
@@ -170,7 +200,30 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return 0
 
 
-async def _call(url: str, bearer: str, seconds: int | None, timeout: float) -> int:
+def _is_unreachable(error: BaseException) -> bool:
+    """Whether this is "the server was not there" rather than "it gave up on us".
+
+    The type alone is not enough: a refused connection arrives as a RuntimeError with the
+    real cause chained underneath, so checking isinstance on the outer exception reported
+    a connection refusal as FAIL — the exact confusion the three exit states exist to
+    prevent. Walk the chain, and fall back to the message.
+    """
+    seen: BaseException | None = error
+    while seen is not None:
+        if isinstance(seen, (ConnectionError, OSError, TimeoutError)):
+            return True
+        seen = seen.__cause__ or seen.__context__
+    return 'connect' in str(error).lower()
+
+
+async def _call(
+    url: str,
+    bearer: str,
+    seconds: int | None,
+    timeout: float,
+    reporting: int | None = None,
+    every: int = 30,
+) -> int:
     started = time.time()
     try:
         # `auth=<str>` is the bearer shorthand — the raw token, not "Bearer <token>".
@@ -179,6 +232,14 @@ async def _call(url: str, bearer: str, seconds: int | None, timeout: float) -> i
             print(f'connected — tools: {", ".join(names)}')
 
             started = time.time()
+            if reporting is not None:
+                print(f'calling sleep_reporting({reporting}, every={every})…', flush=True)
+                result = await client.call_tool('sleep_reporting', {'seconds': reporting, 'every': every})
+                took = time.time() - started
+                print(f'PASS — a {reporting}s call reporting every {every}s returned after {took:.1f}s')
+                print(f'       server said: {result.data}')
+                return 0
+
             if seconds is None:
                 result = await client.call_tool('ping', {})
                 print(f'PASS — ping returned in {time.time() - started:.2f}s: {result.data}')
@@ -192,16 +253,24 @@ async def _call(url: str, bearer: str, seconds: int | None, timeout: float) -> i
             print(f'       client timeout was {timeout}s')
             return 0
     except Exception as error:
-        print(f'FAIL — {type(error).__name__} after {time.time() - started:.1f}s: {error}', file=sys.stderr)
-        print('       A connection error is UNKNOWN, not a finding — the server may', file=sys.stderr)
-        print('       simply not be up. A timeout at a specific length is a finding.', file=sys.stderr)
+        took = time.time() - started
+        # The requirements page makes this distinction load-bearing: a spike that could
+        # not reach its service has not run, and reporting that as FAIL is how "the
+        # tunnel was down" gets written up as "blocking calls do not work".
+        unreachable = _is_unreachable(error)
+        if unreachable:
+            print(f'UNKNOWN — could not reach it: {type(error).__name__} after {took:.1f}s: {error}', file=sys.stderr)
+            print('          Not a finding. The server may simply not be up.', file=sys.stderr)
+        else:
+            print(f'FAIL — {type(error).__name__} after {took:.1f}s: {error}', file=sys.stderr)
+            print(f'       It was reached and then gave up at {took:.0f}s, which is a finding.', file=sys.stderr)
         return 1
 
 
 def cmd_call(args: argparse.Namespace) -> int:
-    if not args.ping and args.sleep is None:
-        die('pass --ping or --sleep SECONDS')
-    return asyncio.run(_call(args.url, args.token, args.sleep, args.timeout))
+    if not args.ping and args.sleep is None and args.reporting is None:
+        die('pass --ping, --sleep SECONDS or --sleep-reporting SECONDS')
+    return asyncio.run(_call(args.url, args.token, args.sleep, args.timeout, args.reporting, args.every))
 
 
 def cmd_calls(args: argparse.Namespace) -> int:
@@ -231,20 +300,21 @@ def die(message: str) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog='mcp_probe.py', description=SUMMARY)
     sub = parser.add_subparsers(dest='command', required=True)
-    port = int(os.environ.get('HARRY_PORT', 7430))
+    listening = port()
 
     p = sub.add_parser('serve', help='run the probe server')
-    p.add_argument('--port', type=int, default=port)
+    p.add_argument('--port', type=int, default=listening)
     p.add_argument('--host', default='127.0.0.1')
     p.add_argument('--stdio', action='store_true', help='serve over stdio instead of HTTP')
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser('call', help='call the probe and time it')
-    p.add_argument('--url', default=f'http://127.0.0.1:{port}/mcp')
+    p.add_argument('--url', default=f'http://127.0.0.1:{listening}/mcp')
     p.add_argument('--token', default=token())
     p.add_argument('--ping', action='store_true')
     p.add_argument('--sleep', type=int, metavar='SECONDS')
     p.add_argument('--sleep-reporting', type=int, metavar='SECONDS', dest='reporting')
+    p.add_argument('--every', type=int, default=30, help='progress interval for --sleep-reporting')
     p.add_argument('--timeout', type=float, default=900.0, help='client ceiling, default 15 min')
     p.set_defaults(func=cmd_call)
 

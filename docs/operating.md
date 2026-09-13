@@ -25,6 +25,40 @@ Every key is declared once and typed in `harry/config.py`; nothing reads the env
 outside it, and the Makefile reads neither file — that is what keeps the order above
 true. `.claude/rules/secrets-and-config.md` has the reasoning.
 
+## Is Harry reachable?
+
+`make probe` is a standing answer to that, and it needs nothing of Harry to be built. It
+serves two tools — `ping`, which returns immediately, and `sleep`, which blocks — so
+"can this client reach Harry" and "does a long call survive the trip" are separate
+questions with separate answers.
+
+```bash
+make probe                                   # serve, on the port .env resolves to
+make probe ARGS="call --ping"                # reach it
+make probe ARGS="call --sleep-reporting 660 --every 30"
+make probe ARGS="calls"                      # what has reached it, and when
+```
+
+**`calls` is the one worth knowing about.** Every call is logged to
+`~/.harry-probe/calls.jsonl`, so a question like *"did the 06:30 task actually reach us"*
+has an answer afterwards rather than needing somebody awake at 06:30.
+
+Three exit states, and the third matters: `PASS`, `FAIL`, and `UNKNOWN` for a server that
+could not be reached at all. A refused connection is not a finding — reporting it as one
+is how "the tunnel was down" becomes "blocking calls do not work".
+
+**Before exposing it anywhere public**, set `HARRY_API_TOKEN` in `.env.local`. Without one
+the probe falls back to a token committed in the repo, which guards nothing.
+
+### What it has already settled
+
+A tool call held open for 300s returns; 660s silent is aborted with *"no response or
+progress for 300s"*. That ceiling is an **idle** timer, and a progress notification resets
+it — 660s reporting every 30s returns fine. So a long-running tool holds open as long as
+it reports progress, with nothing configured on the client. The settings that also move it,
+if you ever need them: a per-server `timeout` in `.mcp.json`, or
+`CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`.
+
 ## The credential that expires quietly
 
 This is the part worth reading before you need it. It degrades Harry without breaking it,
