@@ -95,10 +95,13 @@ is never shared and never committed.
 **Why.** The 06:30 trigger is a Claude scheduled task, outside Harry. Harry cannot report
 the absence of something that never asked it for anything.
 
-**Fix.** This is what the watchdog is for: a Harry job that checks whether a digest was
-built since 05:00 and posts to Slack when none was. If you got no page *and* no Slack
-message, the watchdog itself is what to look at first — check Harry is up (`make logs`)
-before looking at the scheduled task.
+**Fix.** This is what the watchdog is for. Every five minutes, and once when Harry starts,
+it asks of each `trigger: claude` job: has its deadline passed today, in that job's own
+timezone, and has nothing finished it since midnight? If so, one message in Slack.
+
+If you got no page *and* no Slack message, **check Harry is up first** (`make logs`) and
+only then look at the scheduled task — a watchdog inside Harry cannot report Harry being
+switched off. See [jobs.md](jobs.md).
 
 Harry runs no model and holds no provider credential, so there is no token here to renew.
 See [ADR-260912-bd36c2](../project/decisions/ADR-260912-bd36c2-harry-never-calls-a-model.md).
