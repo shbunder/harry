@@ -5,7 +5,7 @@ track: full
 created: 2026-09-12
 touches: [connectors/slack, core/alerts, core/main, core/registry, core/loader]
 stories: [STORY-260913-1f320c, STORY-260913-e6f9b4, STORY-260913-bb45b7]
-decisions: [ADR-260912-399f07, ADR-260912-895441]
+decisions: [ADR-260912-399f07, ADR-260912-895441, ADR-260913-816553]
 ---
 
 # FEAT-260912-84c828 — Harry can tell you something went wrong
@@ -23,9 +23,10 @@ One-way messages into Slack, which every other feature depends on. Alerting is a
 - [ ] Core raises an alert without naming any capability, and a connector that registered itself receives it
 - [ ] With nothing registered, an alert is a WARNING in the log and nothing raises
 - [ ] An alert carrying a key is not sent again within 24 hours; one with no key is always sent
-- [ ] Slack being unreachable or answering 500 costs the message, is logged, and does not break the caller
-- [ ] A capability skipped at start-up produces one alert naming it, its kind and the reason; one that loaded produces none
-- [ ] The bot token appears in no log line, no alert and no /health field, and the committed .env leaves it empty
+- [ ] Slack being unreachable, answering 500, or not answering at all costs the message after 5 seconds, is logged, and does not break the caller
+- [ ] A capability skipped at start-up produces one alert naming it, its kind and the reason, with its own declared secrets taken out; one that loaded produces none
+- [ ] The bot token appears in no log line, no alert and no /health field, and .harry/connectors/slack/.env leaves it empty
+- [ ] `make lint` passes on the first real capability in .harry/ — the declaration validates and its generated .env matches the schema
 
 ## Stories
 
@@ -44,3 +45,5 @@ One-way messages into Slack, which every other feature depends on. Alerting is a
 - Requirements: [[FEAT-260912-84c828]]
 - [[ADR-260912-399f07]] — capabilities are folders under `.harry/`
 - [[ADR-260912-895441]] — a capability's settings live in its own folder
+- Decision: [[ADR-260913-816553]] — A capability can be somewhere alerts go, and says so in code
+
