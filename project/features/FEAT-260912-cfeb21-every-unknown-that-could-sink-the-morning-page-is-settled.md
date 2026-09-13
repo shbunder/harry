@@ -50,6 +50,64 @@ Five questions nobody has answered, each of which can invalidate a later phase. 
 - **2026-09-13** — PHASE 4 TAKES THE BLOCKING DESIGN. ask_human() holds the tool call open and returns your Slack answer as the tool result, so the session continues mid-turn with no restart - the plan's design, not the request-id-plus-poll fallback. Its one obligation, and the reason it works: it must emit an MCP progress notification on an interval comfortably under the shortest ceiling it might meet. 30s against Claude Code's 300s default is a 10x margin and needs nothing configured on any client. Measured: 660s silent fails, 660s with progress every 30s returns. This should become an ADR when Phase 4 opens; it is a note now because inventing a decision record to hold a fact for a phase nobody has started is worse than waiting.
 - **2026-09-13** — The tunnel question and its story moved to FEAT-260913-fdd33f. Everything else here was answerable against a locally registered MCP server, which needed nothing stood up; that one needs a serving NUC and a tunnel, which is deployment work rather than a throwaway script. It blocks only the morning page - core, alerting and every connector can be built without it.
 
+## Lessons Learned
+
+### What worked
+
+**Registering the thing locally instead of standing up the tunnel.** Five of six spikes
+turned out to be answerable against an MCP server on `localhost` registered in `.mcp.json`,
+which took minutes. Only the scheduled-task question actually needed a tunnel, and
+splitting it out let everything else finish. Reach for `scripts/mcp_probe.py` before
+building infrastructure to test against.
+
+**Three exit states, not two.** `UNKNOWN` for "could not reach it" kept a down service from
+being written up as a design failure. It earned itself twice — once when a refused
+connection was reported as `FAIL`, and once when a fresh De Tijd session 403'd and the
+message blamed expiry.
+
+**The close verifier.** It found three Critical defects in code that had a green gate and
+20 passing tests, including a config read that already disagreed with `harry.config` in the
+tree it was running in. Do not skip it because the diff looks small.
+
+### What to do differently
+
+**A count is not a finding.** The iCloud spike printed `PASS` because it counted 14 VTODO
+items without reading them; every one was an Apple upgrade placeholder and there were zero
+real reminders. Classify what comes back, then assert on the classification —
+`.claude/rules/inert-controls.md`, in a place nobody had pointed it at.
+
+**Do not read `os.environ` in anything, including a throwaway.** `scripts/mcp_probe.py` did,
+and inside a worktree it bound port 7430 while `harry.config` said 7431 — the collision
+`make worktree` exists to prevent. `os.environ` never reads `.env.local` either, so a real
+token configured there was invisible. Go through `config.py` from the first line.
+
+**Test the PASS path, not just the failure.** The probe's failure branch had a test and its
+success path had none, so the thing the script exists to do was unverified while the gate
+was green.
+
+**Wire a flag the same commit you add it.** `--sleep-reporting` shipped doing nothing:
+`cmd_call` never read it, so the headline finding could not be reproduced through the
+interface built to reproduce it.
+
+### Patterns to reuse, with paths
+
+**`scripts/mcp_probe.py`** — `serve`, `call`, `calls`. Reach for it whenever "can X reach
+Harry" comes up; `calls` answers it after the fact, so nobody has to be watching at 06:30.
+
+**A blocking tool must report progress.** `sleep_reporting` in the same file is the shape:
+300s silent is aborted, 660s reporting every 30s returns. Any tool that blocks — `ask_human`
+first — emits progress on an interval well under the client's ceiling. 30s against 300s is
+the margin, and it needs nothing configured anywhere.
+
+**Playwright against a bot-blocked site needs `channel='chromium'`.** The default headless
+is `chrome-headless-shell`, which De Tijd 403s on every URL including its homepage, with a
+perfectly good session attached. See `scratch/tijd-login.py`. Get it wrong and the failure
+looks exactly like an expired login — check the session's age before believing that.
+
+**`tests/test_mcp_probe.py`** — an MCP server tested in process, no port and no tunnel:
+`Client(server)` connects to the object directly, and `progress_handler=` counts
+notifications.
+
 ## Links
 
 - Requirements: [[FEAT-260912-cfeb21]]
