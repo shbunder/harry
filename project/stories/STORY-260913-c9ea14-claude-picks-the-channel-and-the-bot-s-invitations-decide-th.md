@@ -24,12 +24,15 @@ The first real tool in `.harry/tools/`, and the first thing that is not a fixtur
 - [ ] slack_post(channel, text) posts one line to that channel and the answer says which channel it went to
 - [ ] slack_post with no channel uses CHANNEL from the connector's settings
 - [ ] An alert Harry raises itself still goes to CHANNEL, with nothing reconfigured
-- [ ] A channel the bot is not in returns not_in_channel, names the channel, and says to invite the bot
+- [ ] A channel the bot is not in comes back as an error naming the channel and saying to invite the bot, from a table in the connector rather than a sentence Harry composed
 - [ ] A channel that does not exist returns channel_not_found the same way
 - [ ] slack_post is deferred, and harry_find_tools("slack") finds it and then it can be called
 - [ ] With no Slack credential the tool is skipped rather than offered, and Harry starts
 - [ ] The tool module imports harry.sdk and nothing else
 - [ ] check_capabilities.py and env_template.py --check both pass on the new tool folder
+- [ ] The Slack connector declares `provides: [slack_post]`
+- [ ] slack_post carries readOnlyHint false, destructiveHint false, idempotentHint false, openWorldHint true
+- [ ] An all-deferred .harry/tools/ passes the gate, because core publishes two never-deferred tools of its own
 
 ## Subtasks
 

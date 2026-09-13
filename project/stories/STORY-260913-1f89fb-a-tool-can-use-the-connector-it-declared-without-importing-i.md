@@ -24,9 +24,11 @@ The other half of `requires:`. It already decides whether a capability loads; no
 - [ ] context.connectors holds what each connector in `requires:` registered, keyed by name
 - [ ] A connector the capability did not declare is absent from the mapping
 - [ ] A connector that registered nothing is absent rather than present as None
-- [ ] A capability that reaches for one it did not declare is skipped at start-up with the KeyError as its reason
+- [ ] A capability that reaches for one it did not declare is skipped at start-up, and /health carries a sentence rather than a KeyError
 - [ ] A capability with no `requires:` gets an empty mapping, not an error
 - [ ] No file in src/harry/ names a connector in code — the loader copies from a list the declaration chose
+- [ ] docs/capabilities.md, .harry/README.md and the three /new-* skills all describe the ninth field
+- [ ] The loader's requirements page points at the ADR that amended it
 
 ## Subtasks
 
