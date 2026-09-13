@@ -127,6 +127,31 @@ unknown annotation, a near-empty description, and a roster where everything is d
 Then tests: the happy path against a fixture, the failure path asserting the steering
 message, and — if `requires` names a connector — the path where that connector is down.
 
+### The code, if it has any
+
+`.harry/tools/<name>/tool.py`, with one function:
+
+```python
+from harry.sdk import Context, Registry
+
+
+def register(registry: Registry, context: Context) -> None:
+    registry.tool(...)
+```
+
+`registry.tool()` takes no name — the name, the description and the annotations are in
+the declaration Harry already read, and a second copy would drift from the first. It
+returns what you passed, so `@registry.tool` over a function works.
+
+`context` carries `name`, `kind`, `folder`, `declaration`, `body`, `config`,
+`config_for(principal)` and `log`.
+
+**Import `harry.sdk` and nothing else under `harry`.** Reaching further is refused before
+your module runs, so the capability is skipped and `/health` names the import. Files beside
+the entry module are checked too, and relative imports between them are fine.
+
+A folder with no Python at all is still a whole capability.
+
 ### 9. Report
 
 The tool name, whether it merged with an existing one or stands apart and why, what it

@@ -54,7 +54,10 @@ dev = [
 [tool.ruff]
 target-version = "py312"
 line-length = 120
-exclude = [".git", ".ruff_cache", ".pytest_cache", ".venv", "__pycache__", "build", "dist", "site", "scratch"]
+# `tests/fixtures` is excluded for the same reason `pyrightconfig.json` excludes it:
+# the point of half those capabilities is that they do not work, and one of them does
+# not parse at all. They are input to the loader, not part of the program.
+exclude = [".git", ".ruff_cache", ".pytest_cache", ".venv", "__pycache__", "build", "dist", "site", "scratch", "tests/fixtures"]
 # Where first-party modules live. `project` and `scripts` are on pytest's pythonpath,
 # so `import board` is first-party however it looks from the repo root.
 src = ["src", "project", "scripts", ".harry"]

@@ -111,6 +111,31 @@ A `trigger: claude` job also needs the Claude side written down: which scheduled
 it, and that the task's own prompt should be thin — "run the `<name>` job" — with the real
 brief living in `JOB.md`.
 
+### The code, if it has any
+
+`.harry/jobs/<name>/job.py`, with one function:
+
+```python
+from harry.sdk import Context, Registry
+
+
+def register(registry: Registry, context: Context) -> None:
+    registry.job(...)
+```
+
+`registry.job()` takes no name — the name, the description and the annotations are in
+the declaration Harry already read, and a second copy would drift from the first. It
+returns what you passed, so `@registry.job` over a function works.
+
+`context` carries `name`, `kind`, `folder`, `declaration`, `body`, `config`,
+`config_for(principal)` and `log`.
+
+**Import `harry.sdk` and nothing else under `harry`.** Reaching further is refused before
+your module runs, so the capability is skipped and `/health` names the import. Files beside
+the entry module are checked too, and relative imports between them are fine.
+
+A folder with no Python at all is still a whole capability.
+
 ### 9. Report
 
 The job name, who owns its clock, what it needs, what it does when that is unavailable, and

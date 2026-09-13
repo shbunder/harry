@@ -137,6 +137,31 @@ grep -rn "connectors\." src/harry/*.py    # core must name no capability
 Must come back empty. The moment core knows a connector's name, adding the next one stops
 being one folder.
 
+### The code, if it has any
+
+`.harry/connectors/<name>/connector.py`, with one function:
+
+```python
+from harry.sdk import Context, Registry
+
+
+def register(registry: Registry, context: Context) -> None:
+    registry.connector(...)
+```
+
+`registry.connector()` takes no name — the name, the description and the annotations are in
+the declaration Harry already read, and a second copy would drift from the first. It
+returns what you passed, so `@registry.connector` over a function works.
+
+`context` carries `name`, `kind`, `folder`, `declaration`, `body`, `config`,
+`config_for(principal)` and `log`.
+
+**Import `harry.sdk` and nothing else under `harry`.** Reaching further is refused before
+your module runs, so the capability is skipped and `/health` names the import. Files beside
+the entry module are checked too, and relative imports between them are fine.
+
+A folder with no Python at all is still a whole capability.
+
 ### 9. Report
 
 The connector name, what it reaches, what it needs configured, whether its credential

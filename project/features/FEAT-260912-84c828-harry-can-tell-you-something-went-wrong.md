@@ -31,6 +31,7 @@ One-way messages into Slack, which every other feature depends on. Alerting is a
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-13** — Inherits a case from FEAT-260912-8a0ab0: a capability skipped at start-up reaches nobody today. /health carries it, and nothing watches /health. A capability skipped three weeks ago looks exactly like one that was never installed.
 
 ## Links
 

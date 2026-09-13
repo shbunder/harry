@@ -17,9 +17,9 @@ Nothing else.
 
 ```
 .harry/
-├── connectors/<name>/CONNECTOR.md   + the code that reaches it
-├── tools/<name>/TOOL.md             + the function it calls
-└── jobs/<name>/JOB.md               + the scripts it runs
+├── connectors/<name>/CONNECTOR.md   + connector.py, and whatever it imports beside it
+├── tools/<name>/TOOL.md             + tool.py
+└── jobs/<name>/JOB.md               + job.py, or nothing at all
 ```
 
 Each folder is one **implementation** of a capability. How a tool in particular must be
@@ -48,9 +48,15 @@ shaped — one verb, namespaced, deferred by default, and what its body has to s
 - Keep the two halves of a declaration straight. **Frontmatter is what Harry does** —
   machine-readable and executed. **The body is what Claude is told** — stored and served
   verbatim
-- Declare `requires_env` on a connector, and `requires` on a job. A capability whose
-  configuration is absent reports that and disables itself; it does not crash and it does
-  not pretend to work
+- Declare every setting in `config:`, with `required: true` on the ones Harry cannot start
+  without, and `requires:` on whatever names a connector. A capability whose configuration
+  is absent disables itself and says which setting is missing; it does not crash and it
+  does not pretend to work. (`requires_env` is retired — `config:` says everything it said
+  and a type and a default besides.)
+- **One file named after the kind, with one `register(registry, context)`.**
+  `registry.connector()`, `.tool()` and `.job()` take no name: it is in the declaration
+  already, and a second copy drifts. A folder with no Python at all is still a whole
+  capability
 - Give every connector an `expires:`. Two of Harry's three credentials do expire, and one
   nobody declared is one nobody watches
 - Give every `trigger: claude` job a `deadline:`. An external trigger cannot report its own

@@ -21,11 +21,11 @@ Discovery across the roots list, reading each declaration, and calling register.
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A connector, a tool and a job under .harry/ are all registered at start-up
-- [ ] No file in src/harry/ names any capability — asserted by a test that greps, not by review
-- [ ] A capability in a later root replaces an earlier one of the same name, and the replacement is reported at start-up rather than done silently
-- [ ] A capability under HARRY_CAPABILITIES_DIR registers exactly as one in .harry/ does, and reads its settings from its own folder
-- [ ] A malformed declaration is skipped with its parse error, not raised
+- [x] A connector, a tool and a job under .harry/ are all registered at start-up
+- [x] No file in src/harry/ names any capability in code — asserted by a test that compares whole names against every string literal, identifier and import, not by review
+- [x] A capability in a later root replaces an earlier one of the same name, and the replacement is reported at start-up rather than done silently
+- [x] A capability under HARRY_CAPABILITIES_DIR registers exactly as one in .harry/ does, and reads its settings from its own folder
+- [x] A malformed declaration is skipped with its parse error, not raised
 
 ## Subtasks
 
