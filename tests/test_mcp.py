@@ -18,7 +18,8 @@ from pydantic import SecretStr
 # `import harry.mcp` inside a test would shadow it with the package.
 from harry import mcp as mcp_module
 from harry.loader import load
-from harry.mcp import DEFAULT_LIMIT, FIND_TOOLS, MAX_LIMIT, build_server
+from harry.mcp import DEFAULT_LIMIT, FIND_TOOLS, MARK_DONE, MAX_LIMIT, build_server
+from harry.store import Store
 
 from .test_loader import root_with
 
@@ -36,7 +37,7 @@ def harry(tmp_path, monkeypatch):
 
     def build(*capabilities: str):
         root = root_with(tmp_path / 'root', *capabilities)
-        return build_server(load([root]))
+        return build_server(load([root]), Store(tmp_path / 'jobs.json'))
 
     return build
 
@@ -258,7 +259,7 @@ async def test_a_capped_answer_says_to_search_more_narrowly(harry, tmp_path):
             encoding='utf-8',
         )
 
-    server = build_server(load([root]))
+    server = build_server(load([root]), Store(tmp_path / 'jobs.json'))
     async with client(server) as connected:
         answer = (await connected.call_tool(FIND_TOOLS, {'query': 'notes'})).data
 
@@ -271,7 +272,7 @@ async def test_the_roster_is_never_empty_even_when_every_tool_is_deferred(harry)
     needs something alongside it, and here it is the something."""
     server = harry('tools/notes_search')
 
-    assert await roster(server) == [FIND_TOOLS]
+    assert await roster(server) == sorted([FIND_TOOLS, MARK_DONE])
 
 
 async def test_a_restart_puts_a_revealed_tool_back_out_of_the_roster(harry, tmp_path):
@@ -279,12 +280,12 @@ async def test_a_restart_puts_a_revealed_tool_back_out_of_the_roster(harry, tmp_
     survived a restart would be permanent state nobody asked for."""
     root = root_with(tmp_path / 'root', 'tools/notes_search')
 
-    revealed = build_server(load([root]))
+    revealed = build_server(load([root]), Store(tmp_path / 'jobs.json'))
     async with client(revealed) as connected:
         await connected.call_tool(FIND_TOOLS, {'query': 'note'})
         assert 'notes_search' in [t.name for t in await connected.list_tools()]
 
-    restarted = build_server(load([root]))
+    restarted = build_server(load([root]), Store(tmp_path / 'jobs.json'))
     assert 'notes_search' not in await roster(restarted)
 
 
@@ -336,7 +337,7 @@ async def test_a_job_the_loader_skipped_has_no_prompt(harry, tmp_path):
         encoding='utf-8',
     )
 
-    async with client(build_server(load([root]))) as connected:
+    async with client(build_server(load([root]), Store(tmp_path / 'jobs.json'))) as connected:
         assert await connected.list_prompts() == []
 
 
@@ -369,7 +370,7 @@ async def test_an_empty_query_reveals_nothing(harry):
         for query in ('', '   ', '\t\n'):
             answer = (await connected.call_tool(FIND_TOOLS, {'query': query})).data
             assert answer['found'] == [], f'{query!r} revealed something'
-        assert [t.name for t in await connected.list_tools()] == [FIND_TOOLS]
+        assert [t.name for t in await connected.list_tools()] == sorted([FIND_TOOLS, MARK_DONE])
 
 
 async def test_a_capability_that_cannot_be_published_costs_only_itself(harry):
@@ -389,7 +390,7 @@ async def test_health_says_why_a_capability_could_not_be_published(harry, tmp_pa
     absent from the roster with no reason anywhere."""
     root = root_with(tmp_path / 'root', 'tools/broken_hints', 'connectors/weather', 'tools/weather_forecast')
     catalogue = load([root])
-    build_server(catalogue)
+    build_server(catalogue, Store(tmp_path / 'jobs.json'))
 
     rows = {row['name']: row for row in catalogue.as_health()['capabilities']}
     assert rows['broken_hints']['status'] == 'skipped'
@@ -428,3 +429,54 @@ async def test_a_reveal_survives_a_notification_that_cannot_be_sent(harry, monke
     assert [found['name'] for found in answer['found']] == ['notes_search']
     assert 'notes_search' in listed, 'the reveal was lost with the notification'
     assert 'could not send tools/list_changed' in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# The only way Harry can learn a Claude-triggered job happened
+# ---------------------------------------------------------------------------
+
+
+async def test_marking_a_job_done_records_when(harry, tmp_path):
+    """Harry does not fire these jobs, so it has no way of knowing the work happened unless
+    Claude says so. This is that sentence."""
+    server = harry('jobs/morning-page')
+
+    async with client(server) as connected:
+        answer = (await connected.call_tool(MARK_DONE, {'job': 'morning-page'})).data
+
+    assert answer['job'] == 'morning-page'
+    assert Store(tmp_path / 'jobs.json').last_finished('morning-page') is not None
+
+
+async def test_the_record_is_there_after_a_restart(harry, tmp_path):
+    """A restart that lost it would have the watchdog report a missed deadline about a page
+    delivered an hour earlier — a false alarm on every deploy."""
+    async with client(harry('jobs/morning-page')) as connected:
+        await connected.call_tool(MARK_DONE, {'job': 'morning-page'})
+
+    restarted = build_server(load([tmp_path / 'root']), Store(tmp_path / 'jobs.json'))
+    async with client(restarted) as connected:
+        await connected.list_tools()
+
+    assert Store(tmp_path / 'jobs.json').last_finished('morning-page') is not None
+
+
+async def test_marking_something_that_is_not_a_job_is_an_error_that_names_it(harry):
+    """A typo that wrote a record nothing reads would be worse than an error: the watchdog
+    would go on alerting and the caller would think it had been heard."""
+    server = harry('jobs/morning-page')
+
+    async with client(server) as connected:
+        with pytest.raises(ToolError) as refused:
+            await connected.call_tool(MARK_DONE, {'job': 'morning-pages'})
+
+    assert 'morning-pages' in str(refused.value)
+    assert 'morning-page' in str(refused.value), 'the error should say what Harry does have'
+
+
+async def test_marking_done_is_always_in_the_roster(harry):
+    """A brief cannot search for a tool it needs — it is text Claude is handed, not a
+    conversation."""
+    server = harry('tools/notes_search')
+
+    assert MARK_DONE in await roster(server)

@@ -26,6 +26,7 @@ the paragraph to come back to.
 
 from __future__ import annotations
 
+import datetime as dt
 import functools
 import inspect
 import logging
@@ -43,11 +44,13 @@ from fastmcp.tools import Tool
 
 from harry import config
 from harry.config import OWNER, Principal, principal_for_token
-from harry.registry import Capability, Catalogue
+from harry.registry import LOADED, Capability, Catalogue
+from harry.store import Store
 
 LOG = logging.getLogger('harry.mcp')
 
 FIND_TOOLS = 'harry_find_tools'
+MARK_DONE = 'harry_mark_done'
 DEFAULT_LIMIT = 10
 MAX_LIMIT = 50
 
@@ -57,10 +60,13 @@ it makes it. It never chooses, ranks or summarises — that is your half.
 
 Most tools are not in the list above. Call harry_find_tools with a word to bring the ones
 you need into it.
+
+When you finish a job Harry gave you a brief for, call harry_mark_done with its name.
+Harry has no other way of knowing you were here.
 """
 
 
-def build_server(catalogue: Catalogue) -> FastMCP:
+def build_server(catalogue: Catalogue, store: Store) -> FastMCP:
     """Everything the catalogue loaded, published.
 
     Built once per process, from one catalogue. Rebuilding is what a restart does, and it
@@ -91,6 +97,7 @@ def build_server(catalogue: Catalogue) -> FastMCP:
             LOG.warning('%s %s could not be published: %s', capability.kind, capability.name, capability.reason)
 
     server.add_tool(_find_tools_tool(server, deferred))
+    server.add_tool(_mark_done_tool(catalogue, store))
     if deferred:
         server.disable(keys={_key(name) for name in deferred})
     LOG.info('%d tool(s) published, %d of them deferred', published, len(deferred))
@@ -279,6 +286,44 @@ def _find_tools_tool(server: FastMCP, deferred: dict[str, Capability]) -> Tool:
             'it. Do not reach for it to re-find a tool you can already see.'
         ),
         annotations=mt.ToolAnnotations(read_only_hint=True, idempotent_hint=True, open_world_hint=False),
+    )
+
+
+def _mark_done_tool(catalogue: Catalogue, store: Store) -> Tool:
+    """Core's own tool, and the only way Harry can learn a Claude-triggered job happened.
+
+    Harry does not own the clock for anything that needs judgement, and the cost of that is
+    that it cannot tell a morning page that was never built from one it simply did not
+    watch. This is the sentence that closes the gap, and every `trigger: claude` brief ends
+    by asking for it.
+
+    Always in the roster, because a brief cannot search for a tool it needs.
+    """
+
+    def harry_mark_done(job: str) -> dict[str, str]:
+        found = catalogue.get('job', job)
+        if found is None or found.status != LOADED:
+            known = ', '.join(sorted(c.name for c in catalogue.loaded if c.kind == 'job')) or 'none are loaded'
+            raise ToolError(f'{job!r} is not a job Harry is running. Jobs it has: {known}.')
+
+        at = dt.datetime.now(dt.UTC)
+        store.mark_finished(job, at)
+        LOG.info('%s marked done at %s', job, at.isoformat())
+        return {'job': job, 'finished': at.isoformat()}
+
+    return Tool.from_function(
+        harry_mark_done,
+        name=MARK_DONE,
+        description=(
+            'Tell Harry you have finished a job it briefed you for.\n\n'
+            'Harry does not fire these jobs — a scheduled task does — so it has no way of '
+            'knowing the work happened unless you say so. Call this once, at the end, with '
+            'the job name from the brief you were given.\n\n'
+            'If you do not, Harry will report the job as missed at its deadline, about work '
+            'you actually did. Calling it for something that is not a job is an error, so '
+            'use the name exactly as the brief gives it.'
+        ),
+        annotations=mt.ToolAnnotations(read_only_hint=False, idempotent_hint=True, open_world_hint=False),
     )
 
 

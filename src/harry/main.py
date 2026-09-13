@@ -30,6 +30,7 @@ from harry import __version__, config
 from harry.alerts import Alerts, report_start_up
 from harry.loader import load
 from harry.mcp import build_server
+from harry.store import Store
 
 MCP_PATH = '/mcp'
 
@@ -66,19 +67,21 @@ def build_app() -> FastAPI:
     alerts = Alerts.from_catalogue(catalogue)
     report_start_up(catalogue, alerts)
 
-    mcp_app = build_server(catalogue).http_app(path='/')
+    store = Store(config.get_settings().data_dir / 'jobs.json')
+    mcp_app = build_server(catalogue, store).http_app(path='/')
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # The MCP app brings its own lifespan, and mounting an app does not run it. Without
-        # this the session manager never starts and every call to /mcp fails at the first
-        # request rather than at start-up, where somebody would see it.
+        # The MCP app brings its own lifespan, and mounting an app does not run it.
+        # Without this the session manager never starts and every call to /mcp fails at
+        # the first request rather than at start-up, where somebody would see it.
         async with mcp_app.router.lifespan_context(app):
             yield
 
     app = FastAPI(title='Harry', version=__version__, lifespan=lifespan)
     app.state.catalogue = catalogue
     app.state.alerts = alerts
+    app.state.store = store
 
     @app.get('/health')
     async def health(request: Request) -> dict[str, Any]:
