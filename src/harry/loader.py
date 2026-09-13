@@ -155,9 +155,13 @@ def _settings(capability: Capability, fields: dict[str, Any]) -> dict[str, Any]:
     schema = fields.get('config') or {}
     config = read_capability_config(capability.folder, capability.name, schema)
     missing = sorted(name for name, spec in schema.items() if spec.get('required') and not config.get(name))
+    if len(missing) == 1:
+        raise Skip(f'required setting {missing[0]} is not set')
     if missing:
-        setting = 'setting' if len(missing) == 1 else 'settings'
-        raise Skip(f'required {setting} {", ".join(missing)} is not set')
+        # Spelled out rather than comma-joined: this sentence is read by a person, in Slack,
+        # on a phone. "required settings bot_token, channel is not set" is not a sentence.
+        named = f'{", ".join(missing[:-1])} and {missing[-1]}'
+        raise Skip(f'required settings {named} are not set')
     return config
 
 
