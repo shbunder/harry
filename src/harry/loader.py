@@ -35,7 +35,7 @@ from typing import Any
 from harry.boundary import forbidden_imports
 from harry.config import capability_roots, read_capability_config
 from harry.declaration import BY_NAME, KINDS, Kind, Malformed, read_body, read_frontmatter
-from harry.registry import LOADED, Capability, Catalogue, Context, Registry
+from harry.registry import LOADED, Capability, Catalogue, Connectors, Context, Registry
 
 LOG = logging.getLogger('harry.loader')
 
@@ -166,7 +166,7 @@ def _settings(capability: Capability, fields: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-def _connectors_for(fields: dict[str, Any], catalogue: Catalogue) -> dict[str, Any]:
+def _connectors_for(fields: dict[str, Any], catalogue: Catalogue) -> Connectors:
     """What `requires:` named, resolved to what those connectors registered.
 
     One resolution rather than two: the same walk decides whether this capability may load
@@ -190,7 +190,7 @@ def _connectors_for(fields: dict[str, Any], catalogue: Catalogue) -> dict[str, A
         # somebody who is not debugging.
         raise Skip(f'needs {", ".join(empty)}, which registered nothing to use')
 
-    return {name: found.target for name, found in handed.items() if found is not None}
+    return Connectors({name: found.target for name, found in handed.items() if found is not None})
 
 
 def _register(capability: Capability, kind: Kind) -> None:

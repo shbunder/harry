@@ -432,3 +432,34 @@ def test_the_tool_imports_the_sdk_and_nothing_else():
     """It reaches the connector through what it was handed, never by importing it. Two
     folders that import each other are two folders that cannot be swapped."""
     assert forbidden_imports(REPO / '.harry' / 'tools' / 'slack_post') == []
+
+
+@respx.mock
+async def test_leaving_the_channel_out_uses_the_configured_one(harry_with_slack):
+    """Asserted through the tool, not through the connector beneath it. The roster could
+    start demanding a channel and a test one layer down would never say so."""
+    route = respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': True}))
+    server = harry_with_slack()
+
+    async with Client(server) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'slack'})
+        answer = (await connected.call_tool('slack_post', {'text': 'no channel given'})).data
+
+    assert answer == {'channel': '#harry', 'posted': 'no channel given'}
+    assert json.loads(route.calls[0].request.read())['channel'] == '#harry'
+
+
+async def test_the_tools_annotations_reach_the_client(harry_with_slack):
+    """The first tool here that is not read-only. Its annotations are what let a client gate
+    a thing that posts into a shared workspace without gating one that reads a feed."""
+    server = harry_with_slack()
+
+    async with Client(server) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'slack'})
+        published = {t.name: t for t in await connected.list_tools()}['slack_post']
+
+    assert published.annotations is not None
+    assert published.annotations.read_only_hint is False
+    assert published.annotations.destructive_hint is False
+    assert published.annotations.idempotent_hint is False
+    assert published.annotations.open_world_hint is True

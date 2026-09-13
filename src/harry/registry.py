@@ -40,6 +40,23 @@ class ContractError(Exception):
     """
 
 
+class Connectors(dict[str, Any]):
+    """What `requires:` named, and a readable refusal for anything else.
+
+    A plain dict would answer a capability reaching past its declaration with
+    `KeyError: 'weather'`, and the loader turns whatever is raised into the sentence
+    `/health` shows. That is a Python error class in front of somebody who is not
+    debugging, which is the thing the rest of this module works to avoid.
+    """
+
+    def __missing__(self, name: str) -> Any:
+        declared = ', '.join(sorted(self)) or 'it declared none'
+        raise ContractError(
+            f'reached for the {name} connector, which it did not declare in `requires:` '
+            f'({declared}). Add it there and Harry will hand it over.'
+        )
+
+
 @dataclass(frozen=True)
 class Context:
     """What a capability is handed when it registers.
@@ -58,7 +75,7 @@ class Context:
     """The declaration's body, verbatim. Harry serves it and never reads it."""
     config: Mapping[str, Any]
     log: logging.Logger
-    connectors: Mapping[str, Any] = field(default_factory=dict)
+    connectors: Mapping[str, Any] = field(default_factory=Connectors)
     """What `requires:` named, as the objects those connectors registered.
 
     The other half of a contract that was only ever half enforced: `requires:` decided

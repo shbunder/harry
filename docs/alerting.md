@@ -17,8 +17,10 @@ One Slack app, one scope, five minutes:
    never reads anything.
 3. **Install it** — Install to Workspace, then copy the Bot User OAuth Token. It starts
    `xoxb-`.
-4. **Invite it** — in Slack, `/invite @Harry` in the channel you want. **This is the step
-   people skip.** A bot with `chat:write` still cannot post to a channel it is not in.
+4. **Invite it** — in Slack, `/invite @Harry` in every channel you want Harry to be able
+   to post in. **This is the step people skip.** A bot with `chat:write` still cannot post
+   to a channel it is not in, and **inviting it somewhere is the only thing that widens
+   where Claude may post** — there is no list in Harry to edit.
 5. **Configure it** — run this, rather than editing anything by hand:
 
    ```bash
@@ -33,6 +35,29 @@ both committed, so a token typed into either is a token in your repository — a
 generated besides, so `make lint` fails if you edit it. If you have already pasted a token
 somewhere it should not be, **rotate it**: reinstall the Slack app, take the new token, and
 put that one in `.env.local`.
+
+## Two different things go to Slack
+
+**Alerts Harry raises itself** go to `CHANNEL` and nowhere else. Deciding where a failure
+belongs is judgement, and Harry does not do judgement.
+
+**Messages Claude sends** go wherever Claude says, with the `slack_post` tool:
+
+```
+slack_post(text="the weekly reading list is ready", channel="#claude")
+```
+
+Leave the channel out and it goes to `CHANNEL` as well. Claude picks according to what the
+message is — a finished piece of work to the channel the people who asked for it are in, a
+failure to the alerting channel.
+
+**The bot's invitations are the only boundary.** Posting somewhere it has not been invited
+comes back as `not_in_channel` with the fix in the message, and there is nothing to configure
+in Harry either way. That is deliberate: a second list here would be wrong the first time you
+invite the bot somewhere new.
+
+The tool is not in Claude's tool list by default — most tools are not, because the list is
+sent on every request. Claude finds it by asking for it. See [mcp.md](mcp.md).
 
 ## What arrives
 

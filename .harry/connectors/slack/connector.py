@@ -39,11 +39,6 @@ class Slack:
         self._channel = channel
         self._log = log
 
-    @property
-    def default_channel(self) -> str:
-        """Where a message goes when nobody chose. Alerts never choose."""
-        return self._channel
-
     def send(self, message: str, channel: str | None = None) -> str:
         """Post one line, or raise saying why not. Returns the channel it went to.
 

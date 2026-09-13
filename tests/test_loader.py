@@ -565,3 +565,16 @@ def test_a_connector_that_registered_nothing_is_refused_in_words(tmp_path):
 
     assert reasons(catalogue)['quiet_report'] == 'needs quiet, which registered nothing to use'
     assert catalogue.get('connector', 'quiet') is not None, 'the connector itself is fine'
+
+
+def test_reaching_for_a_connector_it_never_declared_is_refused_in_words(tmp_path):
+    """`KeyError: 'weather'` is a Python error class in front of somebody who is not
+    debugging, and /health is where this lands."""
+    root = root_with(tmp_path / 'root', 'connectors/weather', 'tools/weather_nosy')
+
+    catalogue = load([root])
+
+    reason = reasons(catalogue)['weather_nosy']
+    assert 'weather' in reason
+    assert 'did not declare' in reason and 'requires:' in reason
+    assert 'KeyError' not in reason
