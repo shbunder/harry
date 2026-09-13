@@ -29,6 +29,8 @@ from harry.config import Principal, read_capability_config
 LOADED = 'loaded'
 SKIPPED = 'skipped'
 
+REDACTED = '[redacted]'
+
 
 class ContractError(Exception):
     """A capability used the registry in a way its declaration does not support.
@@ -66,6 +68,21 @@ class Context:
         schema = self.declaration.get('config') or {}
         return read_capability_config(self.folder, self.name, schema, principal=principal)
 
+    def redact(self, text: str) -> str:
+        """This capability's declared secrets, taken out of anything about to be reported.
+
+        Lives here rather than in the loader because loading is not the only place a
+        capability fails. Whatever reports a failure — the loader, the MCP server, anything
+        later — has to scrub the same values, and the message that goes wrong is never the
+        one somebody was careful with. It is `raise ValueError(f'the service rejected
+        {token}')`, written in a hurry, on its way to /health.
+        """
+        schema = self.declaration.get('config') or {}
+        for name, spec in schema.items():
+            if spec.get('secret') and (value := self.config.get(name)):
+                text = text.replace(str(value), REDACTED)
+        return text
+
 
 @dataclass
 class Capability:
@@ -86,6 +103,16 @@ class Capability:
     shadowed_by: Path | None = None
     target: Any | None = None
     """Whatever the capability registered, or None when it is a declaration alone."""
+    context: Context | None = None
+    """What the capability was handed, kept rather than dropped.
+
+    Everything downstream needs the declaration and the body: a tool's body is the
+    description Claude reads, its frontmatter carries the annotations, and a job's body is
+    the brief. Re-reading the files later would be a second reader of the same format, and
+    two readers of one format drift.
+
+    None on a capability that was skipped before its declaration could be read.
+    """
 
     @property
     def key(self) -> tuple[str, str]:
@@ -178,9 +205,19 @@ class Catalogue:
 
     def skip(self, capability: Capability, reason: str) -> Capability:
         """Record why this one is not running. The reason is the whole value here."""
+        return self.add(self.withdraw(capability, reason))
+
+    def withdraw(self, capability: Capability, reason: str) -> Capability:
+        """One that loaded and then could not be used after all.
+
+        Publishing happens after loading, so a tool whose annotations do not validate loads
+        cleanly and fails when the MCP server reaches it. It is already in the catalogue,
+        so this changes what it says rather than recording it a second time — and it has to
+        cost exactly that capability, like every other failure here.
+        """
         capability.status = SKIPPED
-        capability.reason = reason
-        return self.add(capability)
+        capability.reason = capability.context.redact(reason) if capability.context is not None else reason
+        return capability
 
     @property
     def loaded(self) -> list[Capability]:

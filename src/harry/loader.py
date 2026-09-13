@@ -39,8 +39,6 @@ from harry.registry import LOADED, Capability, Catalogue, Context, Registry
 
 LOG = logging.getLogger('harry.loader')
 
-REDACTED = '[redacted]'
-
 
 class Skip(Exception):
     """This capability is not going to run, and here is the sentence explaining why.
@@ -97,26 +95,34 @@ def _load_one(capability: Capability, catalogue: Catalogue) -> None:
     itself.
     """
     kind = BY_NAME[capability.kind]
-    secrets: list[str] = []
     try:
         fields, body = _declaration(capability, kind)
         config = _settings(capability, fields)
-        secrets = _secret_values(fields, config)
+        # Built before anything that could fail with a credential in its message, because
+        # the Context is what knows which values are secret and scrubs them.
+        capability.context = Context(
+            name=capability.name,
+            kind=capability.kind,
+            folder=capability.folder,
+            declaration=fields,
+            body=body,
+            config=config,
+            log=logging.getLogger(f'harry.capability.{capability.name}'),
+        )
         _check_requirements(capability, fields, catalogue)
-        _register(capability, kind, fields, body, config)
+        _register(capability, kind)
     except Skip as skip:
-        _record_skip(catalogue, capability, str(skip), secrets)
+        _record_skip(catalogue, capability, str(skip))
     except Exception as error:  # noqa: BLE001 — the whole point: one failure, one capability
-        _record_skip(catalogue, capability, f'{type(error).__name__}: {error}', secrets)
+        _record_skip(catalogue, capability, f'{type(error).__name__}: {error}')
     else:
         catalogue.add(capability)
         LOG.info('%s %s loaded from %s', capability.kind, capability.name, capability.folder)
 
 
-def _record_skip(catalogue: Catalogue, capability: Capability, reason: str, secrets: Iterable[str]) -> None:
-    reason = _redact(reason, secrets)
-    LOG.warning('%s %s skipped: %s', capability.kind, capability.name, reason)
+def _record_skip(catalogue: Catalogue, capability: Capability, reason: str) -> None:
     catalogue.skip(capability, reason)
+    LOG.warning('%s %s skipped: %s', capability.kind, capability.name, capability.reason)
 
 
 def _declaration(capability: Capability, kind: Kind) -> tuple[dict[str, Any], str]:
@@ -155,23 +161,6 @@ def _settings(capability: Capability, fields: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-def _secret_values(fields: dict[str, Any], config: dict[str, Any]) -> list[str]:
-    """Every resolved value this capability declared `secret: true`.
-
-    Collected so they can be scrubbed out of anything that reaches `/health` or the log.
-    The message that goes wrong is never the one somebody was careful with — it is
-    `raise ValueError(f'the service rejected {token}')`, written in a hurry.
-    """
-    schema = fields.get('config') or {}
-    return [str(config[name]) for name, spec in schema.items() if spec.get('secret') and config.get(name)]
-
-
-def _redact(text: str, secrets: Iterable[str]) -> str:
-    for secret in secrets:
-        text = text.replace(secret, REDACTED)
-    return text
-
-
 def _check_requirements(capability: Capability, fields: dict[str, Any], catalogue: Catalogue) -> None:
     """A tool or a job whose connector did not load does not load either.
 
@@ -187,14 +176,19 @@ def _check_requirements(capability: Capability, fields: dict[str, Any], catalogu
         raise Skip(f'needs {", ".join(sorted(unmet))}, which did not load')
 
 
-def _register(capability: Capability, kind: Kind, fields: dict[str, Any], body: str, config: dict[str, Any]) -> None:
+def _register(capability: Capability, kind: Kind) -> None:
     """Run the capability's own code, if it has any.
 
-    A folder with no Python is a whole capability: a `trigger: claude` job is one markdown
-    file, because Claude runs the half of it that needs a mind.
+    A folder with no Python is a whole capability for a connector or a job: a
+    `trigger: claude` job is one markdown file, because Claude runs the half that needs a
+    mind. **A tool is the exception** — a tool with nothing behind it is one Claude will
+    pick and then fail on, and that failure reads as a broken tool rather than an
+    unfinished folder.
     """
     module_path = capability.folder / kind.module
     if not module_path.is_file():
+        if capability.kind == 'tool':
+            raise Skip(f'no {kind.module}, so there is nothing for this tool to call')
         return
 
     findings = forbidden_imports(capability.folder)
@@ -206,18 +200,7 @@ def _register(capability: Capability, kind: Kind, fields: dict[str, Any], body: 
     if not callable(register):
         raise Skip(f'{kind.module} has no register(registry, context)')
 
-    register(
-        Registry(capability),
-        Context(
-            name=capability.name,
-            kind=capability.kind,
-            folder=capability.folder,
-            declaration=fields,
-            body=body,
-            config=config,
-            log=logging.getLogger(f'harry.capability.{capability.name}'),
-        ),
-    )
+    register(Registry(capability), capability.context)
 
 
 def _import(capability: Capability, path: Path) -> ModuleType:

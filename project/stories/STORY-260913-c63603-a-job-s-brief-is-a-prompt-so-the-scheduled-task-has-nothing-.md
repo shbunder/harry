@@ -21,10 +21,10 @@ A trigger: claude job's body is a brief addressed to Claude. Publishing it as an
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A trigger: claude job is published as a prompt named for the job
-- [ ] Rendering the prompt returns the job's body verbatim
-- [ ] A trigger: schedule job has no prompt — nothing reads a heuristic job's body
-- [ ] A job the loader skipped has no prompt
+- [x] A trigger: claude job is published as a prompt named for the job
+- [x] Rendering the prompt returns the job's body verbatim
+- [x] A trigger: schedule job has no prompt — nothing reads a heuristic job's body
+- [x] A job the loader skipped has no prompt
 
 ## Subtasks
 

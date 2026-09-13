@@ -253,9 +253,9 @@ def test_every_fixture_capability_is_used_by_a_test():
     """A fixture nothing loads is a folder somebody will maintain for no reason. The
     broken ones are the point, so the roster that names them has to be exercised."""
     on_disk = {f'{kind.name}/{path.name}' for kind in FIXTURES.iterdir() if kind.is_dir() for path in kind.iterdir()}
-    tests = Path(__file__).read_text(encoding='utf-8') + (Path(__file__).parent / 'test_loader.py').read_text(
-        encoding='utf-8'
-    )
+    # Every test file, not a list of them. A roster checked against a hand-written list of
+    # readers is one that goes stale the first time somebody adds a test file.
+    tests = ''.join(path.read_text(encoding='utf-8') for path in sorted(Path(__file__).parent.glob('test_*.py')))
 
     unused = sorted(name for name in on_disk if name not in tests)
     assert unused == [], f'fixtures no test loads: {unused}'

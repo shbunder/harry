@@ -31,11 +31,25 @@ def harry(tmp_path, monkeypatch):
     monkeypatch.setattr(harry.config, 'BUNDLED_CAPABILITIES', tmp_path / 'no-bundled')
     monkeypatch.chdir(tmp_path)
 
-    def build(*capabilities: str) -> TestClient:
-        root_with(tmp_path / '.harry', *capabilities)
-        return TestClient(build_app())
+    class Build:
+        """Prepare and start, separately.
 
-    yield build
+        `build_app()` loads the capabilities, because the MCP server publishes them as
+        routes and a route cannot appear after the app is serving. So a test that has to
+        act in between — write a credential, attach a log handler — does it in two steps.
+        """
+
+        def prepare(self, *capabilities: str) -> None:
+            root_with(tmp_path / '.harry', *capabilities)
+
+        def start(self) -> TestClient:
+            return TestClient(build_app())
+
+        def __call__(self, *capabilities: str) -> TestClient:
+            self.prepare(*capabilities)
+            return self.start()
+
+    yield Build()
     harry.config.get_settings.cache_clear()
 
 
@@ -109,8 +123,9 @@ def test_the_response_names_no_secret_in_any_field(harry, tmp_path, monkeypatch)
     monkeypatch.delenv('HARRY_LEAKY_API_KEY', raising=False)
     secret = 'sk-live-9f3c7a21-do-not-log-me'
 
-    client = harry('connectors/leaky', 'connectors/weather')
+    harry.prepare('connectors/leaky', 'connectors/weather')
     (tmp_path / '.harry' / 'connectors' / 'leaky' / '.env.local').write_text(f'API_KEY={secret}\n', encoding='utf-8')
+    client = harry.start()
 
     with client:
         response = client.get('/health')
@@ -162,10 +177,11 @@ def test_harrys_own_log_level_follows_the_setting(harry, tmp_path, monkeypatch, 
     WARNING went to logging's last-resort handler and vanished. The skip warnings still
     appeared, which is what made it look like the setting was applied."""
     (tmp_path / '.env').write_text(f'HARRY_LOG_LEVEL={level}\n', encoding='utf-8')
-    client = harry('connectors/weather', 'connectors/broken')
+    harry.prepare('connectors/weather', 'connectors/broken')
     captured, handler = records_from_harry()
 
     try:
+        client = harry.start()
         with client:
             client.get('/health')
     finally:
