@@ -1,18 +1,18 @@
 ---
 id: ADR-260913-63991e
 title: If Harry can read it, Claude can ask for it
-status: Accepted
+status: Superseded
 created: 2026-09-13
 feature: ''
 supersedes: ''
-superseded_by: ''
+superseded_by: ADR-260913-18a8ae
 ---
 
 # ADR-260913-63991e — If Harry can read it, Claude can ask for it
 
 ## Status
 
-Accepted.
+Superseded by [[ADR-260913-18a8ae]]
 
 ## Context & problem
 
