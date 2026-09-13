@@ -226,3 +226,24 @@ def test_two_missing_settings_read_as_a_sentence(slack):
     found = catalogue.get('connector', 'slack')
     assert found is not None
     assert found.reason == 'required settings bot_token and channel are not set'
+
+
+@pytest.mark.live
+def test_a_message_really_arrives_in_a_real_workspace():
+    """The only thing the recorded fixtures cannot prove: that a line lands in Slack.
+
+    Everything above asserts what Harry sends and what it does with what comes back, which
+    is the part that must never reach the network. This one needs a real token, a real
+    channel and a bot that has actually been invited — and the invite is the step people
+    skip, so it is the step worth a test that only passes when it was done.
+
+    Run it deliberately: `make test-live ARGS=tests/test_slack_connector.py`. Then go and
+    look at the channel.
+    """
+    catalogue = load()
+    slack = catalogue.get('connector', 'slack')
+    assert slack is not None, 'no slack connector on disk'
+    assert slack.status == 'loaded', f'not configured: {slack.reason}'
+    assert slack.alert_sink is not None
+
+    slack.alert_sink('Harry says hello. This line came from make test-live.')
