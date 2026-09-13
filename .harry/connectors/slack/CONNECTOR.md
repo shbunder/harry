@@ -37,12 +37,19 @@ You find out the way you find out about anything unreported: by looking.
 4. **Invite it to the channel.** In Slack: `/invite @Harry` in the channel you want. A bot
    with `chat:write` still cannot post to a channel it is not in; Slack answers
    `not_in_channel` and this is the step people skip.
-5. **Put both values in `.env.local` beside this file**, never in `.env`:
+5. **Write the values into `.env.local` beside this file.** Run this — do not edit any file
+   in this folder by hand, and never put a token in a file git tracks:
 
+   ```bash
+   cat > .harry/connectors/slack/.env.local <<'EOF'
+   BOT_TOKEN=paste-the-xoxb-token-here
+   CHANNEL=#the-channel-you-invited-it-to
+   EOF
    ```
-   BOT_TOKEN=xoxb-your-real-token
-   CHANNEL=#harry
-   ```
+
+   `.env.local` is the only file here that is gitignored. **This file and `.env` beside it
+   are both committed** — a token typed into either is a token in your repository, and the
+   block above is a command rather than a form for exactly that reason.
 
 ## When it stops working
 

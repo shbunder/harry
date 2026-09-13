@@ -19,15 +19,20 @@ One Slack app, one scope, five minutes:
    `xoxb-`.
 4. **Invite it** — in Slack, `/invite @Harry` in the channel you want. **This is the step
    people skip.** A bot with `chat:write` still cannot post to a channel it is not in.
-5. **Configure it** — in `.harry/connectors/slack/.env.local`, which is gitignored:
+5. **Configure it** — run this, rather than editing anything by hand:
 
-   ```
-   BOT_TOKEN=xoxb-your-real-token
-   CHANNEL=#harry
+   ```bash
+   cat > .harry/connectors/slack/.env.local <<'EOF'
+   BOT_TOKEN=paste-the-xoxb-token-here
+   CHANNEL=#the-channel-you-invited-it-to
+   EOF
    ```
 
-Never in `.env` beside it — that file is committed and generated. `make lint` fails if you
-edit it.
+**`.env.local` is the only gitignored file in that folder.** `CONNECTOR.md` and `.env` are
+both committed, so a token typed into either is a token in your repository — and `.env` is
+generated besides, so `make lint` fails if you edit it. If you have already pasted a token
+somewhere it should not be, **rotate it**: reinstall the Slack app, take the new token, and
+put that one in `.env.local`.
 
 ## What arrives
 
