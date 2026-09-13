@@ -21,10 +21,13 @@ Settles the free-tier question two independent implementers disagree about, and 
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A device is paired with rmapi using a code from my.remarkable.com
-- [ ] A one-page PDF pushed with remarkapy appears on the tablet
-- [ ] Whether this account needs a Connect subscription for that to work is recorded either way
-- [ ] The exact rmapi and remarkapy versions that worked are recorded, to be pinned
+- [x] A device is paired with rmapi using a code from my.remarkable.com
+- [x] A one-page PDF pushed with remarkapy appears on the tablet
+- [x] Whether this account needs a Connect subscription for that to work is recorded either way
+- [x] The exact rmapi and remarkapy versions that worked are recorded, to be pinned
+- [x] Where rmapi wrote the device token is named, and it is outside the repo — that token is complete read
+      and write access to every document on the tablet, with no scopes and no read-only mode
+- [x] The finding is a dated note on FEAT-260912-74f222, the connector that depends on it
 
 ## Subtasks
 

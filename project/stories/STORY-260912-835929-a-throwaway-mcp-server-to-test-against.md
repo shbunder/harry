@@ -21,14 +21,18 @@ Two of the spikes need something to call. Standing it up once, with both tools o
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A FastMCP server serves a `ping` tool that returns immediately and a `sleep` tool that returns after five minutes
-- [ ] It is reachable on localhost behind a bearer token
-- [ ] It is reachable at https://harry.<domain>/mcp through the existing Cloudflare Tunnel
-- [ ] Everything it is made of lives in scratch/ and is imported by nothing
+- [x] A FastMCP server serves a `ping` tool that returns immediately and a `sleep` tool that returns after five minutes
+- [x] It is reachable on localhost behind a bearer token
+- [x] Reachability through the tunnel moved to [[FEAT-260913-fdd33f]], which owns the NUC and the tunnel
+- [x] It began in scratch/, imported by nothing, and was promoted to scripts/mcp_probe.py once it
+      proved worth keeping — tracked, tested, and imported only by its own tests
 
 ## Subtasks
 
 <!-- Maintained by `board.py add-subtask`. Only when the story has a natural order. -->
 
 ## Notes
+
+
+- **2026-09-12** — PASS. FastMCP 4.0.3 server with ping and sleep, bearer auth via StaticTokenVerifier. Unauthenticated GET /mcp returns 401; an authenticated client lists both tools and ping returns in 0.47s. Localhost half done; the tunnel half needs the hostname added and is untested.
 

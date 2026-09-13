@@ -121,13 +121,28 @@ def test_the_mcp_url_follows_the_port(env_pair, monkeypatch):
 
 
 def test_the_repo_env_file_is_real_configuration(monkeypatch):
-    """The committed `.env` is configuration, not a sample. 06:30 is a local time, and
-    a timezone that silently fell back to a default would move the morning page."""
+    """The committed `.env` is configuration, not a sample. 06:30 is a local time, and a
+    timezone that silently fell back to a default would move the morning page.
+
+    Reads `.env` **alone**, deliberately. An earlier version read the pair and asserted
+    `port == 7430`, which passed in the primary checkout and failed in the first worktree
+    that ever ran it — because `make worktree` writes `HARRY_PORT=7431` into that tree's
+    `.env.local` on purpose, so two stacks do not fight over one port. The test was
+    asserting a global constant against the one setting the design guarantees is local.
+    """
+    repo = Path(__file__).parent.parent
+    if not (repo / '.env').exists():
+        pytest.skip('no committed .env in this tree')
+
     monkeypatch.delenv('HARRY_LOCATION_TZ', raising=False)
-    monkeypatch.chdir(Path(__file__).parent.parent)
-    get_settings.cache_clear()
-    settings = get_settings()
+    monkeypatch.delenv('HARRY_PORT', raising=False)
+    settings = settings_from(repo / '.env')
     assert settings.timezone == 'Europe/Brussels'
+    # `== 7430`, not `> 0`. Reading `.env` alone is what fixed the worktree failure, and
+    # once it reads that file alone a worktree's 7431 cannot leak in — so the strict
+    # assertion was correct all along and `> 0` weakened it for nothing. `> 0` also
+    # passes when the file has no HARRY_PORT line at all, because the field defaults to
+    # 7430, which makes it a test of the default rather than of the file.
     assert settings.port == 7430
 
 
