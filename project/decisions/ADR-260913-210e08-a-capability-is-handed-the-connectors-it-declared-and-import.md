@@ -92,10 +92,15 @@ Three consequences worth stating:
 - **`requires:` is now the whole contract.** It decides whether the capability loads *and*
   what it can reach. A tool that wants another connector adds a name to a list, and the
   loader refuses it at start-up if that connector is not there.
-- **A connector that registered nothing is absent from the mapping**, not present as `None`.
-  A declaration-only connector has nothing to hand over, and a `KeyError` at start-up — where
-  the loader turns it into a skip with a reason — is better than an `AttributeError` on the
-  first morning.
+- **A connector that registered nothing means the capability does not load at all.** This
+  is where the decision moved while it was being built. The first version left such a
+  connector out of the mapping and relied on the capability's own `KeyError` becoming the
+  skip — which is a `KeyError` in `/health`, in front of somebody who is not debugging. The
+  loader refuses it up front instead, with `needs <name>, which registered nothing to use`,
+  so the mapping is never built rather than built incomplete.
+- **Reaching for a connector that was never declared is refused in words too.** The mapping
+  is a `dict` subclass whose `__missing__` says what was reached for and what was declared,
+  for the same reason.
 - **Order is already right.** The loader loads connectors before tools and jobs, which it
   does so that `requires:` can be refused. The same ordering is what makes this possible.
 

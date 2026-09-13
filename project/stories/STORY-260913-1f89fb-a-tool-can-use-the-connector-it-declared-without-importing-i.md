@@ -21,14 +21,14 @@ The other half of `requires:`. It already decides whether a capability loads; no
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] context.connectors holds what each connector in `requires:` registered, keyed by name
-- [ ] A connector the capability did not declare is absent from the mapping
-- [ ] A connector that registered nothing is absent rather than present as None
-- [ ] A capability that reaches for one it did not declare is skipped at start-up, and /health carries a sentence rather than a KeyError
-- [ ] A capability with no `requires:` gets an empty mapping, not an error
-- [ ] No file in src/harry/ names a connector in code — the loader copies from a list the declaration chose
-- [ ] docs/capabilities.md, .harry/README.md and the three /new-* skills all describe the ninth field
-- [ ] The loader's requirements page points at the ADR that amended it
+- [x] context.connectors holds what each connector in `requires:` registered, keyed by name
+- [x] A connector the capability did not declare is absent from the mapping
+- [x] A connector that registered nothing means the capability does not load at all — the mapping is never built rather than built incomplete
+- [x] A capability that reaches for one it did not declare is skipped at start-up, and /health says what it reached for and what it had declared — not KeyError
+- [x] A capability with no `requires:` gets an empty mapping, not an error
+- [x] No file in src/harry/ names a connector in code — the loader copies from a list the declaration chose
+- [x] docs/capabilities.md, .harry/README.md and the three /new-* skills all describe the ninth field
+- [x] The loader's requirements page points at the ADR that amended it
 
 ## Subtasks
 
