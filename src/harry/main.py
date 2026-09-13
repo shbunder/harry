@@ -97,11 +97,15 @@ def build_app() -> FastAPI:
         """What Harry can do right now, and what it cannot.
 
         Every capability it found, with its kind, whether it loaded, and — for each one
-        that did not — the sentence explaining why. No setting values appear here, secret
-        or otherwise: this says what is running, and a configuration dump is a different
-        thing with a different audience.
+        that did not — the sentence explaining why. Plus what the clock is doing: what is
+        scheduled and when it next runs, what deadlines are watched and when each was last
+        finished. No setting values appear here, secret or otherwise: this says what is
+        running, and a configuration dump is a different thing with a different audience.
         """
-        return request.app.state.catalogue.as_health()
+        return {
+            **request.app.state.catalogue.as_health(),
+            'jobs': request.app.state.jobs.as_health(),
+        }
 
     app.mount(MCP_PATH, mcp_app)
     return app

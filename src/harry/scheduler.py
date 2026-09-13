@@ -82,7 +82,7 @@ class Jobs:
         The check at start-up is what reports a deadline that passed while Harry was off.
         """
         for capability in self._scheduled():
-            self._schedule(capability)
+            self._safely(capability, self._schedule, 'be scheduled')
 
         self._scheduler.add_job(
             self.check_deadlines,
@@ -159,14 +159,33 @@ class Jobs:
     def check_deadlines(self) -> None:
         """Anything due by now and not done, said once."""
         for capability in self._watched():
-            self._check(capability)
+            self._safely(capability, self._check, 'be checked')
+
+    def _safely(self, capability: Capability, what: Callable[[Capability], None], doing: str) -> None:
+        """One job's declaration cannot take the others down, or Harry with them.
+
+        The loader skips a capability it cannot load. This is the same promise one step
+        later: a timezone that is not a timezone, a cron line that is not a cron line, a
+        `trigger: schedule` with no schedule. Without it a single bad folder means no jobs
+        are scheduled, the watchdog is never registered, and `/health` — the endpoint that
+        would have named the broken capability — never answers either.
+
+        `make lint` does not save you: it validates `.harry/`, never a folder that arrived
+        through `$HARRY_CAPABILITIES_DIR` or was dropped on the NUC by hand.
+        """
+        try:
+            what(capability)
+        except Exception as error:  # noqa: BLE001 — one folder, one failure
+            reason = f'{type(error).__name__}: {error}'
+            LOG.warning('%s could not %s: %s', capability.name, doing, reason)
+            self._alerts.send(f'{capability.name} could not {doing}: {reason}', key=f'job:{capability.name}:broken')
 
     def _check(self, capability: Capability) -> None:
         declaration = _declaration(capability)
         zone = _zone(declaration)
         here = self._now().astimezone(zone)
-        due = _time_of(str(declaration['deadline']))
-        if due is None or here.timetz().replace(tzinfo=None) < due:
+        due = dt.time.fromisoformat(str(declaration['deadline']))
+        if here.timetz().replace(tzinfo=None) < due:
             return
 
         today = here.date()
@@ -191,10 +210,36 @@ class Jobs:
     def _jobs(self) -> Iterable[Capability]:
         return [c for c in self._catalogue.loaded if c.kind == 'job']
 
-    def knows(self, job: str) -> bool:
-        """Whether this is a job Harry loaded. What `harry_mark_done` checks before it
-        writes anything, so a typo is an error rather than a record nothing reads."""
-        return any(c.name == job for c in self._jobs())
+    def as_health(self) -> dict[str, Any]:
+        """What the clock is doing, for `/health`.
+
+        "The watchdog has been quiet — is it even watching?" is a real question at 07:10,
+        and the honest answer is the list of what is watched and when each was last
+        finished. Job names and times only; no setting values, secret or otherwise.
+        """
+        remembered = self._store.as_dict()
+        return {
+            'scheduled': [
+                {'name': c.name, 'next_run': self._next_run(c.name)} for c in sorted(self._scheduled(), key=_by_name)
+            ],
+            'watched': [
+                {
+                    'name': c.name,
+                    'deadline': str(_declaration(c).get('deadline')),
+                    'last_finished': remembered.get(c.name, {}).get('finished'),
+                }
+                for c in sorted(self._watched(), key=_by_name)
+            ],
+        }
+
+    def _next_run(self, name: str) -> str | None:
+        scheduled = self._scheduler.get_job(f'{JOB_PREFIX}{name}')
+        when = getattr(scheduled, 'next_run_time', None)
+        return when.isoformat() if when else None
+
+
+def _by_name(capability: Capability) -> str:
+    return capability.name
 
 
 def _declaration(capability: Capability) -> dict[str, Any]:
@@ -204,14 +249,6 @@ def _declaration(capability: Capability) -> dict[str, Any]:
 def _zone(declaration: dict[str, Any]) -> ZoneInfo:
     """The job's own timezone, or Harry's. 06:30 is a local time, not a UTC one."""
     return ZoneInfo(str(declaration.get('timezone') or get_settings().timezone))
-
-
-def _time_of(raw: str) -> dt.time | None:
-    try:
-        return dt.time.fromisoformat(raw)
-    except ValueError:
-        LOG.warning('not a time: %r', raw)
-        return None
 
 
 def _name_of(job_id: str) -> str:

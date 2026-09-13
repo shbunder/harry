@@ -1,8 +1,6 @@
 """Holds on for a moment, so a second fire arrives while the first is still going."""
 
 import time
-from pathlib import Path
-
 from harry.sdk import Context, Registry
 
 STARTED = 'started.txt'

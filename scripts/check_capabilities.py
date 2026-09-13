@@ -40,6 +40,9 @@ CONFIG_KEY_RE = re.compile(r'^[a-z][a-z0-9_]*$')
 ANNOTATIONS = ('readOnlyHint', 'destructiveHint', 'idempotentHint', 'openWorldHint')
 # Five fields, any of which may be `*`, a number, a range, a step or a list.
 CRON_RE = re.compile(r'^\s*(\S+\s+){4}\S+\s*$')
+# The tool a `trigger: claude` brief has to ask for. Harry cannot infer that a job it
+# does not fire has finished, so the sentence in the brief is the whole mechanism.
+MARK_DONE = 'harry_mark_done'
 
 
 class Problem(Malformed):
@@ -100,6 +103,14 @@ def check_job(path: Path, fields: dict[str, Any], connectors: set[str]) -> None:
             'a job Harry does not trigger needs a `deadline:`, or nothing can notice it never ran. '
             'A trigger that lives outside Harry cannot report its own absence, and silence '
             'looks exactly like a morning you did not check.'
+        )
+
+    if trigger == 'claude' and MARK_DONE not in read_body(path):
+        raise Problem(
+            f'the brief must end by telling Claude to call `{MARK_DONE}("{fields["name"]}")`. '
+            'Harry does not fire this job, so that sentence is the only way it can ever learn '
+            'the work happened — without it the deadline above reports a miss every single day, '
+            'about work that was done.'
         )
 
     check_requires(fields, connectors)

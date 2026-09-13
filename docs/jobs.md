@@ -107,6 +107,29 @@ unheard.
   requires one on every `trigger: claude` job for exactly this reason, and `make lint`
   enforces it.
 
+## Is it actually watching?
+
+```bash
+curl -s localhost:7430/health | jq .jobs
+```
+
+```json
+{
+  "scheduled": [{"name": "refresh-feeds", "next_run": "2026-09-14T05:00:00+02:00"}],
+  "watched": [{"name": "morning-page", "deadline": "07:00", "last_finished": "2026-09-13T06:45:12+02:00"}]
+}
+```
+
+"The watchdog has been quiet — is it even watching?" is a real question at 07:10, and a log
+line from this morning is not an answer you can get to.
+
+**One broken declaration costs only that job.** A timezone that is not a timezone, a cron
+line that is not a cron line, a deadline written as "elevenish" — each is logged, alerted
+keyed on the job, and stepped over. Without that a single bad folder would mean nothing is
+scheduled, the watchdog is never registered, and `/health` never answers to tell you which
+folder did it. `make lint` does not save you here: it validates `.harry/`, never a folder
+that arrived through `$HARRY_CAPABILITIES_DIR`.
+
 ## What Harry remembers
 
 One file, under the data volume:

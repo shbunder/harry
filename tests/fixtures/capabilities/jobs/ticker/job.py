@@ -1,7 +1,5 @@
 """Records each run in a file beside itself, so a test can see that it ran."""
 
-from pathlib import Path
-
 from harry.sdk import Context, Registry
 
 RAN = 'ran.txt'

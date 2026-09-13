@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import time
+from collections.abc import Callable
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -56,7 +57,7 @@ def harry(tmp_path, monkeypatch):
         def store(self) -> Store:
             return Store(tmp_path / 'data' / 'jobs.json')
 
-        def __call__(self, *capabilities: str, now: dt.datetime | None = None) -> Jobs:
+        def __call__(self, *capabilities: str, now: dt.datetime | Callable[[], dt.datetime] | None = None) -> Jobs:
             # Only what is not there yet, so a test can build a second Jobs over the same
             # tree — which is what a restart looks like from here.
             root_with(self.root, *(name for name in capabilities if not (self.root / name).exists()))
@@ -64,7 +65,7 @@ def harry(tmp_path, monkeypatch):
                 load([self.root]),
                 Alerts([sink]),
                 self.store(),
-                now=(lambda: now) if now is not None else None,
+                now=(now if callable(now) else (lambda: now)) if now is not None else None,
             )
             made.append(jobs)
             return jobs
@@ -318,3 +319,88 @@ def test_the_deadline_is_read_in_the_jobs_own_timezone(harry, utc_hour, expected
     jobs.check_deadlines()
 
     assert len(harry.heard) == expected
+
+
+# ---------------------------------------------------------------------------
+# The watchdog on its own, and one bad declaration among good ones
+# ---------------------------------------------------------------------------
+
+
+def test_starting_harry_checks_the_deadlines_once(harry):
+    """The only thing that reports a 07:00 miss on a machine that was switched off at
+    07:00. Every other deadline test calls check_deadlines by hand, so without this one
+    the start-up call could be deleted and nothing would notice."""
+    jobs = harry('jobs/morning-page', now=at(7, 30))
+
+    jobs.start()
+
+    assert harry.heard == ['morning-page has not run today. It was due by 07:00.']
+
+
+def test_the_watchdog_reports_when_the_scheduler_fires_it(harry):
+    """Through the clock, not by calling the method — the interval job could be registered
+    against anything at all and an assertion on its interval would still pass.
+
+    The clock starts before the deadline so the check at start-up finds nothing, then moves
+    past it. What reports the miss is the scheduler firing the watchdog on its own.
+    """
+    hand = [at(6, 55)]
+    jobs = harry('jobs/morning-page', now=lambda: hand[0])
+    jobs.start()
+    assert harry.heard == [], 'the deadline had not passed yet'
+
+    hand[0] = at(7, 30)
+    jobs.scheduler.modify_job(WATCHDOG_ID, next_run_time=dt.datetime.now(dt.UTC))
+
+    assert until(lambda: bool(harry.heard)), 'the watchdog never ran on its own'
+    assert harry.heard == ['morning-page has not run today. It was due by 07:00.']
+
+
+def test_a_job_failing_over_and_over_reports_once(harry):
+    """Keyed on the job. A job failing every five minutes that reported every five minutes
+    would empty the channel of anybody reading it."""
+    jobs = harry('jobs/exploder')
+    jobs.start()
+
+    for _ in range(3):
+        fire_now(jobs, 'exploder')
+        time.sleep(0.15)
+
+    assert until(lambda: bool(harry.heard))
+    assert len(harry.heard) == 1
+
+
+def test_a_timezone_that_is_not_a_timezone_costs_only_that_job(harry):
+    """The loader skips a capability it cannot load. This is the same promise one step
+    later — without it a single bad folder means no jobs are scheduled, the watchdog is
+    never registered, and /health never answers to say which folder did it."""
+    jobs = harry('jobs/badzone', 'jobs/ticker')
+
+    jobs.start()
+
+    assert jobs.scheduler.get_job('job:ticker') is not None, 'the good job was lost with the bad one'
+    assert jobs.scheduler.get_job(WATCHDOG_ID) is not None, 'the watchdog was never registered'
+    assert len(harry.heard) == 1
+    assert harry.heard[0].startswith('badzone could not be scheduled: ZoneInfoNotFoundError')
+    assert 'Mars/Olympus' in harry.heard[0], 'the reason should name what was wrong'
+
+
+def test_a_deadline_that_will_not_parse_is_said_out_loud(harry):
+    """Silently unwatching the job that most needed watching is the one outcome worse than
+    a false alarm."""
+    jobs = harry('jobs/baddeadline', 'jobs/morning-page', now=at(7, 30))
+
+    jobs.check_deadlines()
+
+    assert 'baddeadline could not be checked: ValueError' in harry.heard[0]
+    assert 'morning-page has not run today. It was due by 07:00.' in harry.heard
+
+
+def test_a_switched_off_job_is_not_watched(harry):
+    """`enabled: false` is how you turn one off without deleting the folder, and a watchdog
+    that kept reporting it would make that switch useless."""
+    jobs = harry('jobs/switchedoff', now=at(23, 59))
+
+    jobs.check_deadlines()
+
+    assert harry.heard == []
