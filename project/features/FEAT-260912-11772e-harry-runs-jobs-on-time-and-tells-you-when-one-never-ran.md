@@ -3,7 +3,7 @@ id: FEAT-260912-11772e
 title: Harry runs jobs on time, and tells you when one never ran
 track: full
 created: 2026-09-12
-touches: [core/scheduler]
+touches: [core/main, core/scheduler]
 stories: []
 decisions: []
 ---
