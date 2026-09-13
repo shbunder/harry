@@ -17,12 +17,12 @@ registry, the MCP server, the scheduler, the store and the HTTP app, and nothing
 Adding a connector or a tool is one folder; adding a job is one markdown file with no
 Python at all. None of them is ever a core change.
 
-**If Harry can read it, Claude can ask for it.** Every read path a connector has becomes
-a tool unless there is a stated reason it should not, and "no job needs it yet" is not one.
-Harry holding an iCloud credential while *"what's on my calendar?"* returns nothing is reach
-thrown away. Jobs are one consumer of a connector, not its reason for existing. Deferral is
-what makes that affordable. See
-[ADR-260913-63991e](project/decisions/ADR-260913-63991e-if-harry-can-read-it-claude-can-ask-for-it.md).
+**A tool exists because someone would ask for it** — not because a connector can do it,
+and not because a job needs it. Exposure is an explicit choice, listed in a connector's
+`provides:`, and shape is part of that choice: `icloud_list_events(day)` is a tool,
+`icloud_caldav_report(xml)` is a protocol wearing a tool's name. What Harry can reach and
+what Claude is offered are two different lists, on purpose. See
+[ADR-260913-18a8ae](project/decisions/ADR-260913-18a8ae-a-tool-exists-because-someone-would-ask-for-it.md).
 
 **The tool surface is where Harry's value crosses**, so its shape is governed:
 `<namespace>_<verb>`, one verb each, most of them deferred, and the body of every `TOOL.md`
@@ -105,7 +105,7 @@ The standard every change is held to, and the name every review finding cites.
 | `harry.store` | SQLite and files under `/data` | Reach the network |
 | `harry.sdk` | What a capability is allowed to import | Import a capability |
 | `.harry/connectors/*` | One external thing each: its credential, its client, its runbook | Import another capability, or `harry.core.*` |
-| | **Every read path it has becomes a tool** — see below | Keep data to itself because no job wants it yet |
+| | Chooses which of its read paths become tools, in `provides:` | Hand over a protocol and call it a tool |
 | `.harry/tools/*` | One verb each — the MCP surface Claude calls | Choose, rank or summarise; that is judgement |
 | `.harry/jobs/*` | One trigger each, composing tools | Reimplement what a tool already does |
 

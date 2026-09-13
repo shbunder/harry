@@ -14,19 +14,31 @@ Decided in
 [ADR-260912-b22e46](../../project/decisions/ADR-260912-b22e46-tools-are-one-verb-each-namespaced-by-owner-and-lean-on-mcp-.md),
 against Anthropic's published tool-design guidance and the 2026-07-28 MCP specification.
 
-## Expose what you can reach
+## What gets exposed at all
 
-**If Harry can read it, Claude can ask for it.** Every read path a connector has becomes a
-tool. "No job needs it yet" is not a reason to withhold one — a job is one consumer of a
-connector, not its reason for existing.
+**A tool exists because someone would ask for it.** Not because a connector can do it, and
+not because a job needs it.
 
-Three things stay internal, and only these three: a health check, anything whose only
-sensible caller is core, and a write whose consequences a person should approve before it is
-offered casually.
+Both of those are failure modes with names:
 
-Exposing generously is affordable only because most tools defer. The obligation that comes
-with it is describing each one carefully — six thin tools with six vague descriptions are
-worse than two good ones.
+- *Whatever a job needs* traps the data. Harry holds an iCloud credential and a working
+  client, and "what's on my calendar?" returns nothing.
+- *Whatever the API has* hands over a protocol. CalDAV can walk collections, fetch by UID
+  and run raw REPORT queries. Exposing all of it is not generosity.
+
+So exposure is an explicit choice, listed in the connector's `provides:`. Not exposing a
+read path is normal and needs no justification. **Not exposing one somebody would plausibly
+ask about is the bug** — and nothing will catch it for you, which is why it goes in review.
+
+**Shape is part of the choice.** `icloud_list_events(day)` is a tool.
+`icloud_caldav_report(xml)` is a protocol with a tool's name on it. Ask what the person
+wants back, not what the service returns.
+
+A job composes tools and never reaches past them, so anything a job needs is exposed by
+construction. That is the floor, not the target.
+
+Three things stay internal: a health check, anything whose only sensible caller is core, and
+a write whose consequences a person should approve before it is offered casually.
 
 ## The consolidation rule
 
@@ -51,7 +63,7 @@ because choosing among them is the entire reason
 - Declare the input schema in the frontmatter. It comes from the typed Python signature —
   two copies drift
 - Return an opaque id where a meaningful one exists
-- Keep a connector's data internal because no job has asked for it
+- Expose a read path only because a job wants it, or expose one only because the API has it
 - Return a traceback. Return what to try instead
 - Emit the roster in filesystem order
 

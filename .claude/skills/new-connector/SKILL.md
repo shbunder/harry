@@ -58,20 +58,30 @@ This is why a connector is a folder. Write, for whoever reads it under pressure:
 The De Tijd re-login and the reMarkable re-pairing belong here, next to the code they are
 about, rather than in a documentation page somebody has to remember exists.
 
-### 4. List every read path, then add each as a tool
+### 4. Decide what to expose, and in what shape
 
-**Write down everything this connector can read, before thinking about who wants it.** For
-iCloud that is events, calendars and to-dos; for reMarkable, the document list; for news,
-the feed and the article body.
+**Write down everything this connector can read**, before thinking about tools. For iCloud
+that is events, calendars, to-dos, and whatever else CalDAV will answer.
 
-Every one of those becomes a tool. `provides:` names them, and each is its own folder under
-`.harry/tools/`, added with `/new-tool` — so somebody can extend this connector later
-without editing it.
+Then go through that list once and ask of each: **would somebody actually ask for this?**
 
-**"No job needs it yet" is not a reason to leave one out.** Harry holding a credential while
-an ordinary question about that data returns nothing is the reach thrown away. Only three
-things stay internal: the health check, anything only core would call, and a write that
-should be approved before it is offered casually.
+- Yes → it becomes a tool. Add it to `provides:` and run `/new-tool`.
+- No → leave it. Not exposing something needs no justification.
+
+Both easy answers are wrong. Exposing only what a job needs traps the data — Harry holds
+the credential and an ordinary question returns nothing. Exposing everything the API has
+hands over a protocol and lets the service decide Harry's surface.
+
+**Then decide the shape, which matters as much as the answer.** `icloud_list_events(day)`
+is a tool; `icloud_caldav_report(xml)` is a protocol wearing a tool's name. Ask what the
+person wants back, not what the service returns.
+
+**Write down what you chose not to expose**, in the body, in a line each. Nothing will
+catch a useful read path you forgot — it simply will not be there, and nobody finds out
+until they ask and get nothing.
+
+Three things always stay internal: the health check, anything only core would call, and a
+write that should be approved before it is offered casually.
 
 Keep each tool a **verb with facts in and facts out**. If a tool is choosing, ranking or
 summarising, that is judgement and it belongs on Claude's side — return the candidates
