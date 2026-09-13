@@ -5,7 +5,10 @@
 #
 # `.env.local` is this machine's file: the real secrets, plus any setting that
 # differs here. Never committed. It wins over `.env`, key by key.
-# See .claude/rules/secrets-and-config.md.
+#
+# Both patterns are unanchored on purpose: a capability carries its own pair inside
+# its folder, so this has to match `.harry/connectors/icloud/.env.local` as well as
+# the one at the root. See .claude/rules/secrets-and-config.md.
 .env.local
 .env.*.local
 

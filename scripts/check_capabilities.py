@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -127,7 +128,7 @@ def check_job(path: Path, fields: dict[str, Any], connectors: set[str]) -> None:
         )
 
     check_requires(fields, connectors)
-    check_config(fields, str(fields['name']))
+    check_config(fields, str(fields['name']), path)
 
 
 def check_connector(path: Path, fields: dict[str, Any]) -> None:
@@ -135,12 +136,12 @@ def check_connector(path: Path, fields: dict[str, Any]) -> None:
     require(fields, 'description')
     require(fields, 'enabled', bool)
 
-    env = fields.get('requires_env', [])
-    if not isinstance(env, list):
-        raise Problem('`requires_env` must be a list, even with one entry')
-    for key in env:
-        if not isinstance(key, str) or not key.isupper():
-            raise Problem(f'`requires_env` entries are environment variable names — got {key!r}')
+    if 'requires_env' in fields:
+        raise Problem(
+            '`requires_env` is retired. Declare each setting in `config:` instead, with a '
+            'description and `required: true` — that carries everything this listed and a '
+            'type and a default besides, and it is what generates the .env beside this file.'
+        )
 
     expires = fields.get('expires')
     if expires is None:
@@ -151,7 +152,7 @@ def check_connector(path: Path, fields: dict[str, Any]) -> None:
     if expires not in EXPIRIES:
         raise Problem(f'`expires` must be one of {", ".join(EXPIRIES)} — got {expires!r}')
 
-    check_config(fields, str(fields['name']))
+    check_config(fields, str(fields['name']), path)
 
 
 def check_tool(path: Path, fields: dict[str, Any], connectors: set[str]) -> None:
@@ -191,7 +192,7 @@ def check_tool(path: Path, fields: dict[str, Any], connectors: set[str]) -> None
 
     # The body is the MCP description Claude reads to decide whether to call this tool.
     # An empty one is a tool the model can only pick by name.
-    check_config(fields, str(fields['name']))
+    check_config(fields, str(fields['name']), path)
 
     # The body is the MCP description Claude reads to decide whether to call this tool.
     if len(read_body(path)) < 40:
@@ -201,7 +202,7 @@ def check_tool(path: Path, fields: dict[str, Any], connectors: set[str]) -> None
         )
 
 
-def check_config(fields: dict[str, Any], implementation: str) -> None:
+def check_config(fields: dict[str, Any], implementation: str, path: Path) -> None:
     """A capability declares its own settings; the deployment supplies the values.
 
     Nothing here goes in a global namespace, so `HARRY_ARTICLE_LIMIT` — a setting exactly
@@ -233,6 +234,19 @@ def check_config(fields: dict[str, Any], implementation: str) -> None:
             )
         if spec.get('secret') and 'default' in spec:
             raise Problem(f'{where}: a secret must not carry a default — that default is a credential')
+
+    # A committed `.env.local` is the failure this whole layout makes possible: the
+    # gitignore covers it, but a `git add -f` or a stale checkout would not be caught by
+    # anything else, and what leaks is a live credential.
+    if config and (folder := path.parent) and (folder / '.env.local').is_file():
+        tracked = subprocess.run(
+            ['git', '-C', str(ROOT), 'ls-files', '--error-unmatch', str((folder / '.env.local').relative_to(ROOT))],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if tracked.returncode == 0:
+            raise Problem(f"{folder.relative_to(ROOT)}/.env.local is tracked by git. It holds this machine's secrets.")
 
 
 def check_requires(fields: dict[str, Any], connectors: set[str]) -> None:

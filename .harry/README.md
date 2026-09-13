@@ -10,10 +10,20 @@ Laid out like `.claude/skills/`, so if you have used Claude Code you already rea
 
 ```
 .harry/
-├── connectors/<name>/CONNECTOR.md   + the code that reaches it
+├── connectors/<name>/CONNECTOR.md   + .env, .env.local, and the code that reaches it
 ├── tools/<name>/TOOL.md             + the function it calls
 └── jobs/<name>/JOB.md               + the scripts it runs
 ```
+
+**A capability carries its own settings.** `.env` beside the declaration is committed and
+**generated** — `make env-template` writes it from the `config:` block, so the description
+beside each key cannot drift from the schema. `.env.local` beside it is yours and is
+gitignored. You never edit `.env`.
+
+**Keys are bare.** `APP_PASSWORD`, not `HARRY_ICLOUD_APP_PASSWORD` — the folder is the
+namespace, so two connectors cannot collide. The prefixed spelling survives as the
+*environment override*, which is how a container injects one; the generated file names it
+beside every key.
 
 Each of those is one **implementation** of a capability. Core defines the kinds; a fourth
 kind is a core change, deliberately, because a kind is a contract.
@@ -139,6 +149,16 @@ renders, and `#harry` says "De Tijd login needs refreshing". To fix it: ...
 The renewal procedure lives here, beside the code it is about, rather than in a
 documentation page somebody has to remember exists. `expires:` is what tells Harry to watch
 the credential at all.
+
+Precedence for one setting, highest first:
+
+1. `HARRY_<NAME>_<KEY>` in the environment — a container injecting
+2. `.env.local` in this folder — your machine
+3. `.env` in this folder — committed, generated
+4. the `default:` in the declaration
+
+An empty value in a file means *unset*, not *empty* — otherwise the generated file, which
+leaves every secret blank, would wipe out the defaults it was generated from.
 
 ## Adding one
 

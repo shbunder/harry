@@ -1,0 +1,26 @@
+# Anything holding a secret must never reach the image.
+#
+# The committed `.env` files under .harry/ carry no secrets and are part of the
+# capability, so they go in. The `.env.local` beside each one is this machine's and
+# is exactly what a build run on a laptop would otherwise sweep into a layer.
+.env
+.env.local
+**/.env.local
+storage-state*.json
+
+# Local state and working copies.
+.git
+.venv
+data/
+out/
+scratch/
+.claude/worktrees/
+
+# Caches — large, and rebuilt anyway.
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+site/
+node_modules/

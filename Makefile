@@ -32,7 +32,7 @@ WARN  := \033[33m⚠\033[0m
 DIM   := \033[2m
 OFF   := \033[0m
 
-.PHONY: help env-install check lint format typecheck test test-cov lock \
+.PHONY: help env-install check lint format typecheck test test-cov lock env-template \
         board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-now \
         image up down logs docs clean
 
@@ -54,6 +54,9 @@ env-install:  ## Install the workspace and the dev tools
 
 browser:  ## Install the Chromium that tier-2 article fetching drives
 	$(UV) run playwright install chromium
+
+env-template:  ## Write each capability's committed .env from its declaration. ARGS=--check to verify.
+	$(PY) scripts/env_template.py $(ARGS)
 
 lock:  ## Re-resolve the lockfile
 	$(UV) lock
@@ -78,6 +81,7 @@ lint:  ## Lints, import sorting, and the two repo guards — no fixing
 	$(UV) run ruff check .
 	$(PY) scripts/check_no_board_refs.py
 	$(PY) scripts/check_capabilities.py
+	$(PY) scripts/env_template.py --check
 
 typecheck:  ## Run pyright over the workspace
 	$(UV) run pyright

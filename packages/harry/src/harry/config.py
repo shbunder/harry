@@ -38,8 +38,11 @@ above is simply what it does, and `tests/test_config.py` makes it fail if that c
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -100,19 +103,76 @@ class Settings(BaseSettings):
 
 
 def env_key(implementation: str, field: str) -> str:
-    """The environment variable a capability's setting is read from.
-
-    `HARRY_<IMPLEMENTATION>_<FIELD>` — derived, never chosen. Two connectors can both want
-    a field called `api_key` and never collide, and a third party can add one without
-    knowing what names are already taken.
+    """The **environment variable** that overrides a capability's setting.
 
         env_key('icloud', 'app_password')  ->  'HARRY_ICLOUD_APP_PASSWORD'
 
+    Not the name in the capability's own files — there the key is bare (`APP_PASSWORD`),
+    because the folder is the namespace. This spelling exists for the one caller that has
+    no folders: a container, which injects a flat environment.
+
     This is the one definition. `scripts/check_capabilities.py` imports it rather than
-    reimplementing the rule, so the key the validator reports and the key Harry reads
+    reimplementing the rule, so the key the validator prints and the key Harry reads
     cannot drift apart.
     """
     return f'HARRY_{implementation}_{field}'.replace('-', '_').upper()
+
+
+def capability_env_files(folder: Path) -> tuple[Path, Path]:
+    """The pair inside a capability's folder, in the order pydantic-settings reads them.
+
+    Same meaning as the root pair, one level down: `.env` is committed and generated from
+    the `config:` block, `.env.local` is this machine's and is gitignored. Later wins.
+    """
+    return (folder / '.env', folder / '.env.local')
+
+
+def read_capability_config(
+    folder: Path,
+    implementation: str,
+    schema: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Resolve one capability's settings, highest precedence first.
+
+    1. `HARRY_<IMPLEMENTATION>_<SETTING>` in the real environment — a container injecting
+    2. `.env.local` in the capability's folder — this machine
+    3. `.env` in the capability's folder — committed, generated from the schema
+    4. the `default:` in the schema
+
+    Returns only what the schema declares. A key sitting in a file that the capability
+    never declared is ignored rather than passed through: it is either a typo or a
+    leftover, and silently honouring it is how a setting nobody can find takes effect.
+    """
+    values: dict[str, Any] = {name: spec.get('default') for name, spec in schema.items() if 'default' in spec}
+
+    for path in capability_env_files(folder):
+        for key, value in _read_env_file(path).items():
+            # An empty value is an unset key, not an override. Otherwise the generated
+            # `.env` — which leaves every secret blank — would wipe out the defaults it
+            # was generated from, and `ARTICLE_LIMIT=` would resolve to '' rather than 8.
+            if key.lower() in schema and value != '':
+                values[key.lower()] = value
+
+    for name in schema:
+        from_environment = os.environ.get(env_key(implementation, name))
+        if from_environment:
+            values[name] = from_environment
+
+    return values
+
+
+def _read_env_file(path: Path) -> dict[str, str]:
+    """A dotenv file as a flat mapping. Absent is empty; malformed lines are skipped."""
+    if not path.is_file():
+        return {}
+    found: dict[str, str] = {}
+    for line in path.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, _, value = line.partition('=')
+        found[key.strip()] = value.strip().strip('"\'')
+    return found
 
 
 @lru_cache(maxsize=1)
