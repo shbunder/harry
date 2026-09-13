@@ -1,7 +1,7 @@
 {
-  "include": ["packages", "project", "scripts", "tests", ".harry"],
+  "include": ["src", "project", "scripts", "tests", ".harry"],
   "exclude": ["**/__pycache__", ".venv", "scratch", "build", "dist", "site"],
-  "extraPaths": ["packages/harry/src", "project", "scripts"],
+  "extraPaths": ["src", "project", "scripts"],
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.12",

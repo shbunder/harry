@@ -1,21 +1,41 @@
-# Harry — the workspace root.
+# Harry — one package, at src/harry.
 #
-# One package today (`packages/harry`). The workspace exists because the module
-# contract is meant to grow sideways: an out-of-tree module directory becomes a
-# second member here without the core changing.
+# Not a uv workspace. That existed so the contract could "grow sideways" into a second
+# package, and it never will: a capability is a folder under `.harry/`, discovered at
+# run time, not a package resolved at install time. What it actually bought was a path
+# four directories deep with the word harry in it three times.
 
 [project]
-name = "harry-workspace"
+name = "harry"
 version = "0.1.0"
 description = "Harry — a companion service that does what Claude decides"
 requires-python = ">=3.12"
-dependencies = ["harry"]
+dependencies = [
+    # Core
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic-settings>=2.6",
+    "fastmcp>=2.0",
+    "apscheduler>=3.11",
+    "httpx>=0.28",
+    "pyyaml>=6.0",
 
-[tool.uv.workspace]
-members = ["packages/*"]
+    # What the capabilities need. Common ones live here; a capability adds its own
+    # only when it needs something exotic.
+    "caldav>=3.3",          # iCloud calendar and reminders
+    "trafilatura>=2.0",     # article text extraction
+    "playwright>=1.49",     # for sites that block scripted clients
+    "weasyprint>=63",       # HTML + CSS to PDF, with a real outline
+    "slack-bolt>=1.21",     # Socket Mode
+    "remarkapy>=0.2",       # reMarkable cloud. rmapy and rmcl are archived and dead.
+]
 
-[tool.uv.sources]
-harry = { workspace = true }
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/harry"]
 
 [dependency-groups]
 # The gate's own tools. Installed by `make env-install`, never by the container.
@@ -37,7 +57,7 @@ line-length = 120
 exclude = [".git", ".ruff_cache", ".pytest_cache", ".venv", "__pycache__", "build", "dist", "site", "scratch"]
 # Where first-party modules live. `project` and `scripts` are on pytest's pythonpath,
 # so `import board` is first-party however it looks from the repo root.
-src = ["packages/harry/src", "project", "scripts", ".harry"]
+src = ["src", "project", "scripts", ".harry"]
 
 [tool.ruff.lint]
 select = [
@@ -94,7 +114,7 @@ filterwarnings = ["error::DeprecationWarning:harry.*"]
 # ============================================================================
 [tool.coverage.run]
 branch = true
-source = ["packages/harry/src/harry", "project", "scripts", ".harry"]
+source = ["src/harry", "project", "scripts", ".harry"]
 omit = ["*/tests/*", "*/scratch/*"]
 
 [tool.coverage.report]

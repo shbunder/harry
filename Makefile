@@ -49,7 +49,7 @@ help:  ## Show this help
 # ---------------------------------------------------------------------------
 
 env-install:  ## Install the workspace and the dev tools
-	$(UV) sync --all-packages
+	$(UV) sync
 	@echo -e "$(DIM)Tier-2 article fetching also needs a browser: make browser$(OFF)"
 
 browser:  ## Install the Chromium that tier-2 article fetching drives

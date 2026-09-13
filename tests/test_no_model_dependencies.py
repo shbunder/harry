@@ -41,11 +41,9 @@ PROVIDER_CREDENTIALS = ('ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_AUTH_T
 
 def declared_dependencies() -> list[str]:
     """Every dependency Harry declares, normalised to a bare package name."""
-    package = tomllib.loads((ROOT / 'packages' / 'harry' / 'pyproject.toml').read_text())
     root = tomllib.loads((ROOT / 'pyproject.toml').read_text())
 
-    raw = list(package['project'].get('dependencies', []))
-    raw += list(root['project'].get('dependencies', []))
+    raw = list(root['project'].get('dependencies', []))
     for group in root.get('dependency-groups', {}).values():
         raw += [entry for entry in group if isinstance(entry, str)]
 
@@ -83,7 +81,7 @@ def test_no_model_client_reaches_the_resolved_lockfile():
 
 
 def test_config_declares_no_provider_credential():
-    source = (ROOT / 'packages' / 'harry' / 'src' / 'harry' / 'config.py').read_text()
+    source = (ROOT / 'src' / 'harry' / 'config.py').read_text()
     for credential in PROVIDER_CREDENTIALS:
         assert credential not in source, f'{credential} is declared in config.py. Harry holds no provider credential.'
 
@@ -91,7 +89,7 @@ def test_config_declares_no_provider_credential():
 def test_no_source_file_shells_out_to_a_model_cli():
     """Shelling out to the CLI is how a model gets back inside Harry by the side door."""
     offenders = []
-    for path in (ROOT / 'packages').rglob('*.py'):
+    for path in (ROOT / 'src').rglob('*.py'):
         text = path.read_text(encoding='utf-8')
         if "'claude'" in text or '"claude"' in text or 'claude -p' in text:
             offenders.append(str(path.relative_to(ROOT)))

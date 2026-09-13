@@ -7,12 +7,6 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
-[manifest]
-members = [
-    "harry",
-    "harry-workspace",
-]
-
 [[package]]
 name = "aiofile"
 version = "3.12.3"
@@ -1029,7 +1023,7 @@ wheels = [
 [[package]]
 name = "harry"
 version = "0.1.0"
-source = { editable = "packages/harry" }
+source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
     { name = "caldav" },
@@ -1044,6 +1038,16 @@ dependencies = [
     { name = "trafilatura" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "weasyprint" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "coverage" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "respx" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -1062,27 +1066,6 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
     { name = "weasyprint", specifier = ">=63" },
 ]
-
-[[package]]
-name = "harry-workspace"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "harry" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "coverage" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "respx" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "harry", editable = "packages/harry" }]
 
 [package.metadata.requires-dev]
 dev = [

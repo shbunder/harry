@@ -43,7 +43,7 @@ def _repo(tmp_path, files: dict[str, str], *, board=(f'features/{REAL}-the-page.
 
 
 def test_the_guard_fails_on_a_real_board_id_in_source(tmp_path, monkeypatch, capsys):
-    repo = _repo(tmp_path, {'packages/harry/src/harry/x.py': f'# Added for {REAL}\nX = 1\n'})
+    repo = _repo(tmp_path, {'src/harry/x.py': f'# Added for {REAL}\nX = 1\n'})
     monkeypatch.setattr(check_no_board_refs, 'ROOT', repo)
 
     assert check_no_board_refs.main([]) == 1
@@ -62,7 +62,7 @@ def test_an_id_that_matches_nothing_on_the_board_is_test_data(tmp_path, monkeypa
 
 
 def test_an_empty_board_flags_nothing(tmp_path, monkeypatch, capsys):
-    repo = _repo(tmp_path, {'packages/harry/src/harry/x.py': f'# {REAL}\n'}, board=())
+    repo = _repo(tmp_path, {'src/harry/x.py': f'# {REAL}\n'}, board=())
     monkeypatch.setattr(check_no_board_refs, 'ROOT', repo)
     assert check_no_board_refs.main([]) == 0
     assert 'board is empty' in capsys.readouterr().out
@@ -72,7 +72,7 @@ def test_two_references_on_one_line_are_both_reported(tmp_path, monkeypatch, cap
     second = 'STORY-260912-d4e5f6'
     repo = _repo(
         tmp_path,
-        {'packages/harry/src/harry/x.py': f'# {REAL} and {second}\n'},
+        {'src/harry/x.py': f'# {REAL} and {second}\n'},
         board=(f'features/{REAL}-the-page.md', f'stories/{second}-fetch.md'),
     )
     monkeypatch.setattr(check_no_board_refs, 'ROOT', repo)
@@ -82,7 +82,7 @@ def test_two_references_on_one_line_are_both_reported(tmp_path, monkeypatch, cap
 
 
 def test_the_guard_passes_on_clean_source(tmp_path, monkeypatch):
-    repo = _repo(tmp_path, {'packages/harry/src/harry/x.py': '# APScheduler, not cron: no cron daemon here\nX = 1\n'})
+    repo = _repo(tmp_path, {'src/harry/x.py': '# APScheduler, not cron: no cron daemon here\nX = 1\n'})
     monkeypatch.setattr(check_no_board_refs, 'ROOT', repo)
     assert check_no_board_refs.main([]) == 0
 
@@ -103,7 +103,7 @@ def test_the_board_and_the_docs_may_say_the_id(tmp_path, monkeypatch):
 
 def test_a_markdown_file_in_source_is_not_scanned(tmp_path, monkeypatch):
     """Only the suffixes in SOURCE_SUFFIXES are code. A stray note is not."""
-    repo = _repo(tmp_path, {'packages/notes.md': REAL})
+    repo = _repo(tmp_path, {'src/notes.md': REAL})
     monkeypatch.setattr(check_no_board_refs, 'ROOT', repo)
     assert check_no_board_refs.main([]) == 0
 

@@ -36,8 +36,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
-COPY packages/ packages/
-RUN uv sync --frozen --no-dev --all-packages
+COPY src/ src/
+RUN uv sync --frozen --no-dev
 
 # The browser tier-2 extraction drives. Installed after the deps so a code change
 # does not re-download it.

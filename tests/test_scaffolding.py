@@ -6,6 +6,7 @@ a version drifts between two files that both claim it.
 
 from __future__ import annotations
 
+import json
 import tomllib
 from pathlib import Path
 
@@ -19,16 +20,23 @@ def test_the_package_imports_and_carries_a_version():
 
 
 def test_the_declared_version_and_the_package_version_agree():
-    declared = tomllib.loads((ROOT / 'packages' / 'harry' / 'pyproject.toml').read_text())
+    declared = tomllib.loads((ROOT / 'pyproject.toml').read_text())
     assert declared['project']['version'] == harry.__version__
 
 
-def test_the_workspace_lists_every_package_directory():
-    """A package added under `packages/` but never wired is installed by nothing."""
+def test_the_package_is_where_every_tool_is_told_it_is():
+    """Four path rosters name the source directory — the build, ruff, coverage and
+    pyright. They disagreed once already, and a disagreement is silent: one tool simply
+    stops looking at a file."""
     root = tomllib.loads((ROOT / 'pyproject.toml').read_text())
-    assert root['tool']['uv']['workspace']['members'] == ['packages/*']
-    on_disk = {p.name for p in (ROOT / 'packages').iterdir() if (p / 'pyproject.toml').exists()}
-    assert on_disk, 'packages/ holds no package'
+    assert root['tool']['hatch']['build']['targets']['wheel']['packages'] == ['src/harry']
+    assert 'src' in root['tool']['ruff']['src']
+    assert 'src/harry' in root['tool']['coverage']['run']['source']
+
+    pyright = json.loads((ROOT / 'pyrightconfig.json').read_text())
+    assert 'src' in pyright['include'] and 'src' in pyright['extraPaths']
+
+    assert (ROOT / 'src' / 'harry' / '__init__.py').is_file()
 
 
 def test_no_board_ids_leak_into_source():
