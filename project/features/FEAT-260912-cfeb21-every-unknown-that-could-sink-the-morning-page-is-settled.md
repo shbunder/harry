@@ -4,7 +4,7 @@ title: Every unknown that could sink the morning page is settled
 track: full
 created: 2026-09-12
 touches: [scratch, scripts/mcp_probe.py, tests/test_config.py]
-stories: [STORY-260912-835929, STORY-260912-76bb6b, STORY-260912-f7cda6, STORY-260912-8d003e, STORY-260912-8bc2b4, STORY-260912-bdf4d2]
+stories: [STORY-260912-835929, STORY-260912-f7cda6, STORY-260912-8d003e, STORY-260912-8bc2b4, STORY-260912-bdf4d2]
 decisions: [ADR-260912-bd36c2]
 ---
 
@@ -19,22 +19,21 @@ Five questions nobody has answered, each of which can invalidate a later phase. 
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] A Claude scheduled task calls a tool on Harry over the tunnel and gets the result back
-- [ ] A De Tijd article's full body is on stdout, pulled through a browser session saved by hand
-- [ ] An MCP tool call that blocks for five minutes returns its result rather than timing out
-- [ ] A one-page PDF pushed with remarkapy appears on the tablet, and we know whether the free tier carries it
-- [ ] Today's iCloud events come back over CalDAV, and we know whether Reminders arrive as VTODO
-- [ ] Every finding is written into the decision or scenario that depends on it, quoting what was measured
+- [x] The tunnel question is split out to [[FEAT-260913-fdd33f]] — it needs a serving NUC, not a script
+- [x] A De Tijd article's full body is on stdout, pulled through a browser session saved by hand
+- [x] An MCP tool call that blocks for five minutes returns its result rather than timing out
+- [x] A one-page PDF pushed with remarkapy appears on the tablet, and we know whether the free tier carries it
+- [x] Today's iCloud events come back over CalDAV, and we know whether Reminders arrive as VTODO
+- [x] Every finding is written into the decision or scenario that depends on it, quoting what was measured
 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
-- [ ] [[STORY-260912-835929]] — A throwaway MCP server to test against
-- [ ] [[STORY-260912-76bb6b]] — A Claude scheduled task reaches Harry over the tunnel
-- [ ] [[STORY-260912-f7cda6]] — A blocking tool call survives five minutes
-- [ ] [[STORY-260912-8d003e]] — A De Tijd article comes back in full
-- [ ] [[STORY-260912-8bc2b4]] — A PDF reaches the tablet
-- [ ] [[STORY-260912-bdf4d2]] — iCloud answers over CalDAV
+- [x] [[STORY-260912-835929]] — A throwaway MCP server to test against
+- [x] [[STORY-260912-f7cda6]] — A blocking tool call survives five minutes
+- [x] [[STORY-260912-8d003e]] — A De Tijd article comes back in full
+- [x] [[STORY-260912-8bc2b4]] — A PDF reaches the tablet
+- [x] [[STORY-260912-bdf4d2]] — iCloud answers over CalDAV
 
 ## Notes
 
@@ -48,6 +47,7 @@ Five questions nobody has answered, each of which can invalidate a later phase. 
 - **2026-09-12** — board.py has no way to untick a box. I ticked the tunnel criterion on 835929 by miscounting and had to edit the markdown by hand, which is exactly the drift the CLI exists to prevent. Worth an 'uncheck' command, or a 'check --off'.
 - **2026-09-13** — PROGRESS DEFEATS THE CEILING. sleep_reporting(660, every=30) returned after 660.1s from a real Claude Code session - more than double the 300s that aborted the silent call. So a blocking tool holds indefinitely as long as it reports progress, with NO client configuration. That is the finding that matters, because Harry cannot configure the sessions that call it: the per-server timeout in .mcp.json works but only for clients somebody has already set up. ask_human can be the blocking design in the plan rather than a request id plus a poll. Its one obligation is to emit progress on an interval comfortably under the shortest ceiling it might meet - 30s against a 300s default is a 10x margin.
 - **2026-09-13** — PHASE 4 TAKES THE BLOCKING DESIGN. ask_human() holds the tool call open and returns your Slack answer as the tool result, so the session continues mid-turn with no restart - the plan's design, not the request-id-plus-poll fallback. Its one obligation, and the reason it works: it must emit an MCP progress notification on an interval comfortably under the shortest ceiling it might meet. 30s against Claude Code's 300s default is a 10x margin and needs nothing configured on any client. Measured: 660s silent fails, 660s with progress every 30s returns. This should become an ADR when Phase 4 opens; it is a note now because inventing a decision record to hold a fact for a phase nobody has started is worse than waiting.
+- **2026-09-13** — The tunnel question and its story moved to FEAT-260913-fdd33f. Everything else here was answerable against a locally registered MCP server, which needed nothing stood up; that one needs a serving NUC and a tunnel, which is deployment work rather than a throwaway script. It blocks only the morning page - core, alerting and every connector can be built without it.
 
 ## Links
 

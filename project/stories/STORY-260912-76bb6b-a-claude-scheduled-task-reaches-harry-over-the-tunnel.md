@@ -1,14 +1,14 @@
 ---
 id: STORY-260912-76bb6b
 title: A Claude scheduled task reaches Harry over the tunnel
-feature: FEAT-260912-cfeb21
+feature: FEAT-260913-fdd33f
 status: Backlog
 created: 2026-09-12
 ---
 
 # STORY-260912-76bb6b — A Claude scheduled task reaches Harry over the tunnel
 
-Part of [[FEAT-260912-cfeb21]].
+Part of [[FEAT-260913-fdd33f]].
 
 ## Description
 
