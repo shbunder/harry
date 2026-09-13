@@ -1,7 +1,7 @@
 ---
 paths:
   - ".harry/**"
-  - "packages/harry/src/harry/**"
+  - "src/harry/**"
 ---
 
 # A connector, a tool or a job — and core never learns any of their names

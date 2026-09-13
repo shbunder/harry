@@ -58,11 +58,20 @@ This is why a connector is a folder. Write, for whoever reads it under pressure:
 The De Tijd re-login and the reMarkable re-pairing belong here, next to the code they are
 about, rather than in a documentation page somebody has to remember exists.
 
-### 4. List what it provides, then add the tools separately
+### 4. List every read path, then add each as a tool
 
-`provides:` in the frontmatter names the tools that will use this connector. Each one is
-its own folder under `.harry/tools/`, added with `/new-tool` — so somebody can extend this
-connector later without editing it.
+**Write down everything this connector can read, before thinking about who wants it.** For
+iCloud that is events, calendars and to-dos; for reMarkable, the document list; for news,
+the feed and the article body.
+
+Every one of those becomes a tool. `provides:` names them, and each is its own folder under
+`.harry/tools/`, added with `/new-tool` — so somebody can extend this connector later
+without editing it.
+
+**"No job needs it yet" is not a reason to leave one out.** Harry holding a credential while
+an ordinary question about that data returns nothing is the reach thrown away. Only three
+things stay internal: the health check, anything only core would call, and a write that
+should be approved before it is offered casually.
 
 Keep each tool a **verb with facts in and facts out**. If a tool is choosing, ranking or
 summarising, that is judgement and it belongs on Claude's side — return the candidates
@@ -112,7 +121,7 @@ make check
 ### 8. Prove the contract still holds
 
 ```bash
-grep -rn "connectors\." packages/harry/src/harry/*.py    # core must name no capability
+grep -rn "connectors\." src/harry/*.py    # core must name no capability
 ```
 
 Must come back empty. The moment core knows a connector's name, adding the next one stops

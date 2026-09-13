@@ -1,6 +1,6 @@
 ---
 paths:
-  - "packages/harry/src/harry/**"
+  - "src/harry/**"
   - "Dockerfile"
   - "docker-compose.yml"
   - "**/.env*"
