@@ -86,6 +86,16 @@ class Capability:
     shadowed_by: Path | None = None
     target: Any | None = None
     """Whatever the capability registered, or None when it is a declaration alone."""
+    context: Context | None = None
+    """What the capability was handed, kept rather than dropped.
+
+    Everything downstream needs the declaration and the body: a tool's body is the
+    description Claude reads, its frontmatter carries the annotations, and a job's body is
+    the brief. Re-reading the files later would be a second reader of the same format, and
+    two readers of one format drift.
+
+    None on a capability that was skipped before its declaration could be read.
+    """
 
     @property
     def key(self) -> tuple[str, str]:

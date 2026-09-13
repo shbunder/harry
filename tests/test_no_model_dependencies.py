@@ -86,14 +86,41 @@ def test_config_declares_no_provider_credential():
         assert credential not in source, f'{credential} is declared in config.py. Harry holds no provider credential.'
 
 
+# How a process gets started. Naming the model is only a problem next to one of these.
+EXEC = ('subprocess', 'os.system', 'os.popen', 'os.exec', 'shutil.which', 'asyncio.create_subprocess')
+
+
+def shells_out_to_a_model(text: str) -> bool:
+    """The model's name next to a way of starting a process, or the invocation itself.
+
+    Matching the bare word would flag `declaration.get('trigger') != 'claude'` — a job
+    declaring that a Claude scheduled task owns its clock, which is the opposite of Harry
+    calling a model. So this asks for the behaviour and not the name.
+    """
+    if 'claude -p' in text:
+        return True
+    named = "'claude'" in text or '"claude"' in text
+    return named and any(mechanism in text for mechanism in EXEC)
+
+
 def test_no_source_file_shells_out_to_a_model_cli():
     """Shelling out to the CLI is how a model gets back inside Harry by the side door."""
-    offenders = []
-    for path in (ROOT / 'src').rglob('*.py'):
-        text = path.read_text(encoding='utf-8')
-        if "'claude'" in text or '"claude"' in text or 'claude -p' in text:
-            offenders.append(str(path.relative_to(ROOT)))
+    offenders = [
+        str(path.relative_to(ROOT))
+        for path in (ROOT / 'src').rglob('*.py')
+        if shells_out_to_a_model(path.read_text(encoding='utf-8'))
+    ]
     assert not offenders, f'a source file invokes the Claude CLI: {offenders}'
+
+
+def test_the_guard_catches_a_source_file_that_actually_shells_out():
+    """Delete the guard and which test goes red — asked of the guard itself, because it was
+    just narrowed and a narrowed guard is one that can stop catching things."""
+    assert shells_out_to_a_model("subprocess.run(['claude', '--print', prompt])")
+    assert shells_out_to_a_model('os.system("claude -p " + prompt)')
+    assert shells_out_to_a_model("shutil.which('claude')")
+    assert not shells_out_to_a_model("if declaration.get('trigger') != 'claude':")
+    assert not shells_out_to_a_model('# A Claude scheduled task owns the clock.')
 
 
 @pytest.mark.parametrize(

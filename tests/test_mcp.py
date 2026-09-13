@@ -1,0 +1,337 @@
+"""What Claude can reach, and what it cannot.
+
+Every test goes through an MCP client against a server built from a real catalogue, because
+"can a client call this tool" is the question and calling the function directly answers a
+different one. `Client(server)` connects to the object in process, so none of this needs a
+port or a tunnel — the one test that does want a real socket says so at its own assertion.
+"""
+
+from __future__ import annotations
+
+import pytest
+from fastmcp import Client
+from fastmcp.exceptions import ToolError
+from mcp.types import TextContent
+from pydantic import SecretStr
+
+from harry.loader import load
+from harry.mcp import DEFAULT_LIMIT, FIND_TOOLS, MAX_LIMIT, build_server
+
+from .test_loader import root_with
+
+TOKEN = 'a-token-for-the-tests-only'
+
+
+@pytest.fixture
+def harry(tmp_path, monkeypatch):
+    """A Harry whose capabilities are whatever the test asks for, with a known token."""
+    import harry.config
+
+    monkeypatch.delenv('HARRY_ICLOUD_APP_PASSWORD', raising=False)
+    settings = harry.config.Settings(api_token=SecretStr(TOKEN), data_dir=tmp_path / 'data')
+    monkeypatch.setattr(harry.config, 'get_settings', lambda: settings)
+
+    def build(*capabilities: str):
+        root = root_with(tmp_path / 'root', *capabilities)
+        return build_server(load([root]))
+
+    return build
+
+
+def client(server) -> Client:
+    """In process, and with no token.
+
+    FastMCP's in-memory transport carries no HTTP headers, so it cannot carry a bearer
+    token either — `Client(server, auth=…)` raises outright. Everything about publishing,
+    deferral and prompts is testable here; the door itself is not, and
+    `tests/test_mcp_over_http.py` takes that half over a real socket.
+    """
+    return Client(server)
+
+
+async def roster(server) -> list[str]:
+    async with client(server) as connected:
+        return [tool.name for tool in await connected.list_tools()]
+
+
+# ---------------------------------------------------------------------------
+# Publishing what the loader registered
+# ---------------------------------------------------------------------------
+
+
+async def test_a_declared_tool_is_callable_and_described_by_its_own_body(harry):
+    server = harry('connectors/weather', 'tools/weather_forecast')
+
+    async with client(server) as connected:
+        tools = {tool.name: tool for tool in await connected.list_tools()}
+        assert 'weather_forecast' in tools
+
+        published = tools['weather_forecast']
+        description = published.description or ''
+        assert description.startswith("Returns today's forecast for the configured place")
+        assert '---' not in description, 'the frontmatter leaked into the description'
+
+        result = await connected.call_tool('weather_forecast', {'day': 'tomorrow'})
+
+    assert result.data == {'day': 'tomorrow', 'summary': 'grey, as ever'}
+
+
+async def test_the_annotations_are_the_ones_in_the_frontmatter(harry):
+    """This is how a client gates a tool that reaches your tablet without gating one that
+    reads a feed, and nothing else carries that signal."""
+    server = harry('connectors/weather', 'tools/weather_forecast')
+
+    async with client(server) as connected:
+        published = {tool.name: tool for tool in await connected.list_tools()}['weather_forecast']
+
+    assert published.annotations is not None
+    assert published.annotations.read_only_hint is True
+    assert published.annotations.idempotent_hint is True
+
+
+async def test_the_input_schema_comes_from_the_signature_and_is_declared_nowhere(harry):
+    """Declaring it in the frontmatter as well would be a second copy of what the code
+    already knows, and the two would drift."""
+    server = harry('connectors/weather', 'tools/weather_forecast')
+
+    async with client(server) as connected:
+        published = {tool.name: tool for tool in await connected.list_tools()}['weather_forecast']
+
+    assert set(published.input_schema['properties']) == {'day'}
+    assert published.input_schema['properties']['day']['type'] == 'string'
+
+
+async def test_a_tool_the_loader_skipped_is_not_published(harry):
+    """Worse than missing: Claude picks it, and a missing credential reads as a broken
+    tool."""
+    server = harry('connectors/icloud', 'tools/icloud_list_events', 'connectors/weather', 'tools/weather_forecast')
+
+    assert 'icloud_list_events' not in await roster(server)
+    assert 'weather_forecast' in await roster(server)
+
+
+async def test_a_tool_with_no_python_behind_it_never_reaches_the_roster(harry):
+    """A TOOL.md written before the tool.py beside it. The loader refuses it, so there is
+    nothing here for Claude to pick and fail on."""
+    server = harry('tools/paper_push', 'connectors/weather', 'tools/weather_forecast')
+
+    assert 'paper_push' not in await roster(server)
+
+
+async def test_the_roster_is_in_name_order_and_the_same_every_time(harry):
+    """The specification says deterministic ordering improves prompt-cache hit rates.
+    Filesystem order is not deterministic, and it is what you get by accident."""
+    server = harry('connectors/weather', 'tools/weather_forecast', 'tools/news_failing', 'tools/account_whoami')
+
+    first = await roster(server)
+    second = await roster(server)
+
+    assert first == sorted(first)
+    assert first == second
+
+
+# ---------------------------------------------------------------------------
+# A tool that fails
+# ---------------------------------------------------------------------------
+
+
+async def test_a_failing_tool_returns_its_own_message_and_no_traceback(harry):
+    """Steering text is the tool's job — the only thing that knows what to try is the tool
+    that failed. Harry's part is to carry that sentence through and add nothing."""
+    server = harry('tools/news_failing', 'connectors/weather', 'tools/weather_forecast')
+
+    async with client(server) as connected:
+        result = await connected.call_tool('news_failing', {}, raise_on_error=False)
+        still_working = await connected.call_tool('weather_forecast', {})
+
+    assert result.is_error
+    message = ' '.join(block.text for block in result.content if isinstance(block, TextContent))
+    assert 'news_failing' in message
+    assert 'no articles since 05:00, try since=yesterday' in message
+    for leak in ('Traceback', '.py', 'line ', 'harry/mcp'):
+        assert leak not in message, f'{leak!r} reached the caller'
+
+    assert still_working.data == {'day': 'today', 'summary': 'grey, as ever'}
+
+
+# ---------------------------------------------------------------------------
+# Deferral: most tools are not in the roster
+# ---------------------------------------------------------------------------
+
+
+async def test_a_deferred_tool_is_absent_and_an_always_loaded_one_is_not(harry):
+    server = harry('connectors/weather', 'tools/weather_forecast', 'tools/notes_search')
+
+    listed = await roster(server)
+
+    assert 'weather_forecast' in listed
+    assert FIND_TOOLS in listed
+    assert 'notes_search' not in listed
+
+
+async def test_searching_reveals_a_tool_and_then_it_lists_and_calls(harry):
+    server = harry('tools/notes_search')
+
+    async with client(server) as connected:
+        assert 'notes_search' not in [t.name for t in await connected.list_tools()]
+
+        answer = (await connected.call_tool(FIND_TOOLS, {'query': 'note'})).data
+        assert [found['name'] for found in answer['found']] == ['notes_search']
+        assert answer['found'][0]['description'] == 'Find a note by a word in its title or its text'
+
+        assert 'notes_search' in [t.name for t in await connected.list_tools()]
+        result = await connected.call_tool('notes_search', {'query': 'groceries'})
+
+    assert result.data[0]['matched'] == 'groceries'
+
+
+async def test_revealing_tells_the_client_to_look_again(harry):
+    """The client only re-lists when it is told to. Without the notification a revealed
+    tool sits in the roster that nobody asked for again."""
+    server = harry('tools/notes_search')
+    heard: list[str] = []
+
+    async def note_it(message):
+        heard.append(getattr(message, 'method', type(message).__name__))
+
+    async with Client(server, message_handler=note_it) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'note'})
+
+    assert 'notifications/tools/list_changed' in heard
+
+
+async def test_the_search_matches_the_namespace_and_the_body_not_only_the_name(harry):
+    """A word from the description is what somebody actually has. "notebook" appears only
+    in the body."""
+    server = harry('tools/notes_search')
+
+    async with client(server) as connected:
+        by_body = (await connected.call_tool(FIND_TOOLS, {'query': 'NOTEBOOK'})).data
+
+    assert [found['name'] for found in by_body['found']] == ['notes_search']
+
+
+async def test_a_search_that_matches_nothing_says_so_and_reveals_nothing(harry):
+    server = harry('tools/notes_search')
+
+    async with client(server) as connected:
+        answer = (await connected.call_tool(FIND_TOOLS, {'query': 'dishwasher'})).data
+        after = [t.name for t in await connected.list_tools()]
+
+    assert answer['found'] == []
+    assert 'dishwasher' in answer['note']
+    assert 'notes_search' not in after
+
+
+async def test_a_limit_outside_the_range_is_refused(harry):
+    """Anything that searches needs a cap, and a cap nobody can step over."""
+    server = harry('tools/notes_search')
+
+    async with client(server) as connected:
+        with pytest.raises(ToolError, match=str(MAX_LIMIT)):
+            await connected.call_tool(FIND_TOOLS, {'query': 'note', 'limit': MAX_LIMIT + 1})
+        with pytest.raises(ToolError):
+            await connected.call_tool(FIND_TOOLS, {'query': 'note', 'limit': 0})
+
+
+async def test_a_capped_answer_says_to_search_more_narrowly(harry, tmp_path):
+    """Truncation that does not say it truncated is how somebody concludes Harry has three
+    tools when it has thirty."""
+    import shutil
+
+    root = root_with(tmp_path / 'many', 'tools/notes_search')
+    for index in range(DEFAULT_LIMIT + 2):
+        folder = root / 'tools' / f'notes_search{index}'
+        shutil.copytree(root / 'tools' / 'notes_search', folder)
+        declaration = folder / 'TOOL.md'
+        declaration.write_text(
+            declaration.read_text(encoding='utf-8').replace('name: notes_search', f'name: notes_search{index}'),
+            encoding='utf-8',
+        )
+        (folder / 'tool.py').write_text(
+            'from harry.sdk import Context, Registry\n\n\n'
+            'def register(registry: Registry, context: Context) -> None:\n'
+            f'    registry.tool(lambda: {index})\n',
+            encoding='utf-8',
+        )
+
+    server = build_server(load([root]))
+    async with client(server) as connected:
+        answer = (await connected.call_tool(FIND_TOOLS, {'query': 'notes'})).data
+
+    assert len(answer['found']) == DEFAULT_LIMIT
+    assert 'more narrowly' in answer['note']
+
+
+async def test_the_roster_is_never_empty_even_when_every_tool_is_deferred(harry):
+    """A roster with nothing in it is a 400 from the API, not a slow path: the search tool
+    needs something alongside it, and here it is the something."""
+    server = harry('tools/notes_search')
+
+    assert await roster(server) == [FIND_TOOLS]
+
+
+async def test_a_restart_puts_a_revealed_tool_back_out_of_the_roster(harry, tmp_path):
+    """The whole mitigation for a roster that would otherwise only grow. A reveal that
+    survived a restart would be permanent state nobody asked for."""
+    root = root_with(tmp_path / 'root', 'tools/notes_search')
+
+    revealed = build_server(load([root]))
+    async with client(revealed) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'note'})
+        assert 'notes_search' in [t.name for t in await connected.list_tools()]
+
+    restarted = build_server(load([root]))
+    assert 'notes_search' not in await roster(restarted)
+
+
+# ---------------------------------------------------------------------------
+# A job's brief is a prompt
+# ---------------------------------------------------------------------------
+
+
+async def test_a_claude_triggered_job_is_a_prompt_rendered_verbatim(harry):
+    """So the scheduled task invokes it by name instead of carrying a copy of the brief
+    that drifts from the file."""
+    server = harry('jobs/morning-page', 'connectors/weather', 'tools/weather_forecast')
+
+    async with client(server) as connected:
+        prompts = {prompt.name: prompt for prompt in await connected.list_prompts()}
+        assert 'morning-page' in prompts
+        assert (prompts['morning-page'].description or '').startswith("The day's weather")
+
+        rendered = await connected.get_prompt('morning-page')
+
+    content = rendered.messages[0].content
+    assert isinstance(content, TextContent)
+    text = content.text
+    assert text.startswith("Ask Harry for today's candidates.")
+    assert 'digest_build' in text
+    assert '---' not in text
+
+
+async def test_a_scheduled_job_has_no_prompt(harry):
+    """Nothing reads a heuristic job's body. It is documentation for whoever opens the
+    file in three weeks."""
+    server = harry('jobs/refresh', 'jobs/morning-page')
+
+    async with client(server) as connected:
+        names = [prompt.name for prompt in await connected.list_prompts()]
+
+    assert names == ['morning-page']
+
+
+async def test_a_job_the_loader_skipped_has_no_prompt(harry, tmp_path):
+    """A prompt for a job that is not running would be a brief telling Claude to call
+    tools that are not there."""
+    harry('jobs/morning-page')
+    root = tmp_path / 'root'
+    (root / 'jobs' / 'morning-page' / 'JOB.md').write_text(
+        (root / 'jobs' / 'morning-page' / 'JOB.md')
+        .read_text(encoding='utf-8')
+        .replace('enabled: true', 'enabled: false'),
+        encoding='utf-8',
+    )
+
+    async with client(build_server(load([root]))) as connected:
+        assert await connected.list_prompts() == []

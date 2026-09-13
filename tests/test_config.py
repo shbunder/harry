@@ -177,7 +177,8 @@ def test_running_harry_uses_the_configured_port_not_a_hardcoded_one(tmp_path, mo
     monkeypatch.setattr(uvicorn, 'run', fake_run)
 
     assert entry.main([]) == 0
-    assert called['app'] == 'harry.main:app'
+    assert called['app'] == 'harry.main:build_app'
+    assert called['factory'] is True, 'without this uvicorn imports the name instead of calling it'
     assert called['port'] == 7434
     assert called['log_level'] == 'warning'
     assert called['reload'] is False

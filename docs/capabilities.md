@@ -80,8 +80,12 @@ forbidden import never takes effect. Files beside the entry module are read too,
 relative imports between them are fine: a capability is a folder, and its client usually
 lives in a second file.
 
-A folder with **no Python at all** is a whole capability. That is how a `trigger: claude`
-job is one markdown file: Claude runs the half that needs a mind.
+A folder with **no Python at all** is a whole capability for a connector or a job. That is
+how a `trigger: claude` job is one markdown file: Claude runs the half that needs a mind.
+
+**A tool is the exception.** A tool with nothing behind it is one Claude will pick and then
+fail on, and that failure reads as a broken tool rather than an unfinished folder — so the
+loader refuses it. What happens to a tool once it has loaded is [mcp.md](mcp.md).
 
 ## What it takes to be skipped
 
@@ -98,6 +102,7 @@ Each of these costs exactly that one capability, and each one's reason appears i
 | A connector in `requires:` that did not load | `needs icloud, which did not load` |
 | An import that reaches past the SDK | `reaches past harry.sdk — connector.py:9 imports harry.scheduler` |
 | `register` missing from the module | `connector.py has no register(registry, context)` |
+| A **tool** with no `tool.py` beside it | `no tool.py, so there is nothing for this tool to call` |
 | Anything the code raises | `ModuleNotFoundError: No module named 'caldav'` |
 
 Any value the capability declared `secret: true` is replaced with `[redacted]` in every

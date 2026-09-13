@@ -28,8 +28,12 @@ def main(argv: list[str] | None = None) -> int:
     # a missing dependency names itself instead of failing at import of the package.
     import uvicorn
 
+    # A factory, not a module attribute: the app cannot exist until the capabilities are
+    # loaded, because the MCP server publishes them and routes cannot appear after the app
+    # is serving. `--reload` re-imports and calls this again, which is what a restart is.
     uvicorn.run(
-        'harry.main:app',
+        'harry.main:build_app',
+        factory=True,
         host=settings.host,
         port=settings.port,
         reload=args.reload,

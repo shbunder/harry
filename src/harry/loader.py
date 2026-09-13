@@ -103,7 +103,16 @@ def _load_one(capability: Capability, catalogue: Catalogue) -> None:
         config = _settings(capability, fields)
         secrets = _secret_values(fields, config)
         _check_requirements(capability, fields, catalogue)
-        _register(capability, kind, fields, body, config)
+        capability.context = Context(
+            name=capability.name,
+            kind=capability.kind,
+            folder=capability.folder,
+            declaration=fields,
+            body=body,
+            config=config,
+            log=logging.getLogger(f'harry.capability.{capability.name}'),
+        )
+        _register(capability, kind)
     except Skip as skip:
         _record_skip(catalogue, capability, str(skip), secrets)
     except Exception as error:  # noqa: BLE001 — the whole point: one failure, one capability
@@ -187,14 +196,19 @@ def _check_requirements(capability: Capability, fields: dict[str, Any], catalogu
         raise Skip(f'needs {", ".join(sorted(unmet))}, which did not load')
 
 
-def _register(capability: Capability, kind: Kind, fields: dict[str, Any], body: str, config: dict[str, Any]) -> None:
+def _register(capability: Capability, kind: Kind) -> None:
     """Run the capability's own code, if it has any.
 
-    A folder with no Python is a whole capability: a `trigger: claude` job is one markdown
-    file, because Claude runs the half of it that needs a mind.
+    A folder with no Python is a whole capability for a connector or a job: a
+    `trigger: claude` job is one markdown file, because Claude runs the half that needs a
+    mind. **A tool is the exception** — a tool with nothing behind it is one Claude will
+    pick and then fail on, and that failure reads as a broken tool rather than an
+    unfinished folder.
     """
     module_path = capability.folder / kind.module
     if not module_path.is_file():
+        if capability.kind == 'tool':
+            raise Skip(f'no {kind.module}, so there is nothing for this tool to call')
         return
 
     findings = forbidden_imports(capability.folder)
@@ -206,18 +220,7 @@ def _register(capability: Capability, kind: Kind, fields: dict[str, Any], body: 
     if not callable(register):
         raise Skip(f'{kind.module} has no register(registry, context)')
 
-    register(
-        Registry(capability),
-        Context(
-            name=capability.name,
-            kind=capability.kind,
-            folder=capability.folder,
-            declaration=fields,
-            body=body,
-            config=config,
-            log=logging.getLogger(f'harry.capability.{capability.name}'),
-        ),
-    )
+    register(Registry(capability), capability.context)
 
 
 def _import(capability: Capability, path: Path) -> ModuleType:
