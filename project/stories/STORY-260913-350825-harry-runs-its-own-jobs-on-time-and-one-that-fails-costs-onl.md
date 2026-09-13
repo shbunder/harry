@@ -21,14 +21,14 @@ APScheduler, the cron times and the timezones, and the rule that one job's failu
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A job with `schedule: "0 5 * * *"` and `timezone: Europe/Brussels` is scheduled for 05:00 Brussels time
-- [ ] A job in another timezone fires at its own 05:00, not at the machine's
-- [ ] Firing a job runs the function the capability registered
-- [ ] A job still running when its next fire time arrives is not started again, and harry.scheduler logs it in its own words — asserted on Harry's logger, not APScheduler's
-- [ ] A job that raises is logged with its exception type and message
-- [ ] A job that raises sends one alert naming the job and what it raised, keyed on the job
-- [ ] A job that raises does not stop another job from running
-- [ ] No jobs at all is a scheduler that starts, says so, and serves
+- [x] A job with `schedule: "0 5 * * *"` and `timezone: Europe/Brussels` is scheduled for 05:00 Brussels time
+- [x] A job in another timezone fires at its own 05:00, not at the machine's
+- [x] Firing a job runs the function the capability registered
+- [x] A job still running when its next fire time arrives is not started again, and harry.scheduler logs it in its own words — asserted on Harry's logger, not APScheduler's
+- [x] A job that raises is logged with its exception type and message
+- [x] A job that raises sends one alert naming the job and what it raised, keyed on the job
+- [x] A job that raises does not stop another job from running
+- [x] No jobs at all is a scheduler that starts, says so, and serves
 
 ## Subtasks
 

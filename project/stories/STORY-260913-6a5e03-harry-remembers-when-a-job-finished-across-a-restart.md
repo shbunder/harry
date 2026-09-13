@@ -21,13 +21,13 @@ harry.store at its smallest useful size: one JSON file under the data volume, an
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] harry_mark_done("morning-page") records the time under the data volume
-- [ ] The record is still there after a restart
-- [ ] harry_mark_done for a job that does not exist is an error naming the job
-- [ ] harry_mark_done is always in the MCP roster, because a brief cannot search for it
-- [ ] The stand-in trigger: claude brief ends by telling Claude to call it, and says what happens if it does not
-- [ ] A store file that cannot be read starts Harry with an empty record and says so, rather than refusing to start
-- [ ] A store file that cannot be written logs at WARNING and does not break the caller
+- [x] harry_mark_done("morning-page") records the time under the data volume
+- [x] The record is still there after a restart
+- [x] harry_mark_done for a job that does not exist is an error naming the job
+- [x] harry_mark_done is always in the MCP roster, because a brief cannot search for it
+- [x] The stand-in trigger: claude brief ends by telling Claude to call it, and says what happens if it does not
+- [x] A store file that cannot be read starts Harry with an empty record and says so, rather than refusing to start
+- [x] A store file that cannot be written logs at WARNING and does not break the caller
 
 ## Subtasks
 
