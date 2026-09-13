@@ -23,7 +23,8 @@ Five questions nobody has answered, each of which can invalidate a later phase. 
 - [x] A De Tijd article's full body is on stdout, pulled through a browser session saved by hand
 - [x] An MCP tool call that blocks for five minutes returns its result rather than timing out
 - [x] A one-page PDF pushed with remarkapy appears on the tablet, and we know whether the free tier carries it
-- [x] Today's iCloud events come back over CalDAV, and we know whether Reminders arrive as VTODO
+- [x] iCloud answers over CalDAV, and both open questions are settled: Reminders come back as
+      placeholders only, and a recurring event is returned unexpanded — the connector owns both
 - [x] Every finding is written into the decision or scenario that depends on it, quoting what was measured
 
 ## Stories
@@ -52,5 +53,7 @@ Five questions nobody has answered, each of which can invalidate a later phase. 
 ## Links
 
 - Requirements: [[FEAT-260912-cfeb21]]
-- Decision: [[ADR-260912-bd36c2]] — its Consequences names this feature's connector spike as its own unproven half
+- Decision: [[ADR-260912-bd36c2]] — its Consequences names the connector spike as its own
+  unproven half. That spike moved to [[FEAT-260913-fdd33f]], which carries the obligation to
+  amend the ADR once it is answered.
 

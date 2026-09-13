@@ -24,7 +24,8 @@ Two of the spikes need something to call. Standing it up once, with both tools o
 - [x] A FastMCP server serves a `ping` tool that returns immediately and a `sleep` tool that returns after five minutes
 - [x] It is reachable on localhost behind a bearer token
 - [x] Reachability through the tunnel moved to [[FEAT-260913-fdd33f]], which owns the NUC and the tunnel
-- [x] Everything it is made of lives in scratch/ and is imported by nothing
+- [x] It began in scratch/, imported by nothing, and was promoted to scripts/mcp_probe.py once it
+      proved worth keeping — tracked, tested, and imported only by its own tests
 
 ## Subtasks
 
