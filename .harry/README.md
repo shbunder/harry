@@ -58,7 +58,9 @@ a name**: the name, the description and the annotations are in the declaration H
 already read. Each returns what you passed, so `@registry.tool` over the function works.
 
 `context` carries `name`, `kind`, `folder`, `declaration`, `body`, `config`,
-`config_for(principal)` and `log`.
+`config_for(principal)`, `log` — and `connectors`, which is what your `requires:` named, as
+the objects those connectors registered. **That is how you use another capability: you
+declare it and it is handed to you.** You never import one.
 
 **Only `harry.sdk` may be imported.** Reaching for `harry.scheduler`, `harry.store`,
 `harry.mcp`, `harry.main` — or bare `harry` — is refused before your module runs. Files
@@ -184,6 +186,11 @@ renders, and `#harry` says "De Tijd login needs refreshing". To fix it: ...
 The renewal procedure lives here, beside the code it is about, rather than in a
 documentation page somebody has to remember exists. `expires:` is what tells Harry to watch
 the credential at all.
+
+**`provides:` is where the choice to expose something is written down**, and `make lint`
+checks it both ways: a name in the list must be a tool that exists, and a tool namespaced
+after a connector must appear in that connector's list. A tool composed from several
+connectors is namespaced after none of them and is nobody's to offer.
 
 Precedence for one setting, highest first:
 

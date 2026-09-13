@@ -284,13 +284,21 @@ def test_a_tool_with_an_empty_description_body_is_refused(harry, capsys):
     assert 'nearly empty' in capsys.readouterr().err
 
 
-def test_deferring_every_tool_is_refused(harry, capsys):
-    """The API rejects a roster with nothing loaded. Catching it here beats catching it on
-    the first call of the morning."""
+def test_deferring_every_tool_is_fine_now_that_core_always_loads_two(harry, capsys):
+    """There used to be a rule refusing this, because an empty roster is a 400 from the API
+    rather than a slow path. True when it was written and the only tools were these; Harry
+    now publishes a tool search and a job-done report that are never deferred, so the
+    roster is never empty.
+
+    `tests/test_mcp.py::test_the_roster_is_never_empty_even_when_every_tool_is_deferred` is
+    what keeps that true. If core ever stops guaranteeing a loaded tool, that test goes red
+    and this rule comes back.
+    """
     harry('connectors', 'remarkable', CONNECTOR)
     harry('tools', 'digest_list_candidates', TOOL.replace('always_load: true', 'always_load: false'))
-    assert cap.main([]) == 1
-    assert 'every tool is deferred' in capsys.readouterr().err
+
+    assert cap.main([]) == 0
+    assert '0 always loaded' in capsys.readouterr().out
 
 
 def test_one_loaded_tool_is_enough(harry, capsys):
@@ -308,11 +316,12 @@ def test_one_loaded_tool_is_enough(harry, capsys):
 
 
 def test_a_disabled_tool_does_not_count_as_loaded(harry, capsys):
-    """`always_load: true, enabled: false` is not in the roster at all."""
+    """`always_load: true, enabled: false` is not in the roster at all. It is still not an
+    error — core publishes tools of its own that are never deferred."""
     harry('connectors', 'remarkable', CONNECTOR)
     harry('tools', 'digest_list_candidates', TOOL.replace('enabled: true', 'enabled: false'))
-    assert cap.main([]) == 1
-    assert 'every tool is deferred or disabled' in capsys.readouterr().err
+    assert cap.main([]) == 0
+    assert '1 tool(s) — 0 always loaded' in capsys.readouterr().out
 
 
 def test_a_tool_requiring_a_connector_that_does_not_exist_is_caught(harry, capsys):
@@ -441,5 +450,52 @@ def test_a_claude_brief_that_never_asks_to_be_marked_done_is_refused(harry, caps
 def test_a_scheduled_job_needs_no_such_sentence(harry, capsys):
     """Harry fires those itself, so it knows."""
     harry('jobs', 'refresh-feeds', SCHEDULED_JOB)
+
+    assert cap.main([]) == 0
+
+
+# ---------------------------------------------------------------------------
+# `provides:` — where the choice to expose something is written down
+# ---------------------------------------------------------------------------
+
+EXPOSED = TOOL.replace('name: digest_list_candidates', 'name: remarkable_push').replace(
+    'namespace: digest', 'namespace: remarkable'
+)
+
+
+def test_a_connector_must_list_the_tools_namespaced_after_it(harry, capsys):
+    """Otherwise `provides:` is a field nobody has to fill in, and "a tool exists because
+    someone would ask for it" is a sentence rather than a rule."""
+    harry('connectors', 'remarkable', CONNECTOR)
+    harry('tools', 'remarkable_push', EXPOSED)
+
+    assert cap.main([]) == 1
+    assert 'does not list it in `provides:`' in capsys.readouterr().err
+
+
+def test_a_connector_that_lists_its_tool_passes(harry, capsys):
+    harry(
+        'connectors', 'remarkable', CONNECTOR.replace('expires: manual', 'provides: [remarkable_push]\nexpires: manual')
+    )
+    harry('tools', 'remarkable_push', EXPOSED)
+
+    assert cap.main([]) == 0
+
+
+def test_providing_a_tool_that_does_not_exist_is_caught(harry, capsys):
+    """A renamed tool leaves a stale list, and nothing else would say so."""
+    harry(
+        'connectors', 'remarkable', CONNECTOR.replace('expires: manual', 'provides: [remarkable_gone]\nexpires: manual')
+    )
+
+    assert cap.main([]) == 1
+    assert 'which is not a tool that exists' in capsys.readouterr().err
+
+
+def test_a_tool_namespaced_after_no_connector_is_nobody_s_to_offer(harry, capsys):
+    """A digest built from a tablet, a feed and a calendar is namespaced after none of
+    them. That is why the rule is about the namespace rather than about `requires:`."""
+    harry('connectors', 'remarkable', CONNECTOR)
+    harry('tools', 'digest_list_candidates', TOOL)
 
     assert cap.main([]) == 0

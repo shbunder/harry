@@ -154,7 +154,11 @@ the declaration Harry already read, and a second copy would drift from the first
 returns what you passed, so `@registry.connector` over a function works.
 
 `context` carries `name`, `kind`, `folder`, `declaration`, `body`, `config`,
-`config_for(principal)` and `log`.
+`config_for(principal)`, `log` and `connectors`.
+
+**`context.connectors` is how you use another capability** — `context.connectors['slack']`
+is what the connector you named in `requires:` registered. You never import one: two
+folders that import each other are two folders that cannot be swapped.
 
 **Import `harry.sdk` and nothing else under `harry`.** Reaching further is refused before
 your module runs, so the capability is skipped and `/health` names the import. Files beside

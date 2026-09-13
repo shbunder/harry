@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,23 @@ class ContractError(Exception):
     Raised out of `Registry`, caught by the loader like any other failure during
     registration: the capability is skipped and the message becomes its reason.
     """
+
+
+class Connectors(dict[str, Any]):
+    """What `requires:` named, and a readable refusal for anything else.
+
+    A plain dict would answer a capability reaching past its declaration with
+    `KeyError: 'weather'`, and the loader turns whatever is raised into the sentence
+    `/health` shows. That is a Python error class in front of somebody who is not
+    debugging, which is the thing the rest of this module works to avoid.
+    """
+
+    def __missing__(self, name: str) -> Any:
+        declared = ', '.join(sorted(self)) or 'it declared none'
+        raise ContractError(
+            f'reached for the {name} connector, which it did not declare in `requires:` '
+            f'({declared}). Add it there and Harry will hand it over.'
+        )
 
 
 @dataclass(frozen=True)
@@ -58,6 +75,18 @@ class Context:
     """The declaration's body, verbatim. Harry serves it and never reads it."""
     config: Mapping[str, Any]
     log: logging.Logger
+    connectors: Mapping[str, Any] = field(default_factory=Connectors)
+    """What `requires:` named, as the objects those connectors registered.
+
+    The other half of a contract that was only ever half enforced: `requires:` decided
+    whether this capability loaded, and handed it nothing. So a tool can use the connector
+    it declared **without importing it** — two folders that import each other are two
+    folders that cannot be swapped, and swapping is what the layout is for.
+
+    Exactly what was declared and nothing else. A capability that could reach any connector
+    would not have to declare what it needs, and then the loader could not refuse it at
+    start-up when something is missing — the failure would move to the first call at 06:30.
+    """
 
     def config_for(self, principal: Principal) -> dict[str, Any]:
         """The same settings, resolved for one person.

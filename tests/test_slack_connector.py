@@ -10,6 +10,7 @@ Nothing here reaches Slack. The requests are recorded fixtures via respx, per
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -17,9 +18,14 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
+from fastmcp import Client
+from mcp.types import TextContent
 
 from harry.alerts import Alerts
+from harry.boundary import forbidden_imports
 from harry.loader import load
+from harry.mcp import FIND_TOOLS, build_server
+from harry.store import Store
 
 REPO = Path(__file__).parent.parent
 POST_MESSAGE = 'https://slack.com/api/chat.postMessage'
@@ -67,8 +73,6 @@ def test_a_message_arrives_as_one_post_to_the_channel(slack):
     assert route.call_count == 1
     request = route.calls[0].request
     assert request.headers['Authorization'] == f'Bearer {TOKEN}'
-    import json
-
     sent = json.loads(request.read())
     assert sent == {'channel': '#harry', 'text': 'De Tijd login needs refreshing'}
 
@@ -256,3 +260,206 @@ def test_a_message_really_arrives_in_a_real_workspace():
     assert slack.alert_sink is not None
 
     slack.alert_sink('Harry says hello. This line came from make test-live.')
+
+
+# ---------------------------------------------------------------------------
+# Claude picks the channel
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_a_message_goes_where_the_caller_asked(slack):
+    """The ask that started this: a failure to the alerting channel, a finished piece of
+    work to the channel the people who asked for it are in."""
+    route = respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': True}))
+    client = connector(slack()).target
+
+    where = client.send('the weekly reading list is ready', channel='#claude')
+
+    assert where == '#claude'
+    assert json.loads(route.calls[0].request.read())['channel'] == '#claude'
+
+
+@respx.mock
+def test_no_channel_means_the_configured_one(slack):
+    """Which is what the alert path always does — deciding where a failure belongs is
+    judgement, and Harry does not do judgement."""
+    route = respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': True}))
+
+    assert connector(slack()).target.send('something went wrong') == '#harry'
+    assert json.loads(route.calls[0].request.read())['channel'] == '#harry'
+
+
+@respx.mock
+def test_an_alert_still_goes_to_the_configured_channel(slack):
+    """Through Alerts, the way production raises one. Nothing to reconfigure."""
+    route = respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': True}))
+
+    Alerts.from_catalogue(slack()).send('the tablet push failed twice')
+
+    assert json.loads(route.calls[0].request.read())['channel'] == '#harry'
+
+
+@respx.mock
+def test_a_channel_the_bot_is_not_in_says_how_to_fix_it(slack):
+    """`chat:write` is not enough on its own, and inviting the bot is the step people skip.
+    The code alone sends somebody to a search engine."""
+    respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': False, 'error': 'not_in_channel'}))
+
+    with pytest.raises(RuntimeError) as refused:
+        connector(slack()).target.send('anything', channel='#finance')
+
+    assert 'not_in_channel' in str(refused.value)
+    assert '#finance' in str(refused.value)
+    assert '/invite @Harry' in str(refused.value)
+
+
+@respx.mock
+def test_a_channel_that_does_not_exist_says_so_the_same_way(slack):
+    respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': False, 'error': 'channel_not_found'}))
+
+    with pytest.raises(RuntimeError) as refused:
+        connector(slack()).target.send('anything', channel='#nowhere')
+
+    assert '#nowhere' in str(refused.value)
+    assert 'private channel' in str(refused.value)
+
+
+@respx.mock
+def test_a_code_with_no_advice_still_reports_the_code(slack):
+    """The table has three entries, not every code Slack has. An unknown one is reported
+    plainly rather than dressed up."""
+    respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': False, 'error': 'ratelimited'}))
+
+    with pytest.raises(RuntimeError, match='ratelimited'):
+        connector(slack()).target.send('anything')
+
+
+@respx.mock
+def test_the_advice_never_repeats_the_token(slack):
+    respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': False, 'error': 'invalid_auth'}))
+
+    with pytest.raises(RuntimeError) as refused:
+        connector(slack()).target.send('anything')
+
+    assert TOKEN not in str(refused.value)
+    assert 'Reinstall the Slack app' in str(refused.value)
+
+
+# ---------------------------------------------------------------------------
+# The tool, over MCP, the way Claude reaches it
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def harry_with_slack(tmp_path, monkeypatch):
+    """The real connector *and* the real tool, loaded together and published."""
+    import harry.config
+
+    monkeypatch.delenv('HARRY_SLACK_BOT_TOKEN', raising=False)
+    monkeypatch.delenv('HARRY_SLACK_CHANNEL', raising=False)
+    settings = harry.config.Settings(data_dir=tmp_path / 'data')
+    monkeypatch.setattr(harry.config, 'get_settings', lambda: settings)
+
+    def build(*, token: str = TOKEN):
+        root = tmp_path / 'root'
+        for where in ('connectors/slack', 'tools/slack_post'):
+            (root / where).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(REPO / '.harry' / where, root / where, dirs_exist_ok=True)
+        settings_file = root / 'connectors' / 'slack' / '.env.local'
+        settings_file.write_text(f'BOT_TOKEN={token}\nCHANNEL=#harry\n' if token else 'CHANNEL=#harry\n', 'utf-8')
+        return build_server(load([root]), Store(tmp_path / 'jobs.json'))
+
+    return build
+
+
+async def test_the_tool_is_deferred_and_found_by_searching(harry_with_slack):
+    """Most tools defer. Posting a message is not something every session needs, and the
+    roster is sent on every request."""
+    server = harry_with_slack()
+
+    async with Client(server) as connected:
+        assert 'slack_post' not in [t.name for t in await connected.list_tools()]
+
+        found = (await connected.call_tool(FIND_TOOLS, {'query': 'slack'})).data
+        assert [row['name'] for row in found['found']] == ['slack_post']
+        assert 'slack_post' in [t.name for t in await connected.list_tools()]
+
+
+@respx.mock
+async def test_claude_posts_to_a_named_channel(harry_with_slack):
+    route = respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': True}))
+    server = harry_with_slack()
+
+    async with Client(server) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'slack'})
+        answer = (
+            await connected.call_tool('slack_post', {'text': 'the reading list is ready', 'channel': '#claude'})
+        ).data
+
+    assert answer == {'channel': '#claude', 'posted': 'the reading list is ready'}
+    assert json.loads(route.calls[0].request.read()) == {'channel': '#claude', 'text': 'the reading list is ready'}
+
+
+@respx.mock
+async def test_a_refusal_reaches_claude_as_an_error_with_the_fix_in_it(harry_with_slack):
+    """Not a result with an error field in it — an error, so the model cannot mistake it
+    for a message that went out."""
+    respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': False, 'error': 'not_in_channel'}))
+    server = harry_with_slack()
+
+    async with Client(server) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'slack'})
+        result = await connected.call_tool('slack_post', {'text': 'x', 'channel': '#finance'}, raise_on_error=False)
+
+    assert result.is_error
+    said = ' '.join(block.text for block in result.content if isinstance(block, TextContent))
+    assert '#finance' in said and '/invite @Harry' in said
+
+
+async def test_without_a_credential_the_tool_is_not_offered_at_all(harry_with_slack):
+    """Claude sees no tool rather than a tool that fails. A tool in the roster that cannot
+    work is one the model picks, and the failure reads as a broken tool."""
+    server = harry_with_slack(token='')
+
+    async with Client(server) as connected:
+        found = (await connected.call_tool(FIND_TOOLS, {'query': 'slack'})).data
+
+    assert found['found'] == [], 'a tool whose connector has no credential was offered'
+
+
+def test_the_tool_imports_the_sdk_and_nothing_else():
+    """It reaches the connector through what it was handed, never by importing it. Two
+    folders that import each other are two folders that cannot be swapped."""
+    assert forbidden_imports(REPO / '.harry' / 'tools' / 'slack_post') == []
+
+
+@respx.mock
+async def test_leaving_the_channel_out_uses_the_configured_one(harry_with_slack):
+    """Asserted through the tool, not through the connector beneath it. The roster could
+    start demanding a channel and a test one layer down would never say so."""
+    route = respx.post(POST_MESSAGE).mock(return_value=httpx.Response(200, json={'ok': True}))
+    server = harry_with_slack()
+
+    async with Client(server) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'slack'})
+        answer = (await connected.call_tool('slack_post', {'text': 'no channel given'})).data
+
+    assert answer == {'channel': '#harry', 'posted': 'no channel given'}
+    assert json.loads(route.calls[0].request.read())['channel'] == '#harry'
+
+
+async def test_the_tools_annotations_reach_the_client(harry_with_slack):
+    """The first tool here that is not read-only. Its annotations are what let a client gate
+    a thing that posts into a shared workspace without gating one that reads a feed."""
+    server = harry_with_slack()
+
+    async with Client(server) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'slack'})
+        published = {t.name: t for t in await connected.list_tools()}['slack_post']
+
+    assert published.annotations is not None
+    assert published.annotations.read_only_hint is False
+    assert published.annotations.destructive_hint is False
+    assert published.annotations.idempotent_hint is False
+    assert published.annotations.open_world_hint is True

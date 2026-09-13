@@ -1,6 +1,7 @@
 ---
 name: slack
 description: One-way messages into Slack, so a failure reaches a person instead of a log file
+provides: [slack_post]
 expires: manual
 enabled: true
 config:
@@ -16,6 +17,11 @@ config:
 Harry's only way of telling you something went wrong. One-way, out. Nothing comes back
 through here — buttons and slash commands are a second credential and a second inbound
 surface, and none of it is needed to stop a failure being silent.
+
+**What it exposes.** One tool, `slack_post` — posting a line somewhere is something you
+would ask for. Nothing else: reading a channel, listing channels, reacting, editing and
+deleting are all things this bot could be given scopes for and none of them is something
+anybody has asked to do. Not exposing a read path needs no justification; exposing one does.
 
 **What Harry sends:** one line, no formatting, no severity. Read on a phone by somebody who
 is not debugging it.
