@@ -186,3 +186,27 @@ def test_running_harry_uses_the_configured_port_not_a_hardcoded_one(tmp_path, mo
     assert called['reload'] is True
 
     get_settings.cache_clear()
+
+
+def test_every_key_the_committed_env_leaves_empty_resolves_to_empty(monkeypatch):
+    """The bug this exists for: an inline comment after an EMPTY value becomes the value.
+
+    `HARRY_API_TOKEN=   # generate with openssl` resolved to the string
+    "# generate with openssl", so an unconfigured Harry had a bearer token — published
+    in this file, in this repository. `HARRY_CAPABILITIES_DIR=` became `Path('.')`, which
+    would have loaded the whole working directory as capabilities.
+
+    Neither failed anything. Both looked configured and were wrong, which is why this
+    asserts the resolved values rather than the file's shape.
+    """
+    repo = Path(__file__).parent.parent
+    if not (repo / '.env').exists():
+        pytest.skip('no committed .env in this tree')
+
+    for name in ('HARRY_API_TOKEN', 'HARRY_PUBLIC_URL', 'HARRY_CAPABILITIES_DIR'):
+        monkeypatch.delenv(name, raising=False)
+
+    settings = settings_from(repo / '.env')
+    assert settings.api_token.get_secret_value() == '', 'an unset token must authorise nobody'
+    assert settings.public_url is None
+    assert settings.capabilities_dir is None
