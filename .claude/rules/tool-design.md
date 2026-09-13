@@ -117,5 +117,4 @@ rather than judgement calls, which is what makes them survive thirty tools.
 a missing `readOnlyHint`, an unknown annotation, a near-empty description body, and — the one
 that makes exposure a rule rather than a sentence — **a tool namespaced after a connector
 that the connector does not list in `provides:`**. `tests/test_capabilities.py`
-makes each one fail. Severity: **Important**; **Critical** for a mode argument or a deferred
-roster.
+makes each one fail. Severity: **Important**; **Critical** for a mode argument.
