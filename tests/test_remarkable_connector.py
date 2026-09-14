@@ -13,6 +13,7 @@ stops that stand-in drifting away from remarkapy.
 from __future__ import annotations
 
 import inspect
+import json
 import logging
 import shutil
 from dataclasses import dataclass
@@ -47,7 +48,7 @@ class Item:
     type: str = 'DocumentType'
     visibleName: str = 'a document'  # noqa: N815 — remarkapy's spelling, and it is the wire's
     parent: str = ''
-    lastModified: str = '2026-09-14T06:30:00Z'  # noqa: N815 — same
+    lastModified: str = '1789384626339'  # noqa: N815 — same, and epoch milliseconds, as recorded
 
 
 class StandIn:
@@ -213,15 +214,48 @@ def test_documents_come_back_newest_first(tablet):
     cloud = StandIn(
         folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
         documents=[
-            Item(id='old', visibleName='Friday', parent='f', lastModified='2026-09-11T06:30:00Z'),
-            Item(id='new', visibleName='Monday', parent='f', lastModified='2026-09-14T06:30:00Z'),
+            Item(id='old', visibleName='Friday', parent='f', lastModified='1789124400000'),
+            Item(id='new', visibleName='Monday', parent='f', lastModified='1789384626339'),
         ],
     )
 
     found = connector(tablet(cloud=cloud)).documents()
 
     assert [item['name'] for item in found] == ['Monday', 'Friday']
-    assert found[0] == {'id': 'new', 'name': 'Monday', 'modified': '2026-09-14T06:30:00Z'}
+    assert found[0] == {'id': 'new', 'name': 'Monday', 'modified': '2026-09-14T11:17:06.339000Z'}
+
+
+def test_a_recorded_listing_becomes_a_time_a_person_can_read(tablet):
+    """reMarkable sends epoch milliseconds in a string. `"1789384626339"` sorts correctly by
+    luck and tells a reader nothing, and it is the field `remarkable_list_documents` shows
+    Claude — so the conversion is the difference between a true answer and a shaped one.
+
+    Built from a real listing rather than from what a stand-in was guessed to return, which
+    is exactly the mistake this fixture was recorded to catch.
+    """
+    recorded = json.loads((REPO / 'tests' / 'fixtures' / 'remarkable' / 'folder-listing.json').read_text('utf-8'))
+    cloud = StandIn(
+        folders=[Item(id='12c9c3b8-6108-4f3b-abcd-06736f99e65e', type='CollectionType', visibleName='Harry')],
+        documents=[
+            Item(**{key: entry[key] for key in ('id', 'hash', 'type', 'visibleName', 'lastModified', 'parent')})
+            for entry in recorded
+        ],
+    )
+
+    found = connector(tablet(cloud=cloud)).documents()
+
+    assert [item['modified'] for item in found] == ['2026-09-14T11:17:06.339000Z', '2026-09-14T11:10:42.902000Z']
+    assert all(item['name'] == 'Harry says hello — from make test-live' for item in found)
+
+
+def test_a_timestamp_in_a_shape_nobody_expected_is_passed_through(tablet):
+    """If reMarkable ever starts sending ISO, the listing must not start returning None."""
+    cloud = StandIn(
+        folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
+        documents=[Item(id='d', visibleName='Monday', parent='f', lastModified='2026-09-14T06:30:00Z')],
+    )
+
+    assert connector(tablet(cloud=cloud)).documents()[0]['modified'] == '2026-09-14T06:30:00Z'
 
 
 def test_a_folder_nobody_has_made_yet_lists_empty(tablet):
@@ -338,6 +372,51 @@ def test_a_revoked_token_says_to_pair_again_and_is_not_retried(tablet, tmp_path)
     ]
 
 
+def test_a_failed_listing_does_not_silence_the_next_failed_push(tablet, tmp_path):
+    """An alert is said once per key per day. One key for the whole connector would let a
+    listing — which Claude can ask for at any hour — spend the day's budget, and the 06:30
+    push would then fail in silence. That is the three-week silence this connector exists to
+    prevent, arriving through the thing meant to prevent it.
+    """
+    cloud = StandIn()
+    cloud.fail_for = 99
+    built = tablet(cloud=cloud)
+    client = connector(built)
+
+    with pytest.raises(Exception, match='could not list'):
+        client.documents()
+    with pytest.raises(Exception, match='could not push'):
+        client.push(a_pdf(tmp_path / 'page.pdf'), 'A page')
+
+    _, sink = built
+    assert len(sink.heard) == 2, "the listing swallowed the push's alert"
+
+
+def test_a_failed_listing_does_not_silence_a_revoked_token(tablet, tmp_path):
+    """The worst version of the same bug: a transient connection failure at 07:00 hiding the
+    one message that says there is something to do about it."""
+
+    class Revoked(StandIn):
+        def list_directory(self, directory_ref: str = '', refresh: bool = False):
+            if self.fail_for > 0:
+                self.fail_for -= 1
+                raise httpx.ConnectError('no route to host')
+            raise ExpiredToken('device token rejected')
+
+    cloud = Revoked()
+    cloud.fail_for = 2
+    built = tablet(cloud=cloud)
+    client = connector(built)
+
+    with pytest.raises(Exception, match='could not list'):
+        client.documents()
+    with pytest.raises(Exception, match='pair this machine again'):
+        client.push(a_pdf(tmp_path / 'page.pdf'), 'A page')
+
+    _, sink = built
+    assert any('pair this machine again' in line for line in sink.heard), sink.heard
+
+
 def test_a_failure_that_keeps_failing_says_so_once_a_day(tablet, tmp_path):
     cloud = StandIn()
     cloud.fail_for = 99
@@ -430,7 +509,20 @@ def test_remarkapy_is_pinned_exactly_and_says_why():
 
     assert '"remarkapy==0.3.1"' in declared
     assert 'broke every write in August 2026' in declared
-    assert 'rmapi' not in declared.replace('rmapy', '').replace('the Go rmapi binary is not needed', '')
+
+
+def test_the_image_does_not_carry_a_second_client_for_the_tablet():
+    """Two reverse-engineered protocol implementations would be two things to keep working
+    and twice the surface holding a token that can rewrite every document on the device.
+
+    This reads the Dockerfile rather than pyproject.toml, because that is where the binary
+    actually was — downloaded from GitHub at build time for a call nothing made.
+    """
+    image = (REPO / 'Dockerfile').read_text(encoding='utf-8')
+    instructions = [line for line in image.splitlines() if line.strip() and not line.lstrip().startswith('#')]
+
+    assert not [line for line in instructions if 'rmapi' in line], 'the Go rmapi binary is back in the image'
+    assert not [line for line in instructions if 'curl' in line], 'curl was only there to fetch rmapi'
 
 
 def test_the_connector_imports_the_sdk_and_nothing_else():
@@ -788,3 +880,158 @@ def test_the_default_place_is_where_the_connector_reads_from():
     assert str(remarkable_pair.WHERE) == '.harry/connectors/remarkable/.env.local'
     assert remarkable_pair.KEY == 'DEVICE_TOKEN'
     assert (REPO / '.harry' / 'connectors' / 'remarkable' / 'CONNECTOR.md').is_file()
+
+
+# ---------------------------------------------------------------------------
+# The two lines that build a real client, which nothing else here executes
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def no_network(monkeypatch, tmp_path):
+    """A real remarkapy client, with httpx answering from memory and its default config
+    path pointed somewhere disposable.
+
+    Not an injected `http_client`: passing one flips remarkapy's own `injected_runtime`
+    flag, which is what decides `persist_config` — so a test that injected would pass
+    whether or not the caller asked for anything. Replacing `httpx.Client` leaves that
+    decision exactly where production leaves it.
+
+    **`DEFAULT_CONFIG_PATH` is moved because these tests exist to be broken.** The way you
+    check a guard is to delete it and watch a test go red — and the guard here stops a
+    device token being written to `~/.rmapi`. Without this line, checking it writes a real
+    token into a real home directory. That happened once while this file was being written.
+    """
+    import remarkapy.configfile
+
+    disposable = tmp_path / 'not-a-real-home' / '.rmapi'
+    monkeypatch.setattr(remarkapy.configfile, 'DEFAULT_CONFIG_PATH', disposable)
+    # Both, because `resolve_config_path` walks the candidates first and only falls back to
+    # the default. The first candidate is `Path.home() / '.rmapi'` — which exists on the
+    # machine this is being written on, so moving the fallback alone changes nothing.
+    monkeypatch.setattr(remarkapy.configfile, 'candidate_config_paths', lambda: [disposable])
+
+    def answered(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={'token': 'a-user-token'}, text='a-device-token')
+
+    real = httpx.Client
+
+    def in_memory(*args, **kwargs):
+        kwargs.pop('transport', None)
+        return real(*args, transport=httpx.MockTransport(answered), **kwargs)
+
+    monkeypatch.setattr(httpx, 'Client', in_memory)
+
+
+def the_home_copy() -> Path:
+    """Where remarkapy writes a token when nobody stops it.
+
+    Read from remarkapy rather than spelled out here, because it is a module-level constant
+    computed from `pathlib.Path.home()` **at import time** — which is the whole reason these
+    tests assert on a path instead of setting `HOME` and looking for a file. No environment
+    variable can move it.
+    """
+    import remarkapy.configfile
+
+    return remarkapy.configfile.DEFAULT_CONFIG_PATH
+
+
+def test_the_tablet_client_is_built_with_the_ceiling_the_slack_line_quotes(tablet, no_network):
+    """`_reach_remarkable` runs only in the live test, so every one of its settings could be
+    deleted with the suite still green — and the Slack line says "did not answer within 30s",
+    which would become a false statement about remarkapy's own default of 20.
+    """
+    built = _connector_module(tablet)['_reach_remarkable']('a-device-token')
+
+    assert built._client.timeout.read == 30.0, 'the connector did not choose a ceiling of its own'
+    assert built._interactive is False, 'an unattended Harry must never wait on input() at 06:30'
+
+
+def test_the_tablet_client_keeps_the_token_out_of_a_home_directory(tablet, no_network):
+    """The one place this token lives is the `.env.local` a person put it in."""
+    built = _connector_module(tablet)['_reach_remarkable']('a-device-token')
+
+    assert built._persist_config is False, 'the token would be written to disk'
+    assert built._config_path != the_home_copy(), 'a write would land in a home directory'
+
+
+def test_the_pairing_client_can_never_write_to_a_home_directory(no_network, tmp_path):
+    """The credential that can rewrite every document on the tablet must not get a plaintext
+    copy in a home directory.
+
+    Both halves are asserted because it needs both. `persist_config=False` stops the write;
+    `configfile` decides where a write would land if that keyword were ever dropped — and it
+    has to, because remarkapy's default is computed from `pathlib.Path.home()` at import
+    time and no environment variable can redirect it.
+    """
+    import remarkable_pair
+
+    thrown_away = tmp_path / 'thrown-away' / '.rmapi'
+    built = remarkable_pair._pairing_client(thrown_away)  # noqa: SLF001
+
+    assert built._persist_config is False, 'the token would be written to disk'
+    assert built._config_path == thrown_away, 'a write would land outside the throwaway'
+    assert built._config_path != the_home_copy(), 'a write would land in a home directory'
+
+
+def test_pairing_throws_the_config_directory_away(no_network, tmp_path, monkeypatch):
+    """Whatever remarkapy may write, it is gone when the command returns."""
+    import remarkable_pair
+
+    seen: list[Path] = []
+    real = remarkable_pair._pairing_client  # noqa: SLF001
+
+    def watch(configfile: Path):
+        seen.append(configfile)
+        return real(configfile)
+
+    monkeypatch.setattr(remarkable_pair, '_pairing_client', watch)
+    where = tmp_path / 'connectors' / 'remarkable' / '.env.local'
+    remarkable_pair.pair('abcd1234', where)
+
+    assert where.is_file(), 'the token did not reach the file the connector reads'
+    assert len(seen) == 1 and not seen[0].parent.exists(), 'the pairing directory outlived the command'
+
+
+def test_a_listing_is_capped(tablet):
+    """A folder that grew without a ceiling would be a year of mornings in the caller's
+    context. Sixty documents in, fifty out, newest kept."""
+    cloud = StandIn(
+        folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
+        documents=[
+            Item(id=f'd{n}', visibleName=f'Day {n}', parent='f', lastModified=str(1789384626339 + n)) for n in range(60)
+        ],
+    )
+
+    found = connector(tablet(cloud=cloud)).documents()
+
+    assert len(found) == 50
+    assert found[0]['name'] == 'Day 59', 'the cap kept the oldest instead of the newest'
+
+
+def test_a_smaller_limit_is_honoured(tablet):
+    cloud = StandIn(
+        folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
+        documents=[
+            Item(id=f'd{n}', visibleName=f'Day {n}', parent='f', lastModified=str(1789384626339 + n)) for n in range(10)
+        ],
+    )
+
+    assert len(connector(tablet(cloud=cloud)).documents(3)) == 3
+
+
+async def test_something_that_is_not_a_pdf_is_refused_through_the_tool(tablet, tmp_path):
+    """The suffix check is reached at the connector by another test. Production reaches it
+    through MCP, and that is the path a bad argument actually arrives on."""
+    cloud = StandIn()
+    built = tablet(cloud=cloud, tools=BOTH_TOOLS)
+    not_a_pdf = tmp_path / 'notes.txt'
+    not_a_pdf.write_text('hello', encoding='utf-8')
+
+    result = await through_mcp(
+        built, tmp_path, 'remarkable_push_document', {'path': str(not_a_pdf), 'name': 'Notes'}, raise_on_error=False
+    )
+
+    assert result.is_error is True
+    assert 'not a PDF' in str(result.content[0].text)  # type: ignore[union-attr] — an error is one TextContent
+    assert cloud.pushed == []

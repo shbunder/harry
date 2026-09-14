@@ -58,8 +58,8 @@ A push that fails is tried **exactly once more**. A retry that works is not a fa
 nothing. Two failures raise — so whoever asked knows the page did not arrive — and put one
 line in Slack.
 
-**The morning page survives a failed push.** `digest_build` writes the PDF to disk first and
-pushes second, so a push that fails costs you the delivery and not the page.
+A failed push costs the delivery and nothing else. Whatever was being pushed is still on
+disk where it was, and whoever asked is told it did not arrive.
 
 ## When it stops working
 

@@ -11,5 +11,5 @@ def register(registry: Registry, context: Context) -> None:
     tablet = context.connectors['remarkable']
 
     @registry.tool
-    def remarkable_list_documents() -> list[dict]:
-        return tablet.documents()
+    def remarkable_list_documents(limit: int = 50) -> list[dict]:
+        return tablet.documents(limit)

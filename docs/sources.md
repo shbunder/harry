@@ -210,7 +210,8 @@ top level the first time something is pushed and found rather than re-made after
 - `remarkable_list_documents()` — what is in that folder, newest first. An empty list means
   the folder is empty or not made yet, and is not an error.
 
-The morning page uses the connector directly, as `tablet.push(path, name)`.
+The morning page **will** use the connector directly, as `tablet.push(path, name)` — that
+page is not built yet.
 
 ### When a push fails
 
@@ -233,8 +234,8 @@ anything from the response.
 | Every write started failing and nothing here changed | Two failures, one Slack line | reMarkable changed the protocol — it happened in August 2026. Bump the exact `remarkapy` pin and run `make test-live ARGS=tests/test_remarkable_connector.py` |
 | A document you never opened vanished | — | The free tier removes untouched documents after 50 days. Irrelevant for a page replaced every morning |
 
-**The morning page survives every row of that.** `digest_build` writes the PDF to disk first
-and pushes second, so a failed push costs the delivery and not the page.
+Nothing else is affected: a failed push costs the delivery, and whatever was being pushed is
+still on disk where it was.
 
 **`remarkapy` is pinned to exactly 0.3.1.** The protocol is reverse-engineered and a release
 broke every write in August 2026; a version range would deliver that release on the next

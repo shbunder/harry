@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import tempfile
 from pathlib import Path
 
 from remarkapy import Client, RemarkableAPIError
@@ -37,18 +38,33 @@ def pair(code: str, where: Path = WHERE, register=None) -> Path:
 
 
 def _register(code: str) -> str:
-    """remarkapy does the exchange. `persist_config` stays off so `~/.rmapi` is not written."""
-    client = Client(interactive=False, persist_config=False)
-    try:
-        return client.register_device(code)
-    except RemarkableAPIError as error:
-        # Never the response body: a rejected pairing echoes the request, and the request
-        # carried the code.
-        raise SystemExit(
-            f'the code was refused — get another from my.remarkable.com/device/desktop/connect ({type(error).__name__})'
-        ) from error
-    finally:
-        client.close()
+    """remarkapy does the exchange, into a directory that is thrown away afterwards.
+
+    Two things keep the token out of `~/.rmapi`, and it needs two. `persist_config=False`
+    stops the write; `configfile` decides where a write would land if that argument were
+    ever dropped. Neither alone is enough — remarkapy resolves its default path from
+    `pathlib.Path.home()` **at import time**, so no environment variable can redirect it,
+    and a single missing keyword would put a credential that can rewrite every document on
+    the tablet into a plaintext file in a home directory.
+    """
+    with tempfile.TemporaryDirectory(prefix='harry-pairing-') as thrown_away:
+        client = _pairing_client(Path(thrown_away) / '.rmapi')
+        try:
+            return client.register_device(code)
+        except RemarkableAPIError as error:
+            # Never the message: remarkapy raises ResponseError(status, response.text), so
+            # it carries whatever reMarkable's server said back about a request that had
+            # the code in it.
+            raise SystemExit(
+                f'the code was refused — get another from my.remarkable.com/device/desktop/connect ({type(error).__name__})'
+            ) from error
+        finally:
+            client.close()
+
+
+def _pairing_client(configfile: Path) -> Client:
+    """The client `_register` uses, alone so a test can look at what it was built with."""
+    return Client(configfile=configfile, interactive=False, persist_config=False)
 
 
 def _write(where: Path, token: str) -> None:

@@ -33,7 +33,7 @@ DIM   := \033[2m
 OFF   := \033[0m
 
 .PHONY: help env-install check lint format typecheck test test-cov lock env-template \
-        board lanes lessons worktree worktree-prune probe spike serve digest-dry remarkable-pair \
+        board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-now remarkable-pair \
         image up down logs docs clean
 
 help:  ## Show this help

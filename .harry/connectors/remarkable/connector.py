@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,11 @@ ATTEMPTS = 2
 revoked token, and neither gets better on a third attempt inside the same minute."""
 
 PDF = '.pdf'
+
+MOST = 50
+"""Documents in one listing. The folder holds a page a day and the free tier drops untouched
+ones after fifty, so this is a ceiling rather than a limit anybody meets — and a listing that
+grew without one would be a whole year of mornings in the caller's context."""
 
 PAGE = (509.34, 679.13)
 """Points, width by height — the reMarkable Paper Pro's page, measured in September 2026.
@@ -116,7 +122,9 @@ class Tablet:
 
     def push_bytes(self, payload: bytes, name: str) -> dict:
         """The same push, for something that was rendered rather than read off disk."""
-        entry = self._trying(f'push {name!r}', lambda client: client.put_pdf(name, payload, parent=self._where(client)))
+        entry = self._trying(
+            f'push {name!r}', lambda client: client.put_pdf(name, payload, parent=self._where(client)), key='push'
+        )
         return {'where': self.folder, 'id': entry.id, 'name': name}
 
     # -- what the tools call --------------------------------------------------
@@ -125,39 +133,46 @@ class Tablet:
         """Render markdown to a page the tablet will not rescale, then push it."""
         return self.push_bytes(render_markdown(markdown, name), name)
 
-    def documents(self) -> list[dict]:
-        """What is already in the folder, newest first.
+    def documents(self, limit: int = MOST) -> list[dict]:
+        """What is already in the folder, newest first, capped.
 
         A folder nobody has created yet is empty rather than an error: it is the true answer,
         and the first push will make it.
         """
-        found = self._trying('list the folder', self._read_folder)
-        return sorted(found, key=lambda item: item['modified'] or '', reverse=True)
+        found = self._trying('list the folder', self._read_folder, key='list')
+        newest = sorted(found, key=lambda item: item['modified'] or '', reverse=True)
+        return newest[: max(1, min(limit, MOST))]
 
     def _read_folder(self, client: Any) -> list[dict]:
         where = self._find_folder(client)
         if where is None:
             return []
         return [
-            {'id': entry.id, 'name': entry.visibleName, 'modified': getattr(entry, 'lastModified', None)}
+            {'id': entry.id, 'name': entry.visibleName, 'modified': _when(getattr(entry, 'lastModified', None))}
             for entry in client.list_directory_hydrated(where)
             if entry.type == 'DocumentType'
         ]
 
     # -- the work -------------------------------------------------------------
 
-    def _trying(self, what: str, call: Callable[[Any], Any]) -> Any:
+    def _trying(self, what: str, call: Callable[[Any], Any], key: str) -> Any:
         """One attempt, then one more, then say so to the caller and to a person.
 
         A revoked token is not retried. It will be refused exactly as fast the second time,
         and the sentence a person needs is different — there is something to *do* about it.
+
+        **`key` is the operation, not the connector.** An alert is said once per key per
+        day, so one key for everything would let a failed listing — which Claude can ask for
+        at any hour — spend the day's budget, and the 06:30 push would then fail in silence.
+        That is the three-week silence this connector exists to prevent, arriving through
+        the thing meant to prevent it.
         """
         last: Exception | None = None
         for attempt in range(1, ATTEMPTS + 1):
             try:
                 return call(self._reach())
             except ExpiredToken as error:
-                self._give_up('the tablet refused the token — pair this machine again with make remarkable-pair')
+                self._give_up('the tablet refused the token — pair this machine again with make remarkable-pair', key)
                 raise Refused(
                     'the tablet refused the token — pair this machine again with make remarkable-pair'
                 ) from error
@@ -167,12 +182,13 @@ class Tablet:
                 self._log.warning('could not %s (attempt %d of %d)', what, attempt, ATTEMPTS)
 
         why = _why(last)
-        self._give_up(why)
+        self._give_up(why, key)
         raise Refused(f'could not {what}: {why}') from last
 
-    def _give_up(self, why: str) -> None:
-        """One line, once a day, naming the tablet. Never the token, never the response."""
-        self._alert(f'reMarkable: {why}', key='push')
+    def _give_up(self, why: str, key: str) -> None:
+        """One line, once a day per operation, naming the tablet. Never the token, never
+        the response body."""
+        self._alert(f'reMarkable: {why}', key=key)
 
     def _reach(self) -> Any:
         """The client, built on first use rather than at start-up."""
@@ -227,6 +243,22 @@ def _plain(text: str) -> str:
     return text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
 
 
+def _when(stamp: str | None) -> str | None:
+    """reMarkable's `lastModified` into something a person can read.
+
+    The wire carries epoch milliseconds as a string — `"1789384626339"` — which sorts
+    correctly by accident and tells a reader nothing. Recorded from a real listing; the
+    fixture in `tests/fixtures/remarkable/` is where that shape is kept honest.
+    """
+    if not stamp:
+        return None
+    try:
+        at = datetime.fromtimestamp(int(stamp) / 1000, timezone.utc)
+    except (TypeError, ValueError):
+        return str(stamp)
+    return at.isoformat().replace('+00:00', 'Z')
+
+
 def _reach_remarkable(token: str) -> Client:
     """A remarkapy client that touches nothing outside this process.
 
@@ -240,8 +272,9 @@ def _reach_remarkable(token: str) -> Client:
 def _why(error: Exception | None) -> str:
     """What to tell somebody, from what went wrong. No traceback, no URL, no response body.
 
-    This sentence goes to Slack. remarkapy's errors quote the request back, and the request
-    carried the device token.
+    This sentence goes to Slack. remarkapy raises `ResponseError(status, response.text)`, so
+    its message carries whatever reMarkable's server said — somebody else's JSON, in front of
+    a person reading a phone at 06:30. The sentence here is written instead.
     """
     if isinstance(error, httpx.TimeoutException):
         return f'the tablet did not answer within {TIMEOUT:g}s'
