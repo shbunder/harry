@@ -587,3 +587,46 @@ def test_an_alert_from_another_thread_is_not_dropped_while_a_sink_is_busy():
     first.join(2)
 
     assert sorted(heard) == ['the De Tijd session has expired', 'the tablet push failed twice']
+
+
+# ---------------------------------------------------------------------------
+# A setting that carries more than one secret
+# ---------------------------------------------------------------------------
+
+
+def test_redact_scrubs_one_value_out_of_a_compound_secret():
+    """Some settings hold several credentials as `Label=value` entries. A message quoting one
+    of the values does not match the whole setting, so scrubbing only the whole would let it
+    out in the clear — which is what a published calendar link is."""
+    link = 'https://outlook.office365.com/owa/calendar/box/a-secret-segment/reachcalendar.ics'
+    context = a_context(
+        None,
+        declaration={'config': {'subscribed': {'secret': True}}},
+        config={'subscribed': f'KBC Agenda={link}|Other=https://x.test/private-token-here/b.ics'},
+    )
+
+    assert link not in context.redact(f'could not read {link}')
+    assert 'private-token-here' not in context.redact('tried https://x.test/private-token-here/b.ics')
+    assert context.redact('nothing secret here') == 'nothing secret here'
+
+
+def test_redact_leaves_the_label_a_person_chose_alone():
+    """The labels are in the setting too. Replacing them would make every message about a
+    calendar unreadable while protecting nothing — the label is what a person acts on."""
+    context = a_context(
+        None,
+        declaration={'config': {'subscribed': {'secret': True}}},
+        config={'subscribed': 'KBC=https://x.test/a-long-secret-segment/b.ics'},
+    )
+
+    assert context.redact('KBC could not be reached') == 'KBC could not be reached'
+
+
+def test_redact_still_scrubs_a_plain_secret():
+    context = a_context(
+        None,
+        declaration={'config': {'token': {'secret': True}}},
+        config={'token': 'xoxb-not-for-anybody'},
+    )
+
+    assert 'xoxb-not-for-anybody' not in context.redact('the service rejected xoxb-not-for-anybody')

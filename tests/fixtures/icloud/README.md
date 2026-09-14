@@ -22,6 +22,27 @@ test re-checks.
 | `stored-in-utc.ics` | `20260914T073000Z`, which is 09:30 in Brussels. Times on the page are the time in the room |
 | `afternoon.ics` | An ordinary 14:00 event with a location, so ordering and `where` have something real |
 | `malformed.ics` | A `DTSTART` that is not a timestamp. One event that will not parse must cost one event, not the day |
+| `published-outlook.ics` | What a published `.ics` link serves — the kind work hands you. Shaped after a real one, see below |
+| `not-a-calendar.html` | The sign-in page an expired published link answers with, instead of a 404 |
 
 The dates are all around **Monday 14 September 2026**, which is a Monday, so the weekly
 series lands on it.
+
+## About `published-outlook.ics` in particular
+
+**Its shape was measured; its events were invented.** A real published Outlook link was
+fetched once on 14 September 2026 to find out what such a document contains, and it is not
+recorded here because it is somebody's work calendar. What was measured:
+
+- 189 KB, `text/calendar`, `PRODID:Microsoft Exchange Server 2010`, `METHOD:PUBLISH`
+- **234 events — 40 with an `RRULE`, 76 carrying a `RECURRENCE-ID`, 2 with an `EXDATE`,
+  38 all-day**
+- Two `VTIMEZONE` blocks, named `W. Europe Standard Time` rather than an IANA zone
+- Every event carrying `X-MICROSOFT-CDO-*` properties
+
+This fixture reproduces that shape at four events: one ordinary meeting, one weekly series,
+one `RECURRENCE-ID` override moving a single instance, and one multi-day all-day block.
+
+That measurement settled something the other fixtures here could only assume: **a real server
+does send `RECURRENCE-ID` overrides as separate `VEVENT`s inside one document**, which is the
+case `moved-instance.ics` was written for. Seventy-six of them.

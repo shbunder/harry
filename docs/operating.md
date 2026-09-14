@@ -74,6 +74,7 @@ Three, and they fail in different ways:
 |---|---|---|---|
 | The De Tijd browser session | On its own, after a few weeks | Articles fall back to their RSS summary | Below |
 | The iCloud app-specific password | The day you change your Apple ID password, which revokes every one at once | `Agenda unavailable`, and `iCloud: the password was refused` in Slack | [sources.md § The calendar](sources.md) |
+| A published calendar link | When the calendar is republished, or the sharer withdraws it | `Agenda unavailable`, and the link's name in Slack | [sources.md § A calendar your work publishes](sources.md) |
 | The reMarkable device token | Only if you revoke the device at my.remarkable.com | A failed push, and `reMarkable: the tablet refused the token` in Slack | [sources.md § The tablet](sources.md) |
 
 The second one is the one that surprises people: changing your Apple password is a thing you

@@ -19,6 +19,7 @@ Three objects, and they are deliberately separate:
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -134,12 +135,41 @@ class Context:
         later — has to scrub the same values, and the message that goes wrong is never the
         one somebody was careful with. It is `raise ValueError(f'the service rejected
         {token}')`, written in a hurry, on its way to /health.
+
+        **A secret is not always the whole setting.** Some settings carry several, written as
+        `Label=value` entries separated by `|` — which means a message quoting one of the
+        values would not match the setting and would go out in the clear. So the pieces are
+        scrubbed as well as the whole, and that is what makes this a net rather than a
+        best case.
         """
         schema = self.declaration.get('config') or {}
         for name, spec in schema.items():
             if spec.get('secret') and (value := self.config.get(name)):
-                text = text.replace(str(value), REDACTED)
+                for piece in _parts_of(str(value)):
+                    text = text.replace(piece, REDACTED)
         return text
+
+
+def _parts_of(value: str) -> list[str]:
+    """A secret setting, and every piece of it worth scrubbing on its own.
+
+    Longest first, so scrubbing the whole value does not leave a fragment of it behind for a
+    later, shorter replacement to half-match.
+
+    Pieces under 8 characters are left alone: a compound setting's labels are in there too,
+    and replacing the word a person chose for their calendar would make every message about
+    it unreadable while protecting nothing.
+    """
+    pieces = {value}
+    for entry in re.split(r'[|,\n]', value):
+        entry = entry.strip()
+        if not entry:
+            continue
+        pieces.add(entry)
+        _, separator, rest = entry.partition('=')
+        if separator and rest.strip():
+            pieces.add(rest.strip())
+    return sorted((piece for piece in pieces if len(piece) >= 8), key=len, reverse=True)
 
 
 @dataclass

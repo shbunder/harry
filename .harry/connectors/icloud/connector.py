@@ -34,10 +34,12 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import caldav
+import httpx
 import icalendar
 import recurring_ical_events
 from caldav.lib.error import AuthorizationError, DAVError
@@ -59,9 +61,51 @@ promising a total nothing enforces is worse than no number.
 Naming which calendars matter in `CALENDARS` is the way to bound it, and the runbook says so.
 """
 
+LINK_TIMEOUT = 20.0
+"""Seconds for one published link. The measured Outlook feed is 189 KB — a whole calendar in
+one document rather than a query for one day, which is why this is longer than a CalDAV
+request."""
+
+FRESH_FOR = dt.timedelta(minutes=5)
+"""How long a fetched link is reused. Asking about a week is seven calls, and each would
+otherwise pull the whole document again. Only a success is cached: a link that failed is
+retried on the next call rather than served from an older copy, because an agenda that
+silently ages is the same lie as a partial one."""
+
 ALL_DAY = 'all day'
 """What `at` says for an event with a date and no time. Not an empty string, which reads as
 a missing value, and not "00:00", which is a time nobody set."""
+
+
+@dataclass(frozen=True)
+class Link:
+    """One published calendar. `label` is what a person reads; `url` is the credential."""
+
+    label: str
+    url: str
+
+
+def read_links(setting: str, log: logging.Logger) -> list[Link]:
+    """`Name=url|Name=url` into links, skipping anything malformed.
+
+    Split on the first `=` so a URL may carry as many more as it likes — the Outlook ones do.
+    A malformed entry costs one link and a log line, because one typo in a list of three
+    should not cost the other two.
+
+    **The URL never reaches the log**, here or anywhere: the random segment in it is the
+    password, so a bad entry is reported by position rather than by content.
+    """
+    links: list[Link] = []
+    for position, entry in enumerate(setting.split('|'), start=1):
+        entry = entry.strip()
+        if not entry:
+            continue
+        label, _, url = entry.partition('=')
+        if not (label.strip() and url.strip().startswith('http')):
+            log.warning('skipping SUBSCRIBED entry %d: it is not Name=https://…', position)
+            continue
+        links.append(Link(label=label.strip(), url=url.strip()))
+    return links
 
 
 class Unreachable(Exception):
@@ -80,10 +124,15 @@ class Agenda:
         log: logging.Logger,
         alert: Callable[..., bool],
         connect: Callable[[str, str], Any] | None = None,
+        links: Iterable[Link] = (),
+        now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.timezone.utc),
     ) -> None:
         self._username = username
         self._password = password
         self._wanted = [name.strip() for name in calendars if name.strip()]
+        self._links = list(links)
+        self._now = now
+        self._fetched: dict[str, tuple[dt.datetime, str]] = {}
         self._zone = zone
         self._log = log
         self._alert = alert
@@ -111,14 +160,20 @@ class Agenda:
 
     def _read(self, start: dt.datetime, end: dt.datetime) -> list[dict]:
         try:
-            calendars = self._calendars()
             merged = icalendar.Calendar()
-            for calendar in calendars:
+            for calendar in self._calendars():
                 self._collect(calendar, start, end, merged)
+            for link in self._links:
+                self._collect_link(link, merged)
         except AuthorizationError as error:
             raise self._give_up(
                 'the password was refused — make a new app-specific password at account.apple.com', key='refused'
             ) from error
+        except Unreachable:
+            # Already reported, with a sentence naming which calendar and what to do about
+            # it. Re-wrapping would replace that with "something this connector does not
+            # understand" and alert a second time under a different key.
+            raise
         except (DAVError, OSError) as error:
             raise self._give_up(_why(error), key='unreachable') from error
         except Exception as error:  # noqa: BLE001 — anything escaping here degrades the page
@@ -148,6 +203,57 @@ class Agenda:
             except Exception as error:  # noqa: BLE001 — icalendar raises a dozen types on a
                 # malformed entry, and one bad event must cost one event rather than the day.
                 self._log.warning('skipping an event that would not parse: %s', type(error).__name__)
+
+    def _collect_link(self, link: Link, merged: icalendar.Calendar) -> None:
+        """One published calendar, into the same document as everything else.
+
+        **A link that cannot be read fails the whole agenda**, rather than quietly leaving
+        its meetings out. Everywhere else in Harry a dead source costs its own section; here
+        the section *is* the day, and a day missing your work meetings looks exactly like a
+        quiet one. A missing agenda sends you to your phone; a partial one does not.
+        """
+        document = self._fetch(link)
+        for component in document.walk():
+            if component.name == 'VTIMEZONE':
+                merged.add_component(component)
+            elif component.name == 'VEVENT' and self._readable(component):
+                merged.add_component(component)
+
+    def _fetch(self, link: Link) -> icalendar.Calendar:
+        """A link's document, at most once every `FRESH_FOR`.
+
+        Neither the exception nor the alert carries the URL. The random segment in it is the
+        password, so the label is what a person is given — which is also the thing they can
+        act on, since the fix is to republish that calendar in Outlook.
+        """
+        cached = self._fetched.get(link.url)
+        if cached and self._now() - cached[0] < FRESH_FOR:
+            self._log.debug('%s is still fresh', link.label)
+            return icalendar.Calendar.from_ical(cached[1])
+
+        try:
+            response = httpx.get(link.url, timeout=LINK_TIMEOUT, follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            # `from None`, not `from error`. httpx puts the request URL inside its own
+            # exception message, and a published link's URL *is* the credential — so a
+            # chained cause hands it to whatever logs the traceback. FastMCP does exactly
+            # that for a failing tool call, at ERROR, whatever HARRY_LOG_LEVEL says.
+            # Nothing diagnostic is lost: the sentence below names the link and what to do.
+            raise self._give_up(_why_link(error, link.label), key=f'link:{link.label}') from None
+
+        try:
+            document = icalendar.Calendar.from_ical(response.text)
+        except Exception:  # noqa: BLE001 — icalendar raises several types, and an
+            # expired link answers 200 with a sign-in page, which is the common case here.
+            raise self._give_up(
+                f'{link.label} answered something that is not a calendar — if the link has expired, '
+                'republish that calendar in Outlook and put the new link in SUBSCRIBED',
+                key=f'link:{link.label}',
+            ) from None  # icalendar quotes the line it choked on, which is somebody's page
+
+        self._fetched[link.url] = (self._now(), response.text)
+        return document
 
     def _readable(self, event: Any) -> bool:
         """Whether this event's start can be read at all.
@@ -214,7 +320,9 @@ class Agenda:
         tool is callable from any session, so that blip is not hypothetical.
         """
         self._log.warning('could not read the calendar: %s', why)
-        self._alert(f'iCloud: {why}', key=key)
+        # 'Calendar', not 'iCloud': this connector reads published links too, and the
+        # sentence already names which of them broke.
+        self._alert(f'Calendar: {why}', key=key)
         self._principal = None
         return Unreachable(why)
 
@@ -244,6 +352,21 @@ def _why(error: Exception) -> str:
     return 'iCloud answered something this connector does not understand'
 
 
+def _why_link(error: Exception, label: str) -> str:
+    """What to tell somebody about a link that would not load. Never the URL."""
+    if isinstance(error, httpx.TimeoutException):
+        return f'{label} did not answer within {LINK_TIMEOUT:g}s'
+    if isinstance(error, httpx.HTTPStatusError):
+        answered = error.response.status_code
+        if answered in (401, 403, 404):
+            return (
+                f'{label} answered {answered} — that link has probably been withdrawn. '
+                'Republish that calendar in Outlook and put the new link in SUBSCRIBED'
+            )
+        return f'{label} answered {answered}'
+    return f'{label} could not be reached'
+
+
 def _reach_icloud(username: str, password: str) -> caldav.DAVClient:
     """A CalDAV client for one account. Nothing here is written to disk."""
     return caldav.DAVClient(url=CALDAV, username=username, password=password, timeout=TIMEOUT)
@@ -262,6 +385,7 @@ def register(registry: Registry, context: Context) -> None:
             username=str(context.config['username']),
             password=str(context.config['app_password']),
             calendars=str(context.config.get('calendars') or '').split(','),
+            links=read_links(str(context.config.get('subscribed') or ''), context.log),
             zone=zone,
             log=context.log,
             alert=context.alert,

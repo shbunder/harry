@@ -9,7 +9,7 @@ remember exists. This page is the index and the part that is true of all of them
 | [weather](../.harry/connectors/weather/CONNECTOR.md) | nothing | the weather line |
 | [news](../.harry/connectors/news/CONNECTOR.md) | nothing | the headlines, and the articles chosen from them |
 | [remarkable](../.harry/connectors/remarkable/CONNECTOR.md) | a device token | the delivery — the page is still written to disk |
-| [icloud](../.harry/connectors/icloud/CONNECTOR.md) | an Apple app-specific password | the agenda line |
+| [icloud](../.harry/connectors/icloud/CONNECTOR.md) | an Apple app-specific password, plus any published calendar links | the agenda line |
 
 *(De Tijd arrives as its own feature.)*
 
@@ -245,7 +245,11 @@ test attached.
 
 ## The calendar
 
-iCloud over CalDAV, one day at a time. `09:30 standup · 14:00 dentist`.
+Your whole calendar, one day at a time. `09:30 standup · 14:00 dentist`.
+
+**Not only Apple's part of it.** iCloud over CalDAV, plus any number of published `.ics`
+links — the kind work hands you — merged into one day. The folder is called `icloud` because
+that is where most of it comes from; a published link is configured there too.
 
 **Events only. Harry does not read Reminders**, and that is a decision rather than an
 omission — a spike walked all 17 lists on a real account and every to-do that came back was
@@ -270,9 +274,40 @@ The password comes from **account.apple.com → Sign-In and Security → App-Spe
 Passwords**. Generate one, label it `Harry`, copy it — **it is shown once**. The section only
 appears if two-factor is turned on.
 
-`CALENDARS=Home, Work` reads only those two; empty, the default, reads all of them.
-`TIMEZONE` decides what "today" means and what time is printed, and defaults to
+`CALENDARS=Home, Work` reads only those two iCloud calendars; empty, the default, reads all
+of them. `TIMEZONE` decides what "today" means and what time is printed, and defaults to
 Europe/Brussels.
+
+### A calendar your work publishes
+
+Outlook, Google and most calendar servers can publish a read-only `.ics` link. Add it with a
+name you choose, separated by `|` if there is more than one:
+
+```bash
+SUBSCRIBED=KBC Agenda=https://outlook.office365.com/owa/calendar/…/reachcalendar.ics
+```
+
+The name is what you will see in Slack if that link stops working. Its events land in the
+same day as everything else, with the same handling of repeating meetings — the real Outlook
+feed this was built against carries 234 events, 40 of them repeating and 76 of them single
+instances moved out of their series, and all of it expands correctly.
+
+**That link is a password.** The long random segment in the URL is the whole of its security,
+so anyone holding it can read that calendar. It goes in `.env.local` and nowhere else, Harry
+never prints it — a link that fails is named, not quoted — and **the only way to revoke it is
+to republish that calendar in Outlook**, which issues a new URL and kills the old one.
+
+Harry's HTTP client would otherwise write that URL into the log on every read, at `INFO`.
+`configure_logging` in `harry/main.py` keeps `httpx` and friends at `WARNING` for exactly
+that reason, and a test fails if it stops.
+
+Each link is fetched at most once every five minutes. A published link is the whole calendar
+in one document — 189 KB in the measured case — rather than a query for one day.
+
+**A link that cannot be read costs the whole agenda, deliberately.** Everywhere else in Harry
+a dead source costs its own section and the page renders. Here the section is your day, and a
+day missing your work meetings looks exactly like a quiet day — you would read it and walk
+into a 09:00. So the page says `Agenda unavailable`, which sends you to your phone.
 
 **The password does not expire on a clock — it dies when you change your Apple ID
 password**, which revokes every app-specific password on the account at once. That is the
@@ -300,6 +335,9 @@ first. No `day` means today; `day="2026-09-15"` means that day.
 | iCloud unreachable or slow | `Agenda unavailable`; one Slack line | Usually transient. The ceiling is 15 seconds **per request**, and every calendar is a request — name the ones you want in `CALENDARS` if a slow morning matters |
 | The password was refused | `the password was refused`; one Slack line | Make a new one at account.apple.com and replace it in `.env.local` |
 | A calendar in `CALENDARS` does not exist | The others' events, and a log line | Check the name as it appears in the Calendar app |
+| A `SUBSCRIBED` link answers 404 or 403 | `Agenda unavailable`; one Slack line naming the link | It has been withdrawn. Republish that calendar in Outlook and put the new link in `.env.local` |
+| A `SUBSCRIBED` link answers a sign-in page | `Agenda unavailable`; one Slack line | Same fix — the link has expired |
+| A `SUBSCRIBED` entry is not `Name=url` | The other links, and a log line naming its position | Check for a missing `=` or a stray pipe |
 | One event will not parse | The rest of the day, and a log line | Nothing. One bad entry is not an outage |
 | `Nothing on today` and nothing in Slack | — | A free day. An empty agenda and a dead one are different answers here on purpose |
 | A repeating meeting is at the wrong time | — | Check `TIMEZONE`. Times are converted to it |
