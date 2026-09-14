@@ -4,8 +4,8 @@ title: A capability can report its own failure, not just receive somebody else's
 track: full
 created: 2026-09-14
 touches: [core/registry,core/loader,core/main,core/sdk]
-stories: []
-decisions: []
+stories: [STORY-260914-008826]
+decisions: [ADR-260914-c469a4]
 ---
 
 # FEAT-260914-fc1515 — A capability can report its own failure, not just receive somebody else's
@@ -21,16 +21,19 @@ Found while planning the weather connector, which does not need it: no credentia
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] A capability can raise an alert from its own code, without importing anything but harry.sdk
-- [ ] The alert goes wherever alerts go, and carries a key so a fault repeating every five minutes reports once a day
-- [ ] A capability that raises one before any sink registered still works — the alert is logged
-- [ ] Raising an alert never breaks the caller, the way the sink side already does not
-- [ ] A capability cannot raise one claiming to be another capability
-- [ ] docs/alerting.md and the three /new-* skills say how a capability reports a failure
+- [ ] context.alert(message) reaches every registered sink with exactly what the capability wrote
+- [ ] A key makes a repeating fault report once a day, and no key means every time
+- [ ] Core namespaces the key to <kind>:<name>:<key>, so one capability cannot silence another's
+- [ ] With nothing registered it is a WARNING in the log naming the capability, and nothing raises
+- [ ] Every sink failing still returns, is logged, and does not record the key — so the next occurrence tries again
+- [ ] An alert raised inside register() is logged, the capability still loads, and a sink loaded later does not receive it
+- [ ] A capability importing harry.alerts is still skipped — context.alert is the only way in
+- [ ] docs/alerting.md and the three /new-* skills say how a capability reports a failure, and that log is for whoever reads the log while alert is for whoever does not
 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
+- [ ] [[STORY-260914-008826]] — A capability can say that something went wrong
 
 ## Notes
 
@@ -40,3 +43,7 @@ Found while planning the weather connector, which does not need it: no credentia
 ## Links
 
 - Requirements: [[FEAT-260914-fc1515]]
+- [[ADR-260914-c469a4]] — a capability reports a fault through its context, not through its log
+- [[ADR-260913-816553]] — a capability can be somewhere alerts go
+- Decision: [[ADR-260914-c469a4]] — A capability reports a fault through its context, not through its log
+
