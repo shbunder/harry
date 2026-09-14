@@ -9,8 +9,9 @@ remember exists. This page is the index and the part that is true of all of them
 | [weather](../.harry/connectors/weather/CONNECTOR.md) | nothing | the weather line |
 | [news](../.harry/connectors/news/CONNECTOR.md) | nothing | the headlines, and the articles chosen from them |
 | [remarkable](../.harry/connectors/remarkable/CONNECTOR.md) | a device token | the delivery — the page is still written to disk |
+| [icloud](../.harry/connectors/icloud/CONNECTOR.md) | an Apple app-specific password | the agenda line |
 
-*(calendar and De Tijd arrive as their own features.)*
+*(De Tijd arrives as its own feature.)*
 
 ## What every source promises
 
@@ -20,7 +21,7 @@ invented when the page finally calls it:
 
 ```
 weather.today()          → {summary, high, low, rain_chance}, or None
-calendar.today()         → [{at, title, where}]
+calendar.today()         → [{at, title, where}], empty list on a free day
 news.candidates(limit)   → [{id, title, source, feed, published, date, summary, link}], newest first
 news.article(id)         → {available, id, title, source, published, link, text}
 tablet.push(path, name)  → {where}
@@ -241,3 +242,68 @@ still on disk where it was.
 broke every write in August 2026; a version range would deliver that release on the next
 rebuild, on a morning nobody changed anything. Moving the pin is a deliberate act with a live
 test attached.
+
+## The calendar
+
+iCloud over CalDAV, one day at a time. `09:30 standup · 14:00 dentist`.
+
+**Events only. Harry does not read Reminders**, and that is a decision rather than an
+omission — a spike walked all 17 lists on a real account and every to-do that came back was
+an Apple upgrade placeholder. Those lists moved to a store CalDAV cannot see. There is no
+empty to-dos section on the page, because one that is blank every morning is
+indistinguishable from a clear day, forever. See
+[ADR-260914-1d19b8](../project/decisions/ADR-260914-1d19b8-harry-does-not-read-reminders-because-caldav-cannot-see-them.md).
+
+**Harry never writes.** The password can create, move and delete events. This connector
+reads, and a test asserts it has no code that could do anything else.
+
+### Setting it up
+
+```bash
+cat > .harry/connectors/icloud/.env.local <<'ENV'
+USERNAME=you@icloud.com
+APP_PASSWORD=abcd-efgh-ijkl-mnop
+ENV
+```
+
+The password comes from **account.apple.com → Sign-In and Security → App-Specific
+Passwords**. Generate one, label it `Harry`, copy it — **it is shown once**. The section only
+appears if two-factor is turned on.
+
+`CALENDARS=Home, Work` reads only those two; empty, the default, reads all of them.
+`TIMEZONE` decides what "today" means and what time is printed, and defaults to
+Europe/Brussels.
+
+**The password does not expire on a clock — it dies when you change your Apple ID
+password**, which revokes every app-specific password on the account at once. That is the
+one thing to remember: the day you change your Apple password, the agenda stops.
+
+### Repeating events
+
+iCloud accepts a request to expand a repeating event into its occurrences, then ignores it
+and returns the start of the series. A weekly standup would arrive dated last Monday, and an
+agenda that filtered by date would drop it — which looks exactly like a cancelled meeting.
+
+**Harry expands them itself.** Today's instance at today's time, an instance moved to 11:00
+at 11:00, and a cancelled one absent. See
+[ADR-260914-969901](../project/decisions/ADR-260914-969901-recurring-events-are-expanded-by-harry-not-by-icloud.md).
+
+### Claude can ask directly
+
+`icloud_list_events(day)` — deferred, so a session finds it with `harry_find_tools("calendar")`
+first. No `day` means today; `day="2026-09-15"` means that day.
+
+### When it stops working
+
+| What happened | What you see | What to do |
+|---|---|---|
+| iCloud unreachable or slow | `Agenda unavailable`; one Slack line | Usually transient. The ceiling is 15 seconds **per request**, and every calendar is a request — name the ones you want in `CALENDARS` if a slow morning matters |
+| The password was refused | `the password was refused`; one Slack line | Make a new one at account.apple.com and replace it in `.env.local` |
+| A calendar in `CALENDARS` does not exist | The others' events, and a log line | Check the name as it appears in the Calendar app |
+| One event will not parse | The rest of the day, and a log line | Nothing. One bad entry is not an outage |
+| `Nothing on today` and nothing in Slack | — | A free day. An empty agenda and a dead one are different answers here on purpose |
+| A repeating meeting is at the wrong time | — | Check `TIMEZONE`. Times are converted to it |
+
+**An empty agenda and a dead agenda must not look alike.** A free day returns a list; a
+calendar that cannot be read raises. That is why this source raises where weather and news
+answer with `available: false` — an empty list already means something here.

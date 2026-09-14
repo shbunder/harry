@@ -1,0 +1,8 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:broken@harry.test
+DTSTART;TZID=Europe/Brussels:this-is-not-a-timestamp
+SUMMARY:an event nobody can read
+END:VEVENT
+END:VCALENDAR

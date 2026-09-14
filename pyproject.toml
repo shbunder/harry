@@ -22,7 +22,12 @@ dependencies = [
 
     # What the capabilities need. Common ones live here; a capability adds its own
     # only when it needs something exotic.
-    "caldav>=3.3",          # iCloud calendar and reminders
+    "caldav>=3.3",          # iCloud calendar over CalDAV. Reminders are not reachable:
+                            # Apple moved them to a store CalDAV does not expose.
+    "icalendar>=6.0",       # reading the VEVENTs caldav hands back
+    "recurring-ical-events>=3.8",  # iCloud ignores expand=True, so Harry expands
+                            # repeating events itself. Arrives via caldav; declared
+                            # because Harry imports it directly.
     "trafilatura>=2.0",     # article text extraction
     "playwright>=1.49",     # for sites that block scripted clients
     "weasyprint>=63",       # HTML + CSS to PDF, with a real outline
