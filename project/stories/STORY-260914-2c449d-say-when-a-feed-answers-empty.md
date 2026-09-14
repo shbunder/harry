@@ -2,7 +2,7 @@
 id: STORY-260914-2c449d
 title: Say when a feed answers empty
 feature: FEAT-260914-0c37d0
-status: Backlog
+status: Done
 created: 2026-09-14
 ---
 
@@ -21,11 +21,11 @@ broadcaster is a publishing fault, not a quiet hour.
 
 ## Acceptance criteria
 
-- [ ] The recorded 555-byte VRT document yields an `unavailable` entry saying the feed was empty
-- [ ] The other feeds' candidates are unaffected by it
-- [ ] One Slack line names that feed, keyed separately from a fetch failure so one does not silence the other
-- [ ] A feed carrying stories reports nothing
-- [ ] Every feed being empty reports each of them, and still returns an empty candidate list rather than raising
+- [x] The recorded 555-byte VRT document yields an `unavailable` entry saying the feed was empty
+- [x] The other feeds' candidates are unaffected by it
+- [x] One Slack line names that feed, keyed separately from a fetch failure so one does not silence the other
+- [x] A feed carrying stories reports nothing
+- [x] Every feed being empty reports each of them, and still returns an empty candidate list rather than raising
 
 ## Subtasks
 

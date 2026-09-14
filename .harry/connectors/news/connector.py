@@ -345,6 +345,16 @@ class News:
                 self._alert(f'{feed.name}: {why}', key=f'feed:{feed.slug}')
                 unavailable.append({'source': feed.name, 'why': why})
                 continue
+            if not raw:
+                # A feed that parses and carries nothing is not unreadable, so it does not
+                # raise — but it is not a quiet hour either. A national broadcaster publishes
+                # something every hour, and a shorter candidate list is indistinguishable from
+                # a slow news day, which is the whole failure this connector exists to catch.
+                why = f'{feed.name} answered an empty feed'
+                self._log.warning('%s', why)
+                self._alert(f'{feed.name}: it answered an empty feed', key=f'empty:{feed.slug}')
+                unavailable.append({'source': feed.name, 'why': why})
+                continue
             for item in raw:
                 key = _canonical(item['link'])
                 if not key or key in by_link:

@@ -9,6 +9,7 @@ Everything the news connector is tested against. No test here reaches a URL.
 | `vrt-nws.xml` | `www.vrt.be/vrtnws/nl.rss.articles.xml` — Atom, namespaced `<feed>` of `<entry>` | 50 entries cut to the first 8. Nothing else touched |
 | `bbc-news.xml` | `feeds.bbci.co.uk/news/rss.xml` — RSS 2.0, `<channel>` of `<item>` | 35 items cut to 8 |
 | `bbc-world.xml` | `feeds.bbci.co.uk/news/world/rss.xml` — RSS 2.0 | 25 items cut to 8 |
+| `vrt-empty.xml` | The same VRT URL at 19:00 the same day — **200, valid Atom, zero entries**, 555 bytes. Recorded because it is the shape that slipped past the unavailable check | Nothing |
 | `vrt-article.html` | The article behind the first VRT entry, after the `vrtnws.be/p.oL1bKEomY` redirect | Nothing |
 | `bbc-article.html` | `www.bbc.co.uk/news/articles/cy5zg41dkqwo` | Nothing |
 

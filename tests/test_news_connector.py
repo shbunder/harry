@@ -694,3 +694,73 @@ def test_a_real_article_still_extracts():
 
     assert article['available'] is True, article.get('why')
     assert len(article['text']) > 500, article['text'][:200]
+
+
+# ---------------------------------------------------------------------------
+# A feed that answers, and carries nothing
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_a_feed_that_answers_empty_is_reported(news):
+    """VRT served this exact document at 19:00 on 14 September 2026 — 555 bytes of header and
+    no entries, three fetches running, an hour after carrying fifty stories.
+
+    It is not unreadable, so it does not raise. It is also not a quiet hour: a shorter
+    candidate list is indistinguishable from a slow news day in Belgium, which is the failure
+    this whole connector is arranged against.
+    """
+    serving(**{VRT: 'vrt-empty.xml', BBC: 'bbc-news.xml'})
+    built = news()
+
+    answer = connector(built).search(limit=50)
+
+    assert len(answer['candidates']) == 8, 'the BBC should be untouched by it'
+    assert answer['unavailable'] == [{'source': 'VRT NWS', 'why': 'VRT NWS answered an empty feed'}]
+    _, sink = built
+    assert sink.heard == ['VRT NWS: it answered an empty feed']
+
+
+@respx.mock
+def test_an_empty_feed_is_keyed_apart_from_a_dead_one(news):
+    """A feed that 404s in the morning must not silence the same feed answering empty in the
+    afternoon. They are different faults with different fixes."""
+    serving(**{BBC: 'bbc-news.xml'})
+    respx.get(VRT).mock(return_value=httpx.Response(404))
+    built = news()
+    reader = connector(built)
+
+    reader.search(limit=50)
+    reader._cached.clear()  # noqa: SLF001 — otherwise the second read never reaches the feed
+    serving(**{VRT: 'vrt-empty.xml'})
+    reader.search(limit=50)
+
+    _, sink = built
+    assert len(sink.heard) == 2, sink.heard
+    assert any('answered 404' in line for line in sink.heard)
+    assert any('empty feed' in line for line in sink.heard)
+
+
+@respx.mock
+def test_a_feed_carrying_stories_reports_nothing(news):
+    """The control has to be able to stay quiet, or it will be muted within a week."""
+    both_feeds()
+    built = news()
+
+    assert connector(built).search(limit=50)['unavailable'] == []
+    _, sink = built
+    assert sink.heard == []
+
+
+@respx.mock
+def test_every_feed_empty_is_still_a_list_rather_than_an_error(news):
+    """The morning page has to render. An empty news section is a section."""
+    serving(**{VRT: 'vrt-empty.xml', BBC: 'vrt-empty.xml'})
+    built = news()
+
+    answer = connector(built).search(limit=50)
+
+    assert answer['candidates'] == []
+    assert [row['source'] for row in answer['unavailable']] == ['VRT NWS', 'BBC News']
+    _, sink = built
+    assert len(sink.heard) == 2

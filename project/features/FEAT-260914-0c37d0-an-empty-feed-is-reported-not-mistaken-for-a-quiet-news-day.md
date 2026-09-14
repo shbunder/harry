@@ -32,11 +32,11 @@ not a normal Tuesday either: a national broadcaster publishes something every ho
 
 ## Acceptance criteria
 
-- [ ] A configured feed that parses but yields no candidates is listed in `unavailable`, saying it answered an empty feed
-- [ ] The other feeds' candidates still come back — an empty feed costs its own source and nothing else
-- [ ] One line reaches Slack naming that feed, once per 24 hours, under its own key rather than the one a fetch failure uses
-- [ ] A feed that yields candidates reports nothing, and a day when every feed is genuinely quiet is still not an error
-- [ ] The fixture is the real 555-byte document VRT served, recorded
+- [x] A configured feed that parses but yields no candidates is listed in `unavailable`, saying it answered an empty feed
+- [x] The other feeds' candidates still come back — an empty feed costs its own source and nothing else
+- [x] One line reaches Slack naming that feed, once per 24 hours, under its own key rather than the one a fetch failure uses
+- [x] A feed that yields candidates reports nothing, and a day when every feed is genuinely quiet is still not an error
+- [x] The fixture is the real 555-byte document VRT served, recorded
 
 ## Stories
 
