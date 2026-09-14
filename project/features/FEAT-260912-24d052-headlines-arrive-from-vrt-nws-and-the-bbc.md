@@ -20,7 +20,7 @@ The candidates Claude chooses from. Feeds in, deduplicated headlines out, and th
      traceability matrix from. -->
 
 - [ ] An Atom feed and an RSS 2.0 feed both produce candidates carrying title, summary, source, published time and link
-- [ ] A candidate's id is `<feed-slug>-<YYYY-MM-DD>-<first 6 title words>`, dated in Europe/Brussels, and a collision gets `-2`
+- [ ] A candidate's id is `<feed-slug>-<YYYY-MM-DD>-<first 5 title words>`, dated in Europe/Brussels, and a collision gets `-2`
 - [ ] One story carried by two feeds is one candidate, kept from the feed listed first in `FEEDS`
 - [ ] Two links to the same page are the same story once the query string and fragment are dropped
 - [ ] `news_search` returns the 20 newest candidates by default and never more than 50
@@ -35,7 +35,7 @@ The candidates Claude chooses from. Feeds in, deduplicated headlines out, and th
 - [ ] A malformed `FEEDS` entry is skipped and logged; an empty `FEEDS` skips the connector
 - [ ] A feed that has already failed in the last 24 hours sends nothing further to Slack
 - [ ] A feed answering HTML instead of XML is listed unavailable, not fatal
-- [ ] A feed document declaring `<!DOCTYPE` before its root element is refused unread
+- [ ] A feed declaring its own entities — a `<!DOCTYPE` with an internal subset — is refused unread; a bare `<!doctype html>` fails as "not XML" instead
 - [ ] Four calls within one minute fetch each feed once; a call after 5 minutes fetches again
 - [ ] An article page that answers 403 gives `available: false` with why, and one line reaches Slack
 - [ ] Every parsing test runs against a recorded fixture in `tests/fixtures/news/`, never a live URL

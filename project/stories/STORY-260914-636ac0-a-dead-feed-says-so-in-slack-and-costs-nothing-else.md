@@ -27,8 +27,10 @@ does.
 
 - [ ] A feed answering 404 leaves the other feeds' candidates intact, and `news_search` lists that source in `unavailable` with why
 - [ ] A feed is waited on for 10 seconds and asked once — the timeout is the argument passed, not a resolved default, and nothing retries
+- [ ] An article page is waited on for 15 seconds, and the Slack line says 15 rather than the feed's 10
 - [ ] A feed answering 200 with HTML instead of XML does the same
-- [ ] A feed whose document declares `<!DOCTYPE` before its root element is refused without being parsed, and does the same
+- [ ] A feed whose prologue carries a `<!DOCTYPE` with an internal subset is refused without being parsed, and does the same
+- [ ] A bare `<!doctype html>` is not what the refusal is for: an HTML error page fails as "not XML"
 - [ ] Every feed being down gives an empty candidate list and every feed in `unavailable`
 - [ ] `candidates()` stays a plain list and never grows an `unavailable` key — the digest learns about a dead feed from Slack
 - [ ] A failing feed puts one line in Slack naming the source and what happened
