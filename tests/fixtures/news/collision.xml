@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="nl">
+  <title type="text">VRT NWS: nieuws</title>
+  <id>https://www.vrt.be/vrtnws/nl/</id>
+  <updated>2026-09-14T09:33:06.062Z</updated>
+  <entry>
+    <title type="text">Staking bij de NMBS legt het treinverkeer stil in heel Vlaanderen</title>
+    <id>https://vrtnws.be/p.aaaaaaaaa</id>
+    <published>2026-09-14T06:00:00.000Z</published>
+    <summary type="text">Er rijden vanochtend geen treinen.</summary>
+    <link href="https://vrtnws.be/p.aaaaaaaaa" rel="alternate" type="text/html"></link>
+  </entry>
+  <entry>
+    <title type="text">Staking bij de NMBS legt het treinverkeer stil in Brussel en Wallonie</title>
+    <id>https://vrtnws.be/p.bbbbbbbbb</id>
+    <published>2026-09-14T07:30:00.000Z</published>
+    <summary type="text">Ook ten zuiden van de taalgrens rijdt er niets.</summary>
+    <link href="https://vrtnws.be/p.bbbbbbbbb" rel="alternate" type="text/html"></link>
+  </entry>
+  <entry>
+    <title type="text">Staking bij de NMBS legt het treinverkeer stil aan de kust</title>
+    <id>https://vrtnws.be/p.ccccccccc</id>
+    <published>2026-09-13T22:30:00.000Z</published>
+    <summary type="text">Gepubliceerd om 22.30 uur UTC, wat 00.30 uur is in Brussel.</summary>
+    <link href="https://vrtnws.be/p.ccccccccc" rel="alternate" type="text/html"></link>
+  </entry>
+</feed>

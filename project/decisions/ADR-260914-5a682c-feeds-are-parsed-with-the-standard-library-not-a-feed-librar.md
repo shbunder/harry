@@ -64,7 +64,7 @@ raises `ParseError: undefined entity`, measured, so a feed cannot read the NUC's
 **Against:** ElementTree *does* expand internal entities, so a feed carrying a
 "billion laughs" bomb — a few hundred bytes of nested entity declarations that expand to
 gigabytes — would take the NUC's memory. Measured on 3.12: three levels expanded without
-complaint. Harry has to refuse the document itself, which is the `<!DOCTYPE` check below.
+complaint. Harry has to refuse the document itself, which is the entity check below.
 
 **Against:** Harry owns the format knowledge. A feed in a format the 40 lines do not cover
 reads as empty until somebody extends them. RSS 1.0 and Dublin Core dates are not handled
@@ -104,10 +104,15 @@ A format the mapping does not cover produces no candidates from that feed, and t
 reported as an unavailable source with the reason, so it is visible in Slack rather than
 silent — which is the actual failure this decision is about.
 
-**A feed document carrying a `<!DOCTYPE` before its root element is refused unread.** A news
-feed has no legitimate reason to declare a document type, and every entity-expansion attack
-on an XML parser has to get its declarations in through one. Refusing it is six lines and
-turns the one remaining hole into an unavailable source. `tests/fixtures/news/bomb.xml` is
+**A feed that declares its own entities is refused unread.** Every entity-expansion attack
+on an XML parser has to get its declarations in through the internal subset of a
+`<!DOCTYPE` — the square brackets — and a news feed has no reason to carry one. Refusing it
+is six lines and turns the one remaining hole into an unavailable source.
+
+A bare `<!doctype html>` declares nothing and is left alone deliberately. An HTML error page
+served where a feed was expected is the common case by far, and it should fail as "this is
+not XML" — the reason a person can act on — rather than with a sentence about entity
+declarations. `tests/fixtures/news/bomb.xml` is
 the recorded bomb, and the test that parses it is what keeps the refusal real.
 
 Adding a format is adding a branch to one function beside the two that are already there.
@@ -129,9 +134,8 @@ Dates are Harry's problem too. RSS 2.0 uses RFC 822 (`Mon, 14 Sep 2026 03:38:13 
 Atom uses ISO 8601 (`2026-09-14T09:05:56.000Z`). Both are in the standard library, but a
 third spelling is a bug rather than a missing feature.
 
-The `<!DOCTYPE` refusal will reject a legitimate feed one day — a feed that quotes the
-string in an article description before its root element cannot exist, but a feed that
-declares a real DTD can. It would arrive as that source going unavailable in Slack, which is
+The entity refusal will reject a legitimate feed one day — one that declares a real DTD
+with an internal subset. It would arrive as that source going unavailable in Slack, which is
 the right way for a wrong guess to show up.
 
 **What it makes easier.** There is one file to read when a headline is wrong, and it is the
