@@ -3,7 +3,7 @@ id: FEAT-260914-289e1f
 title: A published calendar link joins the agenda
 track: full
 created: 2026-09-14
-touches: [connectors/icloud, docs]
+touches: [connectors/icloud, core, docs]
 stories: [STORY-260914-0297e2]
 decisions: [ADR-260914-98cc64]
 ---
@@ -27,7 +27,8 @@ secret, never printed, and revoked by republishing in Outlook.
 - [ ] A link that cannot be read fails the whole read rather than returning a partial day
 - [ ] A link answering HTML rather than a calendar says so
 - [ ] Failures name the label, never the URL, and reach Slack once per link per 24 hours
-- [ ] The URL appears in no log, no exception and no Slack message
+- [ ] The URL appears in no log, no exception, no exception **chain** and no Slack message, asserted through the MCP tool call that logs the traceback
+- [ ] One event inside a link that will not parse costs that event, not the day — the one deliberate exception, with the reason written down
 - [ ] A malformed `SUBSCRIBED` entry costs one link and is logged
 - [ ] Empty — the default — changes nothing and fetches nothing
 - [ ] Tests run against a fixture shaped like the measured Outlook feed, with invented events
