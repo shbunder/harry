@@ -16,6 +16,7 @@ import inspect
 import logging
 import shutil
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import caldav
 import icalendar
@@ -468,3 +469,117 @@ def test_a_real_account_still_answers():
     for event in day:
         assert set(event) == {'at', 'title', 'where'}, event
         assert event['at'] == 'all day' or len(event['at']) == 5, event['at']
+
+
+# ---------------------------------------------------------------------------
+# The tool, the way Claude reaches it
+# ---------------------------------------------------------------------------
+
+TOOL = 'icloud_list_events'
+
+
+async def through_mcp(built, tmp_path, arguments: dict | None = None, raise_on_error: bool = True):
+    """Find the tool the way a session does, then call it."""
+    from fastmcp import Client
+
+    from harry.mcp import FIND_TOOLS, build_server
+    from harry.store import Store
+
+    catalogue, _ = built
+    async with Client(build_server(catalogue, Store(tmp_path / 'jobs.json'))) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'calendar'})
+        return await connected.call_tool(TOOL, arguments or {}, raise_on_error=raise_on_error)
+
+
+async def test_the_tool_defers_and_is_found_by_searching_for_a_calendar(icloud, tmp_path):
+    """Found by the word a person would use, not by the name of the service."""
+    from fastmcp import Client
+
+    from harry.mcp import FIND_TOOLS, build_server
+    from harry.store import Store
+
+    catalogue, _ = icloud(documents=('afternoon.ics',), tools=(TOOL,))
+
+    async with Client(build_server(catalogue, Store(tmp_path / 'jobs.json'))) as connected:
+        assert TOOL not in [tool.name for tool in await connected.list_tools()], 'it should defer'
+
+        found = (await connected.call_tool(FIND_TOOLS, {'query': 'calendar'})).data
+        assert TOOL in [row['name'] for row in found['found']]
+
+
+async def test_the_tool_is_read_only(icloud, tmp_path):
+    """The password can create, move and delete events. This says Harry does not."""
+    from fastmcp import Client
+
+    from harry.mcp import FIND_TOOLS, build_server
+    from harry.store import Store
+
+    catalogue, _ = icloud(documents=('afternoon.ics',), tools=(TOOL,))
+
+    async with Client(build_server(catalogue, Store(tmp_path / 'jobs.json'))) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'calendar'})
+        published = {tool.name: tool for tool in await connected.list_tools()}
+
+    hints = published[TOOL].annotations
+    assert hints is not None and hints.read_only_hint is True
+
+
+async def test_claude_can_ask_about_a_named_day(icloud, tmp_path):
+    built = icloud(documents=('afternoon.ics', 'weekly-standup.ics'), tools=(TOOL,))
+
+    answer = await through_mcp(built, tmp_path, {'day': '2026-09-14'})
+
+    assert answer.data == [
+        {'at': '09:30', 'title': 'standup', 'where': 'meeting room'},
+        {'at': '14:00', 'title': 'design review', 'where': 'Kortrijksesteenweg 1'},
+    ]
+
+
+async def test_claude_asking_with_no_day_gets_today(icloud, tmp_path):
+    """The fixtures are all dated 2026-09-14, so today is empty unless it is that Monday —
+    which is the honest assertion: no day argument means the day it is now."""
+    built = icloud(documents=('afternoon.ics',), tools=(TOOL,))
+
+    answer = await through_mcp(built, tmp_path)
+
+    today = dt.datetime.now(ZoneInfo('Europe/Brussels')).date()
+    assert answer.data == (
+        [{'at': '14:00', 'title': 'design review', 'where': 'Kortrijksesteenweg 1'}] if today == MONDAY else []
+    )
+
+
+@pytest.mark.parametrize('asked', ['tomorrow', '14/09/2026', 'next monday'])
+async def test_a_day_that_is_not_a_date_tells_claude_the_format(icloud, tmp_path, asked):
+    built = icloud(documents=(), tools=(TOOL,))
+
+    result = await through_mcp(built, tmp_path, {'day': asked}, raise_on_error=False)
+
+    assert result.is_error is True
+    assert 'write it as 2026-09-14' in str(result.content[0].text)  # type: ignore[union-attr] — an error is one TextContent
+
+
+async def test_a_calendar_that_is_down_reaches_claude_as_an_error(icloud, tmp_path):
+    """Not an empty day. A source that is down must never be reported as a free morning, and
+    an empty list is the answer for a free morning."""
+    built = icloud(documents=('afternoon.ics',), tools=(TOOL,), fails_with=NiquestsConnectionError('nope'))
+
+    result = await through_mcp(built, tmp_path, {'day': '2026-09-14'}, raise_on_error=False)
+
+    assert result.is_error is True, 'a dead calendar came back as a free day'
+    assert 'could not be reached' in str(result.content[0].text)  # type: ignore[union-attr] — an error is one TextContent
+
+
+def test_the_tool_is_skipped_when_there_is_no_credential(icloud):
+    catalogue, _ = icloud(settings='TIMEZONE=Europe/Brussels\n', tools=(TOOL,))
+
+    found = catalogue.get('tool', TOOL)
+    assert found is not None and found.target is None
+    assert found.reason == 'needs icloud, which did not load'
+
+
+def test_the_connector_lists_the_tool_in_provides():
+    """Exposure is the connector's choice. CalDAV can walk collections, fetch by UID and run
+    raw REPORT queries; none of that is listed here, and that is the point of the list."""
+    declaration = (REPO / '.harry' / 'connectors' / 'icloud' / 'CONNECTOR.md').read_text(encoding='utf-8')
+
+    assert 'provides: [icloud_list_events]' in declaration
