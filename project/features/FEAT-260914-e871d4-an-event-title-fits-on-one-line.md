@@ -32,11 +32,11 @@ decided, and the same rule applies to every title from every calendar.
 
 ## Acceptance criteria
 
-- [ ] A title containing a newline comes back as one line, with the parts separated by a single space
-- [ ] Runs of spaces and tabs collapse to one space, and the ends are trimmed
-- [ ] No word is dropped and nothing is truncated — this is folding, not shortening
-- [ ] The same holds for `where`, which is free text in the same way
-- [ ] A title that was already one line is unchanged, character for character
+- [x] A title containing a newline comes back as one line, with the parts separated by a single space
+- [x] Runs of spaces and tabs collapse to one space, and the ends are trimmed
+- [x] No word is dropped and nothing is truncated — this is folding, not shortening
+- [x] The same holds for `where`, which is free text in the same way
+- [x] A title that was already one line is unchanged, character for character
 
 ## Stories
 

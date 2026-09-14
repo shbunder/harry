@@ -1247,3 +1247,47 @@ def test_the_docs_say_the_link_is_a_credential_and_how_to_revoke_it():
 
     operating = (REPO / 'docs' / 'operating.md').read_text(encoding='utf-8')
     assert 'published calendar link' in operating.lower(), 'the runbook does not list it as a credential'
+
+
+# ---------------------------------------------------------------------------
+# A title that fits on one line
+# ---------------------------------------------------------------------------
+
+
+def test_a_title_with_a_newline_in_it_comes_back_as_one_line(icloud):
+    """A real entry from a real account, five times in one week. iCalendar carries the
+    newline faithfully; the morning page is a PDF where a one-line row that is two lines
+    breaks the row it sits in."""
+    day = connector(icloud(documents=('two-line-title.ics',))).on(MONDAY)
+
+    assert day == [{'at': '15:00', 'title': '👨‍👧‍👦 Kids 🏫 School [15:15 - 15:30]', 'where': 'Schoolstraat 1 Leuven'}]
+    assert '\n' not in day[0]['title'] and '\n' not in day[0]['where']
+
+
+@pytest.mark.parametrize(
+    ('given', 'folded'),
+    [
+        ('Kids\nSchool', 'Kids School'),
+        ('Kids\r\nSchool', 'Kids School'),
+        ('Kids\tSchool', 'Kids School'),
+        ('Kids    School', 'Kids School'),
+        ('  Kids School  ', 'Kids School'),
+        ('standup', 'standup'),
+        ('', ''),
+        (None, ''),
+    ],
+)
+def test_free_text_from_a_calendar_is_folded_not_shortened(icloud, given, folded):
+    """Every word survives. A title that was already one line comes back character for
+    character — this is formatting, not a decision about what matters."""
+    one_line = _connector_globals()['_one_line']
+
+    assert one_line(given) == folded
+
+
+def test_folding_drops_no_word(icloud):
+    """The failure to avoid is a fold that quietly becomes a truncation."""
+    one_line = _connector_globals()['_one_line']
+    given = 'Quarterly planning\nwith the whole team\nand two guests'
+
+    assert one_line(given).split() == given.split()

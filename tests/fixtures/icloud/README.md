@@ -24,6 +24,7 @@ test re-checks.
 | `malformed.ics` | A `DTSTART` that is not a timestamp. One event that will not parse must cost one event, not the day |
 | `published-outlook.ics` | What a published `.ics` link serves — the kind work hands you. Shaped after a real one, see below |
 | `not-a-calendar.html` | The sign-in page an expired published link answers with, instead of a 404 |
+| `two-line-title.ics` | A `SUMMARY` and a `LOCATION` carrying a newline. Copied from a real entry — somebody typed it that way, and iCalendar carries it faithfully |
 
 The dates are all around **Monday 14 September 2026**, which is a Monday, so the weekly
 series lands on it.
