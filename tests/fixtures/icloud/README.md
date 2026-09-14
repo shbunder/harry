@@ -22,7 +22,6 @@ test re-checks.
 | `stored-in-utc.ics` | `20260914T073000Z`, which is 09:30 in Brussels. Times on the page are the time in the room |
 | `afternoon.ics` | An ordinary 14:00 event with a location, so ordering and `where` have something real |
 | `malformed.ics` | A `DTSTART` that is not a timestamp. One event that will not parse must cost one event, not the day |
-
 | `published-outlook.ics` | What a published `.ics` link serves — the kind work hands you. Shaped after a real one, see below |
 | `not-a-calendar.html` | The sign-in page an expired published link answers with, instead of a 404 |
 

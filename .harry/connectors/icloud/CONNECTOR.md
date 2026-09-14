@@ -1,6 +1,6 @@
 ---
 name: icloud
-description: Your calendar — what today looks like, from iCloud over CalDAV
+description: Your calendar — what today looks like, from iCloud and any published links
 provides: [icloud_list_events]
 expires: manual
 enabled: true

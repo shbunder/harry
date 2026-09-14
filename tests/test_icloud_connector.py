@@ -392,7 +392,7 @@ def test_a_calendar_that_cannot_be_read_raises_and_says_why(icloud, failure, why
         connector(built).on(MONDAY)
 
     _, sink = built
-    assert len(sink.heard) == 1 and sink.heard[0].startswith('iCloud: ')
+    assert len(sink.heard) == 1 and sink.heard[0].startswith('Calendar: ')
     assert re.search(why, sink.heard[0]), sink.heard
     assert 'could not read the calendar' in caplog.text
 
@@ -404,7 +404,7 @@ def test_a_refused_password_says_what_to_do_about_it(icloud):
         connector(built).on(MONDAY)
 
     _, sink = built
-    assert sink.heard == ['iCloud: the password was refused — make a new app-specific password at account.apple.com']
+    assert sink.heard == ['Calendar: the password was refused — make a new app-specific password at account.apple.com']
 
 
 def test_a_calendar_down_all_week_says_so_once_a_day(icloud):
@@ -727,7 +727,7 @@ def test_something_neither_dav_nor_os_still_reaches_slack(icloud, caplog):
         connector(built).on(MONDAY)
 
     _, sink = built
-    assert sink.heard == ['iCloud: iCloud answered something this connector does not understand']
+    assert sink.heard == ['Calendar: iCloud answered something this connector does not understand']
 
 
 def test_a_failure_drops_the_connection_so_the_next_call_builds_a_fresh_one(icloud):
@@ -946,7 +946,7 @@ def test_no_links_configured_fetches_nothing(icloud):
     ],
 )
 @respx.mock
-def test_a_link_that_is_down_fails_the_whole_read(icloud, status, why):
+def test_a_link_that_is_down_fails_the_whole_read(icloud, status, why):  # noqa: D103 — see below
     """A day missing your work meetings looks exactly like a quiet day, and you would walk
     into a 09:00. The whole agenda fails instead, so the page says "Agenda unavailable" and
     you go and look at your phone."""
@@ -958,6 +958,20 @@ def test_a_link_that_is_down_fails_the_whole_read(icloud, status, why):
 
     _, sink = built
     assert len(sink.heard) == 1 and why in sink.heard[0]
+
+
+@respx.mock
+def test_a_link_that_cannot_be_reached_at_all_fails_the_whole_read(icloud):
+    """A NUC with no DNS at 06:30 is not hypothetical, and this is the sentence that names
+    the link — the property the whole no-leak story rests on."""
+    respx.get(url__startswith='https://outlook.office365.com').mock(side_effect=httpx.ConnectError('no route'))
+    built = icloud(documents=('afternoon.ics',), settings=subscribed())
+
+    with pytest.raises(Exception, match='KBC Agenda could not be reached'):
+        connector(built).on(MONDAY)
+
+    _, sink = built
+    assert sink.heard == ['Calendar: KBC Agenda could not be reached']
 
 
 @respx.mock
@@ -976,6 +990,21 @@ def test_a_link_that_times_out_says_how_long_it_waited(icloud):
 
     with pytest.raises(Exception, match='KBC Agenda did not answer within 20s'):
         connector(built).on(MONDAY)
+
+
+@respx.mock
+def test_the_link_fetch_carries_the_ceiling_the_message_quotes(icloud):
+    """The sentence above says 20 seconds. Asserted on what the request was given, because a
+    side-effect timeout raises identically whether or not the connector chose a ceiling —
+    and httpx's own default is five, which is short for a 189 KB document."""
+    route = serving()
+    built = icloud(documents=(), settings=subscribed())
+
+    connector(built).on(MONDAY)
+
+    asked = route.calls.last.request.extensions['timeout']
+    assert asked['read'] == 20.0, 'the connector did not choose a ceiling of its own'
+    assert asked['connect'] == 20.0
 
 
 @respx.mock
@@ -1033,16 +1062,17 @@ def test_each_link_gets_its_own_alert_key(icloud):
     assert any('KBC Agenda' in line for line in sink.heard) and any('Other' in line for line in sink.heard)
 
 
+SECRET = 'a-secret-segment-nobody-should-see'
+
+
 @respx.mock
 def test_the_link_reaches_no_log_no_error_and_no_slack(icloud, caplog, as_configured):
     """The random segment in the URL is the password. A link that fails is reported by the
     name a person chose, which is also the thing they can act on.
 
-    Run with Harry's own logging set up, because the leak this catches is not the
-    connector's: **httpx logs every request line, URL included, at INFO**, so
-    `HARRY_LOG_LEVEL=INFO` would write the link into the log past a connector that never
-    prints it. `configure_logging` is what stops that, and this is the test that notices if
-    it ever stops.
+    Run with Harry's own logging set up, because one half of this is not the connector's:
+    **httpx logs every request line, URL included, at INFO**, so `HARRY_LOG_LEVEL=INFO`
+    would write the link into the log past a connector that never prints it.
     """
     serving(status=404)
     built = icloud(documents=(), settings=subscribed())
@@ -1051,9 +1081,85 @@ def test_the_link_reaches_no_log_no_error_and_no_slack(icloud, caplog, as_config
         connector(built).on(MONDAY)
 
     _, sink = built
-    assert 'a-secret-segment-nobody-should-see' not in caplog.text, 'the link reached the log'
-    assert 'a-secret-segment-nobody-should-see' not in str(refused.value), 'the link reached the error'
-    assert 'a-secret-segment-nobody-should-see' not in ' '.join(sink.heard), 'the link reached Slack'
+    assert SECRET not in caplog.text, 'the link reached the log'
+    assert SECRET not in str(refused.value), 'the link reached the error'
+    assert SECRET not in ' '.join(sink.heard), 'the link reached Slack'
+
+
+@respx.mock
+def test_the_link_is_not_in_the_exception_chain_either(icloud):
+    """The half a message check cannot see. httpx puts the request URL inside
+    `HTTPStatusError`'s own message, so `raise … from error` hands the credential to
+    anything that formats a traceback — and FastMCP does exactly that for a failing tool
+    call, at ERROR, whatever `HARRY_LOG_LEVEL` says.
+
+    Asserted over the whole formatted chain rather than `str(error)`, which is the gap that
+    let this pass while the property was false.
+    """
+    import traceback
+
+    serving(status=404)
+    built = icloud(documents=(), settings=subscribed())
+
+    with pytest.raises(Exception) as refused:
+        connector(built).on(MONDAY)
+
+    whole_chain = ''.join(traceback.format_exception(refused.value))
+    assert SECRET not in whole_chain, 'the link is in the traceback anything logging it would print'
+    assert refused.value.__cause__ is None, 'the cause carries the URL; raise from None'
+
+
+@respx.mock
+async def test_the_link_does_not_reach_the_log_through_a_failing_tool_call(icloud, tmp_path, caplog, as_configured):
+    """Production reaches this through MCP, and MCP is the layer that logs the traceback.
+    Calling the connector directly could not have caught the leak this exists for.
+    """
+    from fastmcp import Client
+
+    from harry.mcp import FIND_TOOLS, build_server
+    from harry.store import Store
+
+    serving(status=404)
+    catalogue, _ = icloud(documents=(), settings=subscribed(), tools=(TOOL,))
+
+    with caplog.at_level(logging.DEBUG):
+        async with Client(build_server(catalogue, Store(tmp_path / 'jobs.json'))) as connected:
+            await connected.call_tool(FIND_TOOLS, {'query': 'calendar'})
+            result = await connected.call_tool(TOOL, {'day': '2026-09-14'}, raise_on_error=False)
+
+    assert result.is_error is True
+    assert SECRET not in str(result.content[0].text)  # type: ignore[union-attr] — an error is one TextContent
+    assert SECRET not in caplog.text, 'the link reached the log through the tool call'
+
+
+@respx.mock
+def test_one_unreadable_event_in_a_link_costs_one_event_not_the_day(icloud, caplog):
+    """The deliberate exception to "a link failure fails the whole agenda".
+
+    A link that cannot be *reached* tells you nothing about the day, so the read fails. One
+    event inside it whose start will not parse is different: the other 233 are right there,
+    and failing the morning over one malformed entry would cost the agenda every day until
+    somebody at work fixed their calendar. So it is skipped, by name, in the log — the same
+    rule the iCloud calendars already follow.
+    """
+    broken = (
+        (FIXTURES / 'published-outlook.ics')
+        .read_text(encoding='utf-8')
+        .replace(
+            'DTSTART;TZID=W. Europe Standard Time:20260914T090000', 'DTSTART;TZID=W. Europe Standard Time:not-a-time'
+        )
+    )
+    respx.get(url__startswith='https://outlook.office365.com').mock(
+        return_value=httpx.Response(200, text=broken, headers={'content-type': 'text/calendar'})
+    )
+    built = icloud(documents=('afternoon.ics',), settings=subscribed())
+
+    with caplog.at_level(logging.WARNING, logger='harry.capability.icloud'):
+        day = connector(built).on(MONDAY)
+
+    assert [event['title'] for event in day] == ['Out of office', 'design review'], 'the day should still render'
+    assert 'Sprint planning' in caplog.text, 'the dropped event was not named'
+    assert 'start time cannot be read' in caplog.text
 
 
 # -- the setting itself ------------------------------------------------------
@@ -1097,7 +1203,7 @@ def test_a_malformed_entry_is_reported_by_position_not_by_content(caplog):
     with caplog.at_level(logging.WARNING):
         _connector_globals()['read_links'](f'{LINK}', logging.getLogger('t'))
 
-    assert 'a-secret-segment-nobody-should-see' not in caplog.text
+    assert SECRET not in caplog.text
     assert 'entry 1' in caplog.text
 
 
@@ -1127,3 +1233,17 @@ def _connector_globals() -> dict:
     found = load([root]).get('connector', 'icloud')
     assert found is not None and found.target is not None
     return found.target.on.__func__.__globals__
+
+
+def test_the_docs_say_the_link_is_a_credential_and_how_to_revoke_it():
+    """Republishing in Outlook is the only way to undo a leaked link, and this connector now
+    has two hand-renewed credentials rather than one. The page that says how is the
+    difference between a two-minute job and an afternoon."""
+    for page in (REPO / 'docs' / 'sources.md', REPO / '.harry' / 'connectors' / 'icloud' / 'CONNECTOR.md'):
+        prose = ' '.join(page.read_text(encoding='utf-8').split())
+        assert 'republish' in prose.lower(), f'{page.name} does not say how to revoke a link'
+        assert 'SUBSCRIBED' in prose, f'{page.name} does not name the setting'
+        assert 'password' in prose.lower(), f'{page.name} does not say the link is a credential'
+
+    operating = (REPO / 'docs' / 'operating.md').read_text(encoding='utf-8')
+    assert 'published calendar link' in operating.lower(), 'the runbook does not list it as a credential'

@@ -36,5 +36,6 @@ to a different time. An instance that was cancelled is simply not there.
 to a store it does not expose — so this tool cannot answer "what's due today", and an empty
 result never means "no reminders".
 
-It reads one account's calendars and never writes: no creating, moving or cancelling
-anything.
+It reads one person's whole calendar — the iCloud account, plus any published links they
+have added, such as one their employer hands out — and never writes: no creating, moving or
+cancelling anything.

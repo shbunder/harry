@@ -235,17 +235,22 @@ class Agenda:
             response = httpx.get(link.url, timeout=LINK_TIMEOUT, follow_redirects=True)
             response.raise_for_status()
         except httpx.HTTPError as error:
-            raise self._give_up(_why_link(error, link.label), key=f'link:{link.label}') from error
+            # `from None`, not `from error`. httpx puts the request URL inside its own
+            # exception message, and a published link's URL *is* the credential — so a
+            # chained cause hands it to whatever logs the traceback. FastMCP does exactly
+            # that for a failing tool call, at ERROR, whatever HARRY_LOG_LEVEL says.
+            # Nothing diagnostic is lost: the sentence below names the link and what to do.
+            raise self._give_up(_why_link(error, link.label), key=f'link:{link.label}') from None
 
         try:
             document = icalendar.Calendar.from_ical(response.text)
-        except Exception as error:  # noqa: BLE001 — icalendar raises several types, and an
+        except Exception:  # noqa: BLE001 — icalendar raises several types, and an
             # expired link answers 200 with a sign-in page, which is the common case here.
             raise self._give_up(
                 f'{link.label} answered something that is not a calendar — if the link has expired, '
                 'republish that calendar in Outlook and put the new link in SUBSCRIBED',
                 key=f'link:{link.label}',
-            ) from error
+            ) from None  # icalendar quotes the line it choked on, which is somebody's page
 
         self._fetched[link.url] = (self._now(), response.text)
         return document
@@ -315,7 +320,9 @@ class Agenda:
         tool is callable from any session, so that blip is not hypothetical.
         """
         self._log.warning('could not read the calendar: %s', why)
-        self._alert(f'iCloud: {why}', key=key)
+        # 'Calendar', not 'iCloud': this connector reads published links too, and the
+        # sentence already names which of them broke.
+        self._alert(f'Calendar: {why}', key=key)
         self._principal = None
         return Unreachable(why)
 
