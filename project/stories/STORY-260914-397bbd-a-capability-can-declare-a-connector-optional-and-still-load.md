@@ -26,6 +26,7 @@ The contract addition the page needs. `requires:` refuses a capability whose con
 - [ ] A capability declaring both gets required ones guaranteed and optional ones only if present
 - [ ] `requires:` still refuses a capability whose connector is missing — optional does not weaken it
 - [ ] check_capabilities.py refuses an `optional:` naming a connector that does not exist, the way `requires:` does
+- [ ] The two lists do not interfere: a capability declaring both gets its required ones or is skipped, and its optional ones only if they loaded
 - [ ] The /new-tool template, .harry/README.md and docs/capabilities.md all say what the two lists mean and how to choose
 
 ## Subtasks
