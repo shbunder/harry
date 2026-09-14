@@ -19,21 +19,21 @@ The output surface, and the one holding the most dangerous credential in the rep
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] A PDF is uploaded under the name given, inside the configured folder, and the answer says the folder and the id
-- [ ] A folder that does not exist is created once; the next push finds it rather than making a second
-- [ ] A push that fails once is retried exactly once, and a successful retry puts nothing in Slack
-- [ ] Two failed attempts raise, and put one line in Slack naming the tablet and why, once per 24 hours
-- [ ] A revoked token says so and says to re-pair, rather than reporting a network problem
-- [ ] The device token reaches no log line, no exception message and no Slack message
-- [ ] With no DEVICE_TOKEN the connector and both tools are skipped, saying what is missing, and the rest of Harry loads
-- [ ] `make remarkable-pair CODE=…` exchanges the code once and writes the token to the gitignored .env.local without printing it
-- [ ] `remarkable_push_document` takes either a PDF path or markdown text, and neither-or-both is an error naming which
-- [ ] Markdown is rendered at 509.34 by 679.13 points before it is pushed
-- [ ] `remarkable_list_documents` says what is in the folder, newest first, and an absent folder is an empty list
-- [ ] The push tool is readOnlyHint false and destructiveHint false; the list tool is readOnlyHint true; both defer
-- [ ] remarkapy is pinned to exactly 0.3.1 with the reason on the same line, and nothing needs a Go rmapi binary
-- [ ] A live test pushes a real page to a real tablet, marked live and never in the gate
-- [ ] docs/sources.md and the runbook say how to pair, what a failed push does, and what lands in Slack
+- [x] A PDF is uploaded under the name given, inside the configured folder, and the answer says the folder and the id
+- [x] A folder that does not exist is created once; the next push finds it rather than making a second
+- [x] A push that fails once is retried exactly once, and a successful retry puts nothing in Slack
+- [x] Two failed attempts raise, and put one line in Slack naming the tablet and why, once per 24 hours
+- [x] A revoked token says so and says to re-pair, rather than reporting a network problem
+- [x] The device token reaches no log line, no exception message and no Slack message
+- [x] With no DEVICE_TOKEN the connector and both tools are skipped, saying what is missing, and the rest of Harry loads
+- [x] `make remarkable-pair CODE=…` exchanges the code once and writes the token to the gitignored .env.local without printing it
+- [x] `remarkable_push_document` takes either a PDF path or markdown text, and neither-or-both is an error naming which
+- [x] Markdown is rendered at 509.34 by 679.13 points before it is pushed
+- [x] `remarkable_list_documents` says what is in the folder, newest first, and an absent folder is an empty list
+- [x] The push tool is readOnlyHint false and destructiveHint false; the list tool is readOnlyHint true; both defer
+- [x] remarkapy is pinned to exactly 0.3.1 with the reason on the same line, and nothing needs a Go rmapi binary
+- [x] A live test pushes a real page to a real tablet, marked live and never in the gate
+- [x] docs/sources.md and the runbook say how to pair, what a failed push does, and what lands in Slack
 
 ## Stories
 
@@ -54,3 +54,74 @@ The output surface, and the one holding the most dangerous credential in the rep
 - Requirements: [[FEAT-260912-74f222]]
 - Decision: [[ADR-260914-6b0608]] — remarkapy is pinned to an exact version, and there is no Go rmapi binary
 
+
+## Lessons Learned
+
+### What worked
+
+**A deliberately incomplete stand-in, plus a signature check against the real client.**
+`StandIn` in `tests/test_remarkable_connector.py` implements exactly the four calls this
+connector makes and nothing else, so a fifth call fails the suite rather than quietly
+working. `test_the_stand_in_has_the_same_shape_as_the_real_client` compares each method's
+parameters against `remarkapy.Client`, which is what stops the stand-in drifting into
+fiction. **A hand-written double is safe when something independent checks its shape.**
+
+**Recording what the service really returns, after guessing wrong.** The stand-in used ISO
+timestamps because that is what a sensible API would send. reMarkable sends epoch
+milliseconds in a string. Sorting still worked — 13-digit strings compare in the right
+order — so nothing failed; the time shown to Claude was simply wrong. One real listing in
+`tests/fixtures/remarkable/folder-listing.json` settled it. **Where a fixture was invented
+rather than recorded, assume it is wrong in a way that still passes.**
+
+**Making the write surface a property instead of a promise.**
+`test_the_connector_only_ever_asks_for_four_things` greps the connector for `client.delete`,
+`client.rename` and the rest. The token permits all of them; the connector offers none, and
+a future edit that adds one fails a test rather than a review.
+
+### What to do differently
+
+**Make the test environment safe *before* probing a security control, not after.** Checking
+a guard means deleting it and watching a test go red. The guard here stops a device token
+being written to `~/.rmapi` — so deleting it wrote a real token into a real home directory,
+twice. The fixture now redirects `DEFAULT_CONFIG_PATH` *and* `candidate_config_paths`;
+moving only the first changed nothing, because the real file existed and was the first
+candidate. **Before you delete a control to test it, ask what it was protecting and put that
+out of reach.**
+
+**A `live` marker is not a guard unless something enforces it.** `make check` and `make test`
+passed `-m "not live"`; a bare `pytest tests/test_remarkable_connector.py` did not, and ran
+the live test. Seven copies of a test page reached a real tablet before anybody noticed, and
+the eighth arrived from a reviewer's sandbox that had copied `.env.local`. The flag now
+lives in `addopts`, and `test_a_plain_pytest_run_cannot_reach_the_tablet` collects this file
+in a subprocess to prove it. **A live test with a side effect on real hardware needs the
+marker enforced at the lowest level anything runs at.**
+
+**Four controls passed review and could not fail.** The page-size test built its own HTML
+from the stylesheet constant rather than rendering what `render_markdown` produced — delete
+the `<style>` and the page silently became A4. The escaping test asserted the output starts
+with `%PDF`. The `-m "not live"` line had nothing watching it. **Ask the deciding question
+per control, and when the answer is "the test builds the input itself", capture the real
+input instead.**
+
+**A dependency's module-level constant cannot be redirected by configuration.** remarkapy
+computes its config path from `pathlib.Path.home()` at *import* time, so no environment
+variable moves it; only an explicit `configfile` does. One missing keyword would have put a
+tablet-wide credential in a plaintext file. **When a library writes credentials, find out
+where it decides that, not where it documents it.**
+
+### Patterns to reuse
+
+- **`.harry/connectors/remarkable/connector.py`** — a lazily built client, because
+  `remarkapy.Client.__init__` makes two network calls and start-up must not wait on
+  somebody else's cloud; and `_trying(what, call, key)`, where the alert key is the
+  *operation*, so a failed read cannot spend the day's alert budget before the 06:30 write.
+- **`tests/test_remarkable_connector.py::no_network`** — replaces `httpx.Client` rather than
+  injecting one, because injecting flips remarkapy's own `injected_runtime` flag, which is
+  the thing under test. The docstring says so, which is the part worth copying.
+- **`rendered_document()`** in the same file — captures the string a renderer hands
+  WeasyPrint, so assertions are made against the real document rather than a rebuilt one.
+- **`scripts/remarkable_pair.py`** — a one-shot credential exchange that writes the value and
+  never prints it, into a temporary directory thrown away afterwards. Two independent locks,
+  each with its own test.
+- **`tests/fixtures/remarkable/README.md`** — a fixture directory that says which of its
+  files are recordings, which are handmade, and which bug each one exists to catch.

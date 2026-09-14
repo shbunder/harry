@@ -8,8 +8,9 @@ remember exists. This page is the index and the part that is true of all of them
 |---|---|---|
 | [weather](../.harry/connectors/weather/CONNECTOR.md) | nothing | the weather line |
 | [news](../.harry/connectors/news/CONNECTOR.md) | nothing | the headlines, and the articles chosen from them |
+| [remarkable](../.harry/connectors/remarkable/CONNECTOR.md) | a device token | the delivery — the page is still written to disk |
 
-*(calendar, De Tijd and the tablet arrive as their own features.)*
+*(calendar and De Tijd arrive as their own features.)*
 
 ## What every source promises
 
@@ -162,3 +163,81 @@ session — or an id pointing at a video.
 an XML parser is made to allocate all the memory on the machine, and a news feed has no
 reason to carry entity declarations. See
 [ADR-260914-5a682c](../project/decisions/ADR-260914-5a682c-feeds-are-parsed-with-the-standard-library-not-a-feed-librar.md).
+
+## The tablet
+
+Where Harry's output goes. One folder, one write, and the most dangerous credential here.
+
+**The device token grants complete read and write access to every document on the tablet,
+with no scopes and no expiry.** There is no read-only variant to ask for. So this connector
+does one thing — add a document — and deleting, moving and renaming are not exposed even
+though the token permits all three.
+
+### Pairing, once per machine
+
+1. Open **my.remarkable.com/device/desktop/connect** and copy the 8-character code. It
+   expires in a few minutes, so do this and the next step in one sitting.
+2. Run:
+
+```bash
+make remarkable-pair CODE=abcd1234
+```
+
+That exchanges the code for a permanent device token and writes it to
+`.harry/connectors/remarkable/.env.local`, which is gitignored. It prints that it worked and
+does not print the token. A code that has already expired says `the code was refused` — go
+back and get another.
+
+**The token is not kept in `~/.rmapi`**, which is where remarkapy would put it. A home
+directory is outside the repository, which is the good half, and outside the container,
+which is the bad half: the NUC would have nowhere to read it from. A container injects
+`HARRY_REMARKABLE_DEVICE_TOKEN` instead.
+
+To revoke it, remove the device at my.remarkable.com, then pair again.
+
+### What it does
+
+Documents go into one folder, named in `FOLDER` and `Harry` by default. It is created at the
+top level the first time something is pushed and found rather than re-made after that.
+
+**Claude reaches it with two tools**, both deferred, so a session finds them with
+`harry_find_tools("remarkable")` first:
+
+- `remarkable_push_document(name, path=…)` or `(name, markdown=…)` — puts one document
+  there. Markdown is rendered at 509.34 × 679.13 points, the Paper Pro's exact page, because
+  at any other size the tablet rescales it and the type goes soft. Exactly one of `path` and
+  `markdown`; both or neither is an error.
+- `remarkable_list_documents()` — what is in that folder, newest first. An empty list means
+  the folder is empty or not made yet, and is not an error.
+
+The morning page **will** use the connector directly, as `tablet.push(path, name)` — that
+page is not built yet.
+
+### When a push fails
+
+A failed upload is tried **exactly once more**. A retry that works says nothing — it is not a
+fault. Two failures raise, so whoever asked knows the page did not arrive, and put one line
+in Slack:
+
+```
+reMarkable: the tablet could not be reached
+```
+
+Once per 24 hours, naming the tablet and what happened. Never the token, never a URL, never
+anything from the response.
+
+| What happened | What you see | What to do |
+|---|---|---|
+| The cloud is unreachable or slow | Retried once, then `the tablet could not be reached` | Usually transient. The next push is a fresh attempt |
+| The token was revoked | `the tablet refused the token — pair this machine again` | `make remarkable-pair CODE=…` with a fresh code |
+| The push worked but nothing is on the device | — | The tablet syncs when it has wifi and the screen is on. Give it a minute |
+| Every write started failing and nothing here changed | Two failures, one Slack line | reMarkable changed the protocol — it happened in August 2026. Bump the exact `remarkapy` pin and run `make test-live ARGS=tests/test_remarkable_connector.py` |
+| A document you never opened vanished | — | The free tier removes untouched documents after 50 days. Irrelevant for a page replaced every morning |
+
+Nothing else is affected: a failed push costs the delivery, and whatever was being pushed is
+still on disk where it was.
+
+**`remarkapy` is pinned to exactly 0.3.1.** The protocol is reverse-engineered and a release
+broke every write in August 2026; a version range would deliver that release on the next
+rebuild, on a morning nobody changed anything. Moving the pin is a deliberate act with a live
+test attached.

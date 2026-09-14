@@ -26,7 +26,14 @@ dependencies = [
     "trafilatura>=2.0",     # article text extraction
     "playwright>=1.49",     # for sites that block scripted clients
     "weasyprint>=63",       # HTML + CSS to PDF, with a real outline
-    "remarkapy>=0.2",       # reMarkable cloud. rmapy and rmcl are archived and dead.
+    "markdown-it-py>=3.0",  # markdown to HTML, on the way to a PDF the tablet can read
+    # EXACT, not a range. The reMarkable protocol is reverse-engineered and a release
+    # broke every write in August 2026. 0.3.1 is the version that paired, pushed, and was
+    # confirmed on the device. Move it deliberately, then run
+    # `make test-live ARGS=tests/test_remarkable_connector.py` against a real tablet.
+    # rmapy and rmcl are archived and dead; the Go rmapi binary is not needed — remarkapy
+    # pairs on its own with register_device(code).
+    "remarkapy==0.3.1",
 ]
 
 [build-system]
@@ -98,7 +105,12 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 # --import-mode=importlib so two test files may share a basename in different
 # directories without colliding on module name, and tests/ needs no __init__.py.
-addopts = "--strict-markers --strict-config --import-mode=importlib"
+#
+# `-m "not live"` is here rather than only in the Makefile because a bare
+# `pytest tests/test_remarkable_connector.py` would otherwise push a real document to a
+# real tablet — which is how seven copies of a test page ended up on one. A later `-m`
+# on the command line overrides this, which is what `make test-live` passes.
+addopts = "--strict-markers --strict-config --import-mode=importlib -m 'not live'"
 pythonpath = [".", "scripts", "project"]
 # `.harry` is deliberately absent here: its Python is loaded by Harry at run time, by
 # path, not imported by name. Adding it would let a test import a connector directly and

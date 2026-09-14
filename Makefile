@@ -33,7 +33,7 @@ DIM   := \033[2m
 OFF   := \033[0m
 
 .PHONY: help env-install check lint format typecheck test test-cov lock env-template \
-        board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-now \
+        board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-now remarkable-pair \
         image up down logs docs clean
 
 help:  ## Show this help
@@ -144,6 +144,14 @@ spike:  ## Run a Phase 0 spike. Usage: make spike S=remarkable-push
 
 serve:  ## Run Harry natively, on whatever port .env/.env.local resolve to
 	$(PY) -m harry --reload
+
+remarkable-pair:  ## Pair this machine with the tablet. Usage: make remarkable-pair CODE=abcd1234
+	@if [ -z "$(CODE)" ]; then \
+	  echo "Get an 8-character code from my.remarkable.com/device/desktop/connect, then:"; \
+	  echo "  make remarkable-pair CODE=<the code>"; \
+	  echo "It expires in a few minutes, so fetch it and use it in the same sitting."; \
+	  exit 1; fi
+	$(PY) scripts/remarkable_pair.py $(CODE)
 
 digest-dry:  ## Build today's page to out/digest.pdf without pushing it
 	$(PY) -m harry.modules.digest --dry-run --out out/digest.pdf

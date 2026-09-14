@@ -1,8 +1,10 @@
 # Harry runs on the NUC, on 24/7, on port 7430.
 #
-# Three things go in that a plain Python image does not have: the Chromium that
-# tier-2 article fetching drives, the system libraries WeasyPrint renders through,
-# and the `claude` CLI that the 06:30 job invokes over localhost.
+# Two things go in that a plain Python image does not have: the Chromium that
+# tier-2 article fetching drives, and the system libraries WeasyPrint renders through.
+#
+# No `claude` CLI and no model tooling. A Claude scheduled task calls Harry from
+# outside; Harry is called, it does not call.
 
 FROM python:3.12-slim
 
@@ -13,21 +15,16 @@ ENV PYTHONUNBUFFERED=1 \
 
 # WeasyPrint renders through pango and cairo; without these it imports and then
 # fails at the first render, which is the worst place to find out.
-# curl and ca-certificates are for the rmapi download below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpango-1.0-0 libpangoft2-1.0-0 libcairo2 libgdk-pixbuf-2.0-0 \
         libffi-dev shared-mime-info fonts-dejavu-core \
-        curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# ddvk/rmapi, not juruen/rmapi — the widely-linked one is archived. Pinned exactly:
-# the reMarkable protocol is reverse-engineered and a release broke every write in
-# August 2026. See .claude/rules/external-sources.md.
-ARG RMAPI_VERSION=0.0.35
-RUN curl -fsSL "https://github.com/ddvk/rmapi/releases/download/v${RMAPI_VERSION}/rmapi-linuxarm64.tar.gz" \
-      -o /tmp/rmapi.tar.gz \
-    && tar -xzf /tmp/rmapi.tar.gz -C /usr/local/bin rmapi \
-    && rm /tmp/rmapi.tar.gz
+# Nothing else talks to the tablet. The Go rmapi binary used to be downloaded here for
+# one call made once per machine — pairing — and remarkapy turned out to do that itself
+# with register_device(code). Two clients would be two reverse-engineered protocol
+# implementations to keep working, and twice the surface holding a token that can rewrite
+# every document on the device. remarkapy is pinned exactly in pyproject.toml instead.
 
 # No model tooling goes in this image, and no Node to install it with. Harry performs
 # heuristic work only — see .claude/rules/no-model-calls.md and ADR-260912-bd36c2.
