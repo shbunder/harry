@@ -20,8 +20,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import caldav
+import httpx
 import icalendar
 import pytest
+import respx
 from caldav.lib.error import AuthorizationError, DAVError
 from niquests.exceptions import ConnectionError as NiquestsConnectionError, Timeout
 
@@ -128,6 +130,18 @@ def icloud(tmp_path, monkeypatch):
         return catalogue, sink
 
     return build
+
+
+@pytest.fixture
+def as_configured():
+    """Harry's logging, as `harry.main` sets it up, put back afterwards."""
+    from harry.main import TALKATIVE, configure_logging
+
+    before = {name: logging.getLogger(name).level for name in TALKATIVE}
+    configure_logging()
+    yield
+    for name, level in before.items():
+        logging.getLogger(name).setLevel(level)
 
 
 def connector(built):
@@ -799,3 +813,317 @@ def test_the_docs_say_where_the_password_comes_from_and_what_a_lapse_looks_like(
 
     operating = (REPO / 'docs' / 'operating.md').read_text(encoding='utf-8')
     assert 'iCloud app-specific password' in operating, 'the runbook still knows about only one credential'
+
+
+# ---------------------------------------------------------------------------
+# A calendar your work publishes
+# ---------------------------------------------------------------------------
+
+LINK = 'https://outlook.office365.com/owa/calendar/mailbox/a-secret-segment-nobody-should-see/reachcalendar.ics'
+"""The random segment is the whole of a published link's security, so it is planted here
+distinctively and asserted to appear nowhere."""
+
+
+def subscribed(*, label: str = 'KBC Agenda', url: str = LINK) -> str:
+    return f'USERNAME=u\nAPP_PASSWORD={PASSWORD}\nSUBSCRIBED={label}={url}\n'
+
+
+def serving(name: str = 'published-outlook.ics', status: int = 200):
+    """Answer a link with a recorded document, or a failure. **Returns the route**, because
+    calling `respx.get(...)` a second time registers another one that shadows this — which
+    quietly turned a cached body into an empty string once."""
+    body = (FIXTURES / name).read_text(encoding='utf-8') if name else ''
+    return respx.get(url__startswith='https://outlook.office365.com').mock(
+        return_value=httpx.Response(status, text=body, headers={'content-type': 'text/calendar'})
+    )
+
+
+@respx.mock
+def test_a_published_links_events_are_in_the_same_day(icloud):
+    """One agenda. Nothing says which calendar an event came from, because the page has one
+    line and the person has one day."""
+    serving()
+    built = icloud(documents=('afternoon.ics',), settings=subscribed())
+
+    day = connector(built).on(MONDAY)
+
+    assert [event['title'] for event in day] == ['Out of office', 'Sprint planning', 'design review']
+    assert day[1] == {'at': '09:00', 'title': 'Sprint planning', 'where': 'Teams'}
+
+
+@respx.mock
+def test_a_repeating_meeting_from_a_link_lands_on_the_right_day(icloud):
+    """The same expansion the iCloud events get. Outlook's own document is what it was
+    measured against — 40 of the 234 events in the real one carry an RRULE."""
+    serving()
+    built = icloud(documents=(), settings=subscribed())
+
+    assert [e['at'] for e in connector(built).on(dt.date(2026, 9, 8)) if e['title'] == 'Weekly sync'] == ['11:00']
+    assert [e for e in connector(built).on(dt.date(2026, 9, 9)) if e['title'] == 'Weekly sync'] == []
+
+
+@respx.mock
+def test_an_overridden_instance_from_a_link_appears_once_at_its_new_time(icloud):
+    """The real link carries 76 of these. Expanding each object alone would give the meeting
+    twice — once at 11:00 and once at 16:00."""
+    serving()
+    built = icloud(documents=(), settings=subscribed())
+
+    syncs = [e for e in connector(built).on(dt.date(2026, 9, 15)) if e['title'] == 'Weekly sync']
+
+    assert syncs == [{'at': '16:00', 'title': 'Weekly sync', 'where': 'Room 3.14'}]
+
+
+@respx.mock
+def test_a_multi_day_all_day_block_covers_every_day_of_it(icloud):
+    serving()
+    built = icloud(documents=(), settings=subscribed())
+    calendar = connector(built)
+
+    for day in (dt.date(2026, 9, 14), dt.date(2026, 9, 17), dt.date(2026, 9, 18)):
+        assert any(e['title'] == 'Out of office' and e['at'] == 'all day' for e in calendar.on(day)), day
+    assert not any(e['title'] == 'Out of office' for e in calendar.on(dt.date(2026, 9, 19)))
+
+
+@respx.mock
+def test_two_links_both_contribute_and_each_is_fetched_once(icloud):
+    other = 'https://calendar.google.com/calendar/ical/x/basic.ics'
+    outlook = serving()
+    elsewhere = respx.get(other).mock(
+        return_value=httpx.Response(200, text=(FIXTURES / 'afternoon.ics').read_text(encoding='utf-8'))
+    )
+    built = icloud(
+        documents=(),
+        settings=f'USERNAME=u\nAPP_PASSWORD={PASSWORD}\nSUBSCRIBED=KBC Agenda={LINK}|Other=Ω{other}'.replace('Ω', ''),
+    )
+
+    day = connector(built).on(MONDAY)
+
+    assert {e['title'] for e in day} == {'Out of office', 'Sprint planning', 'design review'}
+    assert outlook.call_count == 1
+    assert elsewhere.call_count == 1
+
+
+@respx.mock
+def test_a_link_is_fetched_once_within_five_minutes(icloud):
+    """189 KB per call. Asking about a week is seven calls."""
+    route = serving()
+    built = icloud(documents=(), settings=subscribed())
+    calendar = connector(built)
+    clock = dt.datetime(2026, 9, 14, 7, 0, tzinfo=dt.timezone.utc)
+    calendar._now = lambda: clock  # noqa: SLF001
+
+    for offset in range(4):
+        calendar.on(MONDAY + dt.timedelta(days=offset))
+
+    assert route.call_count == 1
+
+    clock = clock + dt.timedelta(minutes=6)
+    calendar._now = lambda: clock  # noqa: SLF001
+    calendar.on(MONDAY)
+
+    assert route.call_count == 2
+
+
+@respx.mock
+def test_no_links_configured_fetches_nothing(icloud):
+    route = serving()
+    built = icloud(documents=('afternoon.ics',))
+
+    assert [e['title'] for e in connector(built).on(MONDAY)] == ['design review']
+    assert route.call_count == 0
+
+
+# -- when a link will not load ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ('status', 'why'),
+    [
+        (404, 'KBC Agenda answered 404'),
+        (403, 'KBC Agenda answered 403'),
+        (500, 'KBC Agenda answered 500'),
+    ],
+)
+@respx.mock
+def test_a_link_that_is_down_fails_the_whole_read(icloud, status, why):
+    """A day missing your work meetings looks exactly like a quiet day, and you would walk
+    into a 09:00. The whole agenda fails instead, so the page says "Agenda unavailable" and
+    you go and look at your phone."""
+    serving(status=status)
+    built = icloud(documents=('afternoon.ics',), settings=subscribed())
+
+    with pytest.raises(Exception, match=why):
+        connector(built).on(MONDAY)
+
+    _, sink = built
+    assert len(sink.heard) == 1 and why in sink.heard[0]
+
+
+@respx.mock
+def test_a_withdrawn_link_says_to_republish_it(icloud):
+    serving(status=404)
+    built = icloud(documents=(), settings=subscribed())
+
+    with pytest.raises(Exception, match='[Rr]epublish that calendar in Outlook'):
+        connector(built).on(MONDAY)
+
+
+@respx.mock
+def test_a_link_that_times_out_says_how_long_it_waited(icloud):
+    respx.get(url__startswith='https://outlook.office365.com').mock(side_effect=httpx.ReadTimeout('slow'))
+    built = icloud(documents=(), settings=subscribed())
+
+    with pytest.raises(Exception, match='KBC Agenda did not answer within 20s'):
+        connector(built).on(MONDAY)
+
+
+@respx.mock
+def test_a_link_answering_a_sign_in_page_says_it_is_not_a_calendar(icloud):
+    """An expired published link answers 200 with HTML, not a 404 — which is why this is its
+    own case rather than falling out of the status check."""
+    serving('not-a-calendar.html')
+    built = icloud(documents=(), settings=subscribed())
+
+    with pytest.raises(Exception, match='answered something that is not a calendar'):
+        connector(built).on(MONDAY)
+
+    _, sink = built
+    assert 'republish that calendar in Outlook' in sink.heard[0]
+
+
+@respx.mock
+def test_a_failed_link_is_not_served_from_an_older_success(icloud):
+    """An agenda that silently ages is the same lie as a partial one."""
+    serving()
+    built = icloud(documents=(), settings=subscribed())
+    calendar = connector(built)
+
+    assert calendar.on(MONDAY), 'the first read should work'
+
+    calendar._fetched.clear()  # noqa: SLF001 — otherwise the second read never reaches the link
+    serving(status=404)
+    with pytest.raises(Exception, match='answered 404'):
+        calendar.on(MONDAY)
+
+
+@respx.mock
+def test_each_link_gets_its_own_alert_key(icloud):
+    """One dead link must not silence a second one that dies an hour later."""
+    other = 'https://calendar.google.com/calendar/ical/x/basic.ics'
+    respx.get(url__startswith='https://outlook.office365.com').mock(return_value=httpx.Response(404))
+    respx.get(other).mock(return_value=httpx.Response(404))
+    built = icloud(
+        documents=(), settings=f'USERNAME=u\nAPP_PASSWORD={PASSWORD}\nSUBSCRIBED=KBC Agenda={LINK}|Other={other}'
+    )
+    calendar = connector(built)
+
+    with pytest.raises(Exception, match='KBC Agenda'):
+        calendar.on(MONDAY)
+
+    # The first link now fails to resolve at all, so the second is the one that reports.
+    respx.get(url__startswith='https://outlook.office365.com').mock(
+        return_value=httpx.Response(200, text=(FIXTURES / 'published-outlook.ics').read_text(encoding='utf-8'))
+    )
+    with pytest.raises(Exception, match='Other'):
+        calendar.on(MONDAY)
+
+    _, sink = built
+    assert len(sink.heard) == 2, sink.heard
+    assert any('KBC Agenda' in line for line in sink.heard) and any('Other' in line for line in sink.heard)
+
+
+@respx.mock
+def test_the_link_reaches_no_log_no_error_and_no_slack(icloud, caplog, as_configured):
+    """The random segment in the URL is the password. A link that fails is reported by the
+    name a person chose, which is also the thing they can act on.
+
+    Run with Harry's own logging set up, because the leak this catches is not the
+    connector's: **httpx logs every request line, URL included, at INFO**, so
+    `HARRY_LOG_LEVEL=INFO` would write the link into the log past a connector that never
+    prints it. `configure_logging` is what stops that, and this is the test that notices if
+    it ever stops.
+    """
+    serving(status=404)
+    built = icloud(documents=(), settings=subscribed())
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(Exception) as refused:
+        connector(built).on(MONDAY)
+
+    _, sink = built
+    assert 'a-secret-segment-nobody-should-see' not in caplog.text, 'the link reached the log'
+    assert 'a-secret-segment-nobody-should-see' not in str(refused.value), 'the link reached the error'
+    assert 'a-secret-segment-nobody-should-see' not in ' '.join(sink.heard), 'the link reached Slack'
+
+
+# -- the setting itself ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ('setting', 'labels'),
+    [
+        (f'KBC Agenda={LINK}', ['KBC Agenda']),
+        (f'KBC Agenda={LINK}|Other=https://x.test/b.ics', ['KBC Agenda', 'Other']),
+        ('', []),
+        ('   ', []),
+    ],
+)
+def test_subscribed_is_name_equals_url_separated_by_pipes(setting, labels):
+    module = __import__('importlib').import_module('harry.loader')  # noqa: F841 — keeps the loader honest
+    read_links = _connector_globals()['read_links']
+
+    assert [link.label for link in read_links(setting, logging.getLogger('t'))] == labels
+
+
+def test_a_url_may_carry_as_many_equals_signs_as_it_likes():
+    """Split on the first one. The Outlook links do carry more."""
+    awkward = 'https://x.test/cal.ics?a=1&b=2'
+    links = _connector_globals()['read_links'](f'Work={awkward}', logging.getLogger('t'))
+
+    assert links[0].url == awkward
+
+
+@pytest.mark.parametrize('broken', ['not-a-pair', 'Missing url=', '=https://x.test/a.ics', 'Work=ftp://x.test/a.ics'])
+def test_a_malformed_subscribed_entry_costs_one_link(broken, caplog):
+    with caplog.at_level(logging.WARNING):
+        links = _connector_globals()['read_links'](f'{broken}|Good=https://x.test/b.ics', logging.getLogger('t'))
+
+    assert [link.label for link in links] == ['Good']
+    assert 'is not Name=https://' in caplog.text
+
+
+def test_a_malformed_entry_is_reported_by_position_not_by_content(caplog):
+    """The content is a credential. Logging the entry to explain the typo would print it."""
+    with caplog.at_level(logging.WARNING):
+        _connector_globals()['read_links'](f'{LINK}', logging.getLogger('t'))
+
+    assert 'a-secret-segment-nobody-should-see' not in caplog.text
+    assert 'entry 1' in caplog.text
+
+
+def test_the_link_setting_is_declared_secret_with_no_default():
+    """A default on a secret would put a credential in the committed `.env`; `make lint`
+    refuses one, and this says why the field looks the way it does."""
+    declaration = (REPO / '.harry' / 'connectors' / 'icloud' / 'CONNECTOR.md').read_text(encoding='utf-8')
+    block = declaration.partition('subscribed:')[2].partition('timezone:')[0]
+
+    assert 'secret: true' in block
+    assert 'default:' not in block
+
+    committed = (REPO / '.harry' / 'connectors' / 'icloud' / '.env').read_text(encoding='utf-8')
+    assert 'SUBSCRIBED=\n' in committed, 'the generated .env should carry the key, empty'
+
+
+def _connector_globals() -> dict:
+    """The connector module's namespace, reached through an object the loader built."""
+    import shutil
+
+    root = Path(__import__('tempfile').mkdtemp()) / 'root'
+    (root / 'connectors').mkdir(parents=True)
+    shutil.copytree(REPO / '.harry' / 'connectors' / 'icloud', root / 'connectors' / 'icloud')
+    (root / 'connectors' / 'icloud' / '.env.local').write_text(
+        f'USERNAME=u\nAPP_PASSWORD={PASSWORD}\n', encoding='utf-8'
+    )
+    found = load([root]).get('connector', 'icloud')
+    assert found is not None and found.target is not None
+    return found.target.on.__func__.__globals__

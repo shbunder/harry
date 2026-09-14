@@ -36,6 +36,16 @@ from harry.store import Store
 MCP_PATH = '/mcp'
 
 
+TALKATIVE = ('httpx', 'httpcore', 'niquests', 'urllib3')
+"""HTTP clients that log every request line, including the URL, at INFO.
+
+**One of Harry's credentials is a URL.** A published calendar link carries its own authority
+in a random path segment, so `HARRY_LOG_LEVEL=INFO` would write it into the log on every
+read — past a connector that is careful never to print it itself. These stay at WARNING, so
+a failure is still reported and a successful request is not narrated.
+"""
+
+
 def configure_logging() -> None:
     """Make `HARRY_LOG_LEVEL` mean something for Harry's own loggers.
 
@@ -52,6 +62,8 @@ def configure_logging() -> None:
     level = config.get_settings().log_level.upper()
     logging.basicConfig(level=level, format='%(levelname)s %(name)s: %(message)s')
     logging.getLogger('harry').setLevel(level)
+    for noisy in TALKATIVE:
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def build_app() -> FastAPI:
