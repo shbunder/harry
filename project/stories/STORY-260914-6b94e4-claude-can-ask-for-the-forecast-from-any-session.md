@@ -21,11 +21,11 @@ The tool, and the one judgement call in this feature: a source being down is an 
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] weather_forecast returns the four facts and the place they are for
-- [ ] With the service down it returns {available: false, why} rather than raising
-- [ ] It is deferred, and harry_find_tools("weather") finds it
-- [ ] The weather connector declares it in provides:, and make lint enforces that as it does for slack_post
-- [ ] Asked through a real MCP client, it answers with what the connector returned
+- [x] weather_forecast returns the four facts and the place they are for
+- [x] With the service down it returns {available: false, why} rather than raising
+- [x] It is deferred, and harry_find_tools("weather") finds it
+- [x] The weather connector declares it in provides:, and make lint enforces that as it does for slack_post
+- [x] Asked through a real MCP client, it answers with what the connector returned
 
 ## Subtasks
 

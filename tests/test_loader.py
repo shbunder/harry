@@ -230,7 +230,7 @@ def test_the_declaration_and_its_body_reach_the_capability_verbatim(tmp_path):
     assert weather is not None and weather.target is not None
     seen = weather.target
     assert seen['expires'] == 'never'
-    assert seen['body'].startswith('Not a real connector.')
+    assert seen['body'].startswith('**Not the weather connector.**')
     assert '---' not in seen['body']
 
 
