@@ -23,7 +23,7 @@ What all of it is for. At 06:30 a Claude scheduled task asks Harry for candidate
 - [ ] `requires:` still refuses a capability whose connector is missing, and `make lint` refuses an `optional:` naming a connector that does not exist
 - [ ] digest_list_candidates calls weather.today(), calendar.today() and news.candidates(limit) and returns their answers, and returns the same shape with no sources loaded at all
 - [ ] Candidates come back newest first, capped at limit, and a capped answer says how many were dropped; summary is the source's own text, truncated at 280 characters under concise
-- [ ] A source that raises leaves its own section unavailable and the other sections intact
+- [ ] A source that raises, and a source that returns None, both leave that section reading "unavailable" rather than blank, with the others intact
 - [ ] digest_build takes an intro and picks of id-and-note, and the front page carries the intro verbatim
 - [ ] Each picked article appears with the note Claude wrote above its text, unedited
 - [ ] An article whose text could not be fetched still appears with its headline and note, saying the text was unavailable
