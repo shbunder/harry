@@ -41,8 +41,8 @@ Today's calendar and to-dos, from iCloud over CalDAV. Apple's Reminders support 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
-- [ ] [[STORY-260914-f7a91e]] — Harry can read today's agenda out of iCloud
-- [ ] [[STORY-260914-2245c2]] — Claude can ask what a day looks like
+- [x] [[STORY-260914-f7a91e]] — Harry can read today's agenda out of iCloud
+- [x] [[STORY-260914-2245c2]] — Claude can ask what a day looks like
 
 ## Notes
 
@@ -51,6 +51,7 @@ Today's calendar and to-dos, from iCloud over CalDAV. Apple's Reminders support 
 <!-- Appended by `board.py note`. -->
 - **2026-09-13** — iCloud spike, three results. (1) CONNECTION PASS: app-specific password authenticates against https://caldav.icloud.com, 17 calendars listed. (2) REMINDERS FAIL: 14 VTODO items come back and every single one is an Apple upgrade placeholder - 'De maker van deze lijst heeft deze herinneringen bijgewerkt' / 'Waar zijn mij herinneringen?' - across 17 lists. Zero real reminders. These lists have been upgraded to a format CalDAV does not expose. The to-do section must move source or drop; it blocks nothing else. (3) RECURRENCE FAIL: searching today with expand=True returned one event whose DTSTART is 2026-09-07, i.e. the series start rather than today's instance. The agenda needs instance times, so this connector has to expand client-side or read RRULE itself. Budget for that; it is not a one-liner.
 - **2026-09-13** — How the reminder failure was nearly missed, worth keeping: the spike first printed PASS because it counted VTODO items without looking at them. Fourteen items came back, so it said Reminders work. They were all placeholders. A count is not a finding - the spike now classifies and fails, which is the same lesson as .claude/rules/inert-controls.md in a place nobody thought to apply it.
+- **2026-09-14** — Reflection: pre-close-verifier REQUEST CHANGES with three Critical and five Important, all acted on. The Critical three: skip_bad_series untested, so one malformed event took the whole agenda down with no log and no Slack; one alert key for every fault, so a transient blip silenced the revoked-password message — the same bug the tablet connector fixed two features earlier; and the 15s ceiling applied by a line nothing executed. Traceability 20/20 criteria, one marked by inspection and narrowed to the half automation cannot judge. Degraded paths tested: unreachable, slow, 401, DAVError, an exception of no known type, a malformed event, an unwalkable object, an unknown calendar name, a free day. Scope: the page half of 'Agenda unavailable' handed to the digest, which is where it belongs. NOT YET CONFIRMED: the live test has never run — there is no iCloud credential on this machine, so the production call path has never executed and the handmade fixtures cannot vouch for what iCloud really sends.
 
 ## Links
 
