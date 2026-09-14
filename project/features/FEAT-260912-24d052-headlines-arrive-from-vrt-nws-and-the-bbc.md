@@ -44,13 +44,14 @@ The candidates Claude chooses from. Feeds in, deduplicated headlines out, and th
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
-- [ ] [[STORY-260914-94e747]] — Candidates arrive from an Atom feed and an RSS feed
-- [ ] [[STORY-260914-636ac0]] — A dead feed says so in Slack and costs nothing else
-- [ ] [[STORY-260914-d1ecf1]] — Claude can search the headlines and read one in full
+- [x] [[STORY-260914-94e747]] — Candidates arrive from an Atom feed and an RSS feed
+- [x] [[STORY-260914-636ac0]] — A dead feed says so in Slack and costs nothing else
+- [x] [[STORY-260914-d1ecf1]] — Claude can search the headlines and read one in full
 
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-14** — Reflection: pre-close-verifier REQUEST CHANGES, six findings, all acted on — a wrong timeout in a Slack line, an untested default page size, and two criteria whose wording the code did not meet. Traceability 21/21 criteria to named tests. Degraded paths tested: feed 404/500/connect error/read timeout, HTML instead of XML, XML that is not a feed, an entity bomb, every feed down, article 403, article timeout, article with no prose. Scope drift: a bad-timezone fallback and accent folding in ids were built unasked — both tested, so both got criteria rather than removal.
 
 ## Links
 
