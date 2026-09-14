@@ -3,7 +3,7 @@ id: FEAT-260914-fc1515
 title: A capability can report its own failure, not just receive somebody else's
 track: full
 created: 2026-09-14
-touches: [core/registry,core/loader,core/main,core/sdk]
+touches: [core/alerts, core/loader, core/main, core/registry, core/sdk, docs]
 stories: [STORY-260914-008826]
 decisions: [ADR-260914-c469a4]
 ---
@@ -26,9 +26,12 @@ Found while planning the weather connector, which does not need it: no credentia
 - [ ] Core namespaces the key to <kind>:<name>:<key>, so one capability cannot silence another's
 - [ ] With nothing registered it is a WARNING in the log naming the capability, and nothing raises
 - [ ] Every sink failing still returns, is logged, and does not record the key — so the next occurrence tries again
-- [ ] An alert raised inside register() is logged, the capability still loads, and a sink loaded later does not receive it
+- [ ] An alert raised inside register() is logged, the capability still loads, a sink loaded later does not receive it, and the key is not recorded — so the same fault at call time is still sent
+- [ ] A secret the capability declared is [redacted] in the message before any sink sees it
+- [ ] A sink that alerts from its own failure path is refused re-entry rather than recursing
 - [ ] A capability importing harry.alerts is still skipped — context.alert is the only way in
-- [ ] docs/alerting.md and the three /new-* skills say how a capability reports a failure, and that log is for whoever reads the log while alert is for whoever does not
+- [ ] docs/alerting.md, docs/capabilities.md and the three /new-* skills say how a capability reports a failure, and that log is for whoever reads the log while alert is for whoever does not
+- [ ] A test pins Context's public names, so the twelfth addition is deliberate rather than incidental
 
 ## Stories
 

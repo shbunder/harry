@@ -122,8 +122,11 @@ the code trying to report a problem is taken down by the reporting.
 
 **Bad:**
 
-- **A tenth name on `Context`.** Each addition makes the next easier to argue for, and the
-  test that asserts every field is checked is the only thing holding that line.
+- **An eleventh name on `Context`** — eight fields and three methods now. Each addition
+  makes the next easier to argue for, and until this feature nothing held that line: the
+  SDK test pins `harry.sdk.__all__` at three names and says nothing about what is on the
+  objects it exports. This feature adds the test that pins `Context`, so the twelfth
+  addition has to be deliberate.
 - **It can be forgotten, silently.** Option 1 could not be. A capability that catches an
   exception, logs it and returns a default is invisible, and nothing in the gate can tell
   that apart from one that had nothing to report. It belongs on the review checklist for

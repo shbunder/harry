@@ -26,9 +26,13 @@ The missing half of alerting. A capability can offer somewhere alerts go and can
 - [ ] The key is namespaced by core to <kind>:<name>:<key>, so two capabilities using "down" do not silence each other
 - [ ] With no sink registered it is a WARNING naming the capability, and nothing raises
 - [ ] Every sink failing returns normally, is logged, and leaves the key unrecorded so the next occurrence tries again
-- [ ] An alert raised inside register() is logged, the capability still loads, and a sink loaded later does not get it
+- [ ] An alert raised inside register() is logged, the capability still loads, a sink loaded later does not get it, and the key stays unrecorded
+- [ ] Alerts tells "attached with no sinks" apart from "not attached yet" — only the first counts as delivery
+- [ ] A declared secret is [redacted] in the message before any sink sees it
+- [ ] A sink alerting from its own failure path is refused re-entry, logged and dropped
 - [ ] A capability importing harry.alerts is still skipped — context.alert is the only way in
-- [ ] docs/alerting.md and the three /new-* skills say when to log and when to alert
+- [ ] docs/alerting.md, docs/capabilities.md and the three /new-* skills say when to log and when to alert
+- [ ] Context's public names are pinned by a test
 
 ## Subtasks
 
