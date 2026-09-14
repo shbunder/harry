@@ -63,10 +63,21 @@ it reports progress, with nothing configured on the client. The settings that al
 if you ever need them: a per-server `timeout` in `.mcp.json`, or
 `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`.
 
-## The credential that expires quietly
+## The credentials that expire quietly
 
-This is the part worth reading before you need it. It degrades Harry without breaking it,
-which is exactly why it needs an alert rather than a health check.
+This is the part worth reading before you need it. These degrade Harry without breaking it,
+which is exactly why they need an alert rather than a health check.
+
+Three, and they fail in different ways:
+
+| Credential | How it dies | What you see | Where the steps are |
+|---|---|---|---|
+| The De Tijd browser session | On its own, after a few weeks | Articles fall back to their RSS summary | Below |
+| The iCloud app-specific password | The day you change your Apple ID password, which revokes every one at once | `Agenda unavailable`, and `iCloud: the password was refused` in Slack | [sources.md § The calendar](sources.md) |
+| The reMarkable device token | Only if you revoke the device at my.remarkable.com | A failed push, and `reMarkable: the tablet refused the token` in Slack | [sources.md § The tablet](sources.md) |
+
+The second one is the one that surprises people: changing your Apple password is a thing you
+do for unrelated reasons, and it stops Harry's agenda the same morning.
 
 ### The De Tijd browser session
 

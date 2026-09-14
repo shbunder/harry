@@ -78,7 +78,7 @@ with moved instances at their new time and cancelled ones absent.
 
 | What happened | What you see | What to do |
 |---|---|---|
-| iCloud is unreachable or slow | `Agenda unavailable` on the page; one Slack line | Usually transient. The next build is a fresh attempt |
+| iCloud is unreachable or slow | `Agenda unavailable` on the page; one Slack line | Usually transient. The next build is a fresh attempt. The 15-second ceiling is **per request**, and reading every calendar is one request each — name the ones you care about in `CALENDARS` if a slow morning matters |
 | The password was refused | `the password was refused`; one Slack line | Make a new app-specific password at account.apple.com and replace it in `.env.local` |
 | A calendar in `CALENDARS` does not exist | The other calendars' events, and a log line | Check the name — it is the name as it appears in the Calendar app |
 | One event will not parse | The rest of the day, and a log line | Nothing. One malformed entry is not an outage |

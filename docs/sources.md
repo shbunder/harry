@@ -297,7 +297,7 @@ first. No `day` means today; `day="2026-09-15"` means that day.
 
 | What happened | What you see | What to do |
 |---|---|---|
-| iCloud unreachable or slow | `Agenda unavailable`; one Slack line | Usually transient. The next build is a fresh attempt |
+| iCloud unreachable or slow | `Agenda unavailable`; one Slack line | Usually transient. The ceiling is 15 seconds **per request**, and every calendar is a request — name the ones you want in `CALENDARS` if a slow morning matters |
 | The password was refused | `the password was refused`; one Slack line | Make a new one at account.apple.com and replace it in `.env.local` |
 | A calendar in `CALENDARS` does not exist | The others' events, and a log line | Check the name as it appears in the Calendar app |
 | One event will not parse | The rest of the day, and a log line | Nothing. One bad entry is not an outage |

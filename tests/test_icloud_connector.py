@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 import inspect
 import logging
+import re
 import shutil
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -296,11 +297,30 @@ def test_a_calendar_name_that_matches_nothing_is_logged_and_skipped(icloud, capl
 
 
 def test_one_event_that_will_not_parse_costs_one_event(icloud, caplog):
+    """`malformed.ics` has a DTSTART that is not a timestamp. It parses at `from_ical` and
+    blows up later, at `.dt` — so this is the failure a real bad entry produces, not a
+    stand-in returning None.
+
+    Without the guard the whole agenda goes down, and because the exception is neither a
+    DAVError nor an OSError it would not even reach the alert: no log, no Slack, no agenda.
+    """
+    built = icloud(documents=('malformed.ics', 'afternoon.ics'))
+
+    with caplog.at_level(logging.WARNING, logger='harry.capability.icloud'):
+        day = connector(built).on(MONDAY)
+
+    assert [event['title'] for event in day] == ['design review'], 'one bad event took the day down'
+    assert 'an event nobody can read' in caplog.text, 'it was dropped with no trace'
+    assert 'start time cannot be read' in caplog.text
+
+
+def test_an_object_that_cannot_be_walked_at_all_costs_one_object(icloud, caplog):
+    """A different failure from the one above: the document itself is unusable, rather than
+    one event inside it."""
+
     class Broken(StandInCalendar):
         def search(self, xml=None, server_expand: bool = False, **searchargs):
-            good = Found(recorded('afternoon.ics')[0])
-            bad = Found(None)  # type: ignore[arg-type] — walking None is what a bad parse looks like
-            return [bad, good]
+            return [Found(None), Found(recorded('afternoon.ics')[0])]  # type: ignore[arg-type]
 
     built = icloud(calendars=[Broken('Home', [])])
 
@@ -319,7 +339,7 @@ def test_one_event_that_will_not_parse_costs_one_event(icloud, caplog):
 @pytest.mark.parametrize(
     ('failure', 'why'),
     [
-        (Timeout('too slow'), 'iCloud did not answer within 15s'),
+        (Timeout('too slow'), 'iCloud stopped answering .15s per request.'),
         (NiquestsConnectionError('no route to host'), 'iCloud could not be reached'),
         (OSError('the socket went away'), 'iCloud could not be reached'),
         (DAVError('something else'), 'iCloud answered something this connector does not understand'),
@@ -335,7 +355,8 @@ def test_a_calendar_that_cannot_be_read_raises_and_says_why(icloud, failure, why
         connector(built).on(MONDAY)
 
     _, sink = built
-    assert sink.heard == [f'iCloud: {why}']
+    assert len(sink.heard) == 1 and sink.heard[0].startswith('iCloud: ')
+    assert re.search(why, sink.heard[0]), sink.heard
     assert 'could not read the calendar' in caplog.text
 
 
@@ -583,3 +604,173 @@ def test_the_connector_lists_the_tool_in_provides():
     declaration = (REPO / '.harry' / 'connectors' / 'icloud' / 'CONNECTOR.md').read_text(encoding='utf-8')
 
     assert 'provides: [icloud_list_events]' in declaration
+
+
+# ---------------------------------------------------------------------------
+# The controls a green suite was not proving
+# ---------------------------------------------------------------------------
+
+
+def test_the_real_client_is_built_with_the_ceiling_the_slack_line_quotes(monkeypatch, icloud):
+    """`_reach_icloud` runs only in the live test, so the timeout could be deleted with the
+    suite green — while Slack kept saying "15s per request", which would then be a sentence
+    about a number nothing applied."""
+    passed: dict = {}
+
+    def spy(**kwargs):
+        passed.update(kwargs)
+        return object()
+
+    module = connector(icloud(documents=())).on.__func__.__globals__
+    monkeypatch.setattr(module['caldav'], 'DAVClient', spy)
+    module['_reach_icloud']('you@icloud.com', 'a-password')
+
+    assert passed['timeout'] == 15, 'the connector did not choose a ceiling of its own'
+    assert passed['url'] == 'https://caldav.icloud.com'
+
+
+def test_today_is_the_day_in_the_configured_zone_not_the_machines(icloud, monkeypatch):
+    """On a container running UTC there is a window every night where the machine's date and
+    Brussels' date differ. Kiritimati is UTC+14, so the two disagree for most of the day."""
+    built = icloud(documents=(), settings=f'USERNAME=u\nAPP_PASSWORD={PASSWORD}\nTIMEZONE=Pacific/Kiritimati\n')
+    calendar = connector(built)
+
+    asked: list[dt.date] = []
+    calendar.on = lambda day: asked.append(_a_date_for_test(day))  # type: ignore[assignment] — capture what today() resolved
+
+    calendar.today()
+
+    assert asked == [dt.datetime.now(ZoneInfo('Pacific/Kiritimati')).date()]
+
+
+def _a_date_for_test(day):
+    return day if isinstance(day, dt.date) else dt.date.fromisoformat(str(day))
+
+
+def test_a_transient_failure_does_not_silence_the_revoked_password(icloud):
+    """The sentence a person can act on must not be swallowed by a blip that happened first.
+
+    `icloud_list_events` is callable from any session, so a connection failure at 11am
+    burning the day's alert budget is not hypothetical — and the 06:30 agenda would then
+    fail with nothing in Slack.
+    """
+    account = [StandInCalendar('Home', recorded('afternoon.ics'))]
+    built = icloud(calendars=account)
+    calendar = connector(built)
+
+    account[0].fails_with = NiquestsConnectionError('a blip')
+    with pytest.raises(Exception, match='could not be reached'):
+        calendar.on(MONDAY)
+
+    account[0].fails_with = AuthorizationError('401')
+    with pytest.raises(Exception, match='make a new app-specific password'):
+        calendar.on(MONDAY)
+
+    _, sink = built
+    assert len(sink.heard) == 2, sink.heard
+    assert any('make a new app-specific password' in line for line in sink.heard)
+
+
+def test_something_neither_dav_nor_os_still_reaches_slack(icloud, caplog):
+    """icalendar and lxml both raise types that are neither. Without a final catch the page
+    degrades and nobody is told, which is the three-week silence."""
+
+    class Surprising(StandInCalendar):
+        def search(self, xml=None, server_expand: bool = False, **searchargs):
+            raise RuntimeError('something nobody predicted')
+
+    built = icloud(calendars=[Surprising('Home', [])])
+
+    with (
+        caplog.at_level(logging.ERROR, logger='harry.capability.icloud'),
+        pytest.raises(Exception, match='does not understand'),
+    ):
+        connector(built).on(MONDAY)
+
+    _, sink = built
+    assert sink.heard == ['iCloud: iCloud answered something this connector does not understand']
+
+
+def test_a_failure_drops_the_connection_so_the_next_call_builds_a_fresh_one(icloud):
+    """The principal is cached after the first successful sign-in, so a connection that dies
+    later would be reused forever and a single blip would need a restart to clear.
+
+    The failure has to happen *after* `principal()` succeeds — that is the only state in
+    which anything is cached, and so the only state in which the reset does anything. A
+    stand-in that fails at sign-in caches nothing and proves nothing.
+    """
+
+    class WedgedAfterSignIn(StandInClient):
+        def __init__(self) -> None:
+            super().__init__([StandInCalendar('Home', recorded('afternoon.ics'))])
+            self.dead = True
+
+        def calendars(self):
+            if self.dead:
+                raise NiquestsConnectionError('the connection went away after sign-in')
+            return super().calendars()
+
+    built = icloud(documents=('afternoon.ics',))
+    calendar = connector(built)
+
+    wedged = WedgedAfterSignIn()
+    healthy = StandInClient([StandInCalendar('Home', recorded('afternoon.ics'))])
+    handed: list[StandInClient] = []
+
+    def connect(username, password):
+        client = wedged if not handed else healthy
+        handed.append(client)
+        return client
+
+    calendar._connect = connect  # noqa: SLF001
+
+    with pytest.raises(Exception, match='could not be reached'):
+        calendar.on(MONDAY)
+    assert handed == [wedged], 'the first call signed in and then broke'
+
+    assert [event['title'] for event in calendar.on(MONDAY)] == ['design review']
+    assert handed == [wedged, healthy], 'the dead connection was reused'
+
+
+def test_reminders_are_never_asked_for(icloud):
+    """The most expensive finding this feature made, enforced by nobody having typed
+    `todo=True` yet. CalDAV cannot see them — a spike found 14 Apple upgrade placeholders
+    across 17 lists — so asking would return placeholders and look like it worked."""
+    calendar = StandInCalendar('Home', recorded('afternoon.ics'))
+    connector(icloud(calendars=[calendar])).on(MONDAY)
+
+    source = (REPO / '.harry' / 'connectors' / 'icloud' / 'connector.py').read_text(encoding='utf-8')
+    assert 'todo=True' not in source and 'VTODO' not in source
+    assert 'event=True' in source, 'the search must ask for events specifically'
+
+
+def test_an_event_with_no_start_is_skipped_rather_than_crashing(icloud):
+    """An occurrence with no DTSTART has no time to put on a page, and a KeyError halfway
+    through building one is worse than a shorter agenda."""
+    calendar = connector(icloud(documents=()))
+
+    assert calendar._shape(icalendar.Event()) is None  # noqa: SLF001 — the guard has no other caller
+
+
+def test_the_standup_keeps_its_time_across_the_clocks_going_back(icloud):
+    """25 October 2026 is when Europe/Brussels leaves summer time. A weekly 09:30 meeting is
+    still at 09:30 in November — the wall clock is what a person reads."""
+    calendar = connector(icloud(documents=('weekly-standup.ics',)))
+
+    assert calendar.on(dt.date(2026, 10, 19))[0]['at'] == '09:30', 'before the change'
+    assert calendar.on(dt.date(2026, 11, 2))[0]['at'] == '09:30', 'after it'
+
+
+def test_the_docs_say_where_the_password_comes_from_and_what_a_lapse_looks_like():
+    """The greppable half of the docs criterion. The other half — whether it reads clearly at
+    07:00 to somebody whose agenda just stopped — is inspection, and stays inspection."""
+    for page in (REPO / 'docs' / 'sources.md', REPO / '.harry' / 'connectors' / 'icloud' / 'CONNECTOR.md'):
+        # Whitespace-normalised: these pages are wrapped at 90 characters, so a phrase that
+        # happens to straddle a line break is still the phrase a reader sees.
+        prose = ' '.join(page.read_text(encoding='utf-8').split())
+        assert 'account.apple.com' in prose, f'{page.name} does not say where the password comes from'
+        assert 'App-Specific Passwords' in prose, f'{page.name} does not name the Apple screen'
+        assert 'refused' in prose, f'{page.name} does not say what a lapsed password looks like'
+
+    operating = (REPO / 'docs' / 'operating.md').read_text(encoding='utf-8')
+    assert 'iCloud app-specific password' in operating, 'the runbook still knows about only one credential'

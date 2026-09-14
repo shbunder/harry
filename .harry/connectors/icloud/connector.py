@@ -48,9 +48,16 @@ from harry.sdk import Context, Registry
 CALDAV = 'https://caldav.icloud.com'
 
 TIMEOUT = 15
-"""Seconds. CalDAV is several round trips — discovery, then one report per calendar — and
-Apple's is the slowest surface Harry talks to. The morning page can wait; a page that hangs
-on it cannot."""
+"""Seconds **per request**, which is what caldav's client takes and not a ceiling on the
+whole read.
+
+CalDAV is several round trips: discovery, then one report per calendar. The account this was
+built against has 17 calendars, so an iCloud that accepts connections and never answers costs
+minutes rather than seconds. The Slack sentence says "per request" for that reason — a line
+promising a total nothing enforces is worse than no number.
+
+Naming which calendars matter in `CALENDARS` is the way to bound it, and the runbook says so.
+"""
 
 ALL_DAY = 'all day'
 """What `at` says for an event with a date and no time. Not an empty string, which reads as
@@ -110,10 +117,17 @@ class Agenda:
                 self._collect(calendar, start, end, merged)
         except AuthorizationError as error:
             raise self._give_up(
-                'the password was refused — make a new app-specific password at account.apple.com'
+                'the password was refused — make a new app-specific password at account.apple.com', key='refused'
             ) from error
         except (DAVError, OSError) as error:
-            raise self._give_up(_why(error)) from error
+            raise self._give_up(_why(error), key='unreachable') from error
+        except Exception as error:  # noqa: BLE001 — anything escaping here degrades the page
+            # with nobody told, which is the silence this connector exists to break. icalendar
+            # and lxml both raise types that are neither DAVError nor OSError.
+            self._log.exception('the calendar raised something this connector does not handle')
+            raise self._give_up(
+                'iCloud answered something this connector does not understand', key='unreadable'
+            ) from error
 
         occurrences = recurring_ical_events.of(merged, skip_bad_series=True).between(start, end)
         return [shaped for occurrence in occurrences if (shaped := self._shape(occurrence)) is not None]
@@ -127,11 +141,34 @@ class Agenda:
         for found in calendar.search(start=start, end=end, event=True):
             try:
                 for component in found.icalendar_instance.walk():
-                    if component.name in ('VEVENT', 'VTIMEZONE'):
+                    if component.name == 'VTIMEZONE':
+                        merged.add_component(component)
+                    elif component.name == 'VEVENT' and self._readable(component):
                         merged.add_component(component)
             except Exception as error:  # noqa: BLE001 — icalendar raises a dozen types on a
                 # malformed entry, and one bad event must cost one event rather than the day.
                 self._log.warning('skipping an event that would not parse: %s', type(error).__name__)
+
+    def _readable(self, event: Any) -> bool:
+        """Whether this event's start can be read at all.
+
+        `recurring_ical_events` is asked to skip a series it cannot expand, and it does —
+        silently, inside the library. Silently is the problem: a recurring meeting vanishing
+        from the page with no trace is the failure the whole connector is arranged against.
+        So the start is touched here, where a skip can be said out loud.
+        """
+        try:
+            starts = event.get('DTSTART')
+            if starts is not None:
+                _ = starts.dt
+        except Exception as error:  # noqa: BLE001 — icalendar raises several types for this
+            self._log.warning(
+                'skipping %r: its start time cannot be read (%s)',
+                str(event.get('SUMMARY') or 'an event with no title'),
+                type(error).__name__,
+            )
+            return False
+        return True
 
     def _calendars(self) -> list[Any]:
         """The calendars to read. Everything, unless somebody named some."""
@@ -165,10 +202,16 @@ class Agenda:
             'where': str(occurrence.get('LOCATION') or '').strip(),
         }
 
-    def _give_up(self, why: str) -> Unreachable:
-        """One line, once a day. Never the password, never the URL, never the response."""
+    def _give_up(self, why: str, key: str) -> Unreachable:
+        """One line, once a day **per fault**. Never the password, the URL or the response.
+
+        Keyed by what went wrong rather than by the connector. One key for everything would
+        let a transient blip at any hour spend the day's budget, and the sentence a person
+        can actually act on — *make a new app-specific password* — would never arrive. This
+        tool is callable from any session, so that blip is not hypothetical.
+        """
         self._log.warning('could not read the calendar: %s', why)
-        self._alert(f'iCloud: {why}', key='calendar')
+        self._alert(f'iCloud: {why}', key=key)
         self._principal = None
         return Unreachable(why)
 
@@ -192,7 +235,7 @@ def _why(error: Exception) -> str:
     header.
     """
     if isinstance(error, Timeout):
-        return f'iCloud did not answer within {TIMEOUT}s'
+        return f'iCloud stopped answering ({TIMEOUT}s per request)'
     if isinstance(error, OSError):
         return 'iCloud could not be reached'
     return 'iCloud answered something this connector does not understand'
