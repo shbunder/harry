@@ -144,7 +144,12 @@ the declaration Harry already read, and a second copy would drift from the first
 returns what you passed, so `@registry.tool` over a function works.
 
 `context` carries `name`, `kind`, `folder`, `declaration`, `body`, `config`,
-`config_for(principal)`, `log` and `connectors`.
+`config_for(principal)`, `log`, `connectors` and `alert`.
+
+**`context.alert(message, key=…)` is how you report your own failure.** `log` is for
+whoever is reading the log; `alert` is for whoever is not — a feed dead since March, a
+credential that lapsed. The key makes it one message a day, and Harry scopes it to you.
+Your declared secrets are scrubbed from the message first.
 
 **`context.connectors` is how you use another capability** — `context.connectors['slack']`
 is what the connector you named in `requires:` registered. You never import one: two

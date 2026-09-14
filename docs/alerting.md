@@ -111,18 +111,45 @@ it is reporting. Whatever raised the alert is never broken by the reporting — 
 that raises takes down the code that was trying to tell you about a problem, which is the
 worst possible direction for it to fail in.
 
-**Three holes this cannot close**, named so nobody rediscovers them:
+**Two holes this cannot close**, named so nobody rediscovers them:
 
 - **If the Slack connector itself failed to load, nothing can report that.** It is in
   `/health` and in the log on the machine you just restarted, and nowhere else. The thing
   that reports failures cannot report its own absence.
-- **A capability cannot raise an alert, only receive one.** The section below shows how to
-  offer somewhere for alerts to go; there is no matching way for a connector to say "my
-  credential has lapsed". Core alerts on a capability's behalf when it fails to load, and
-  that is all. The feature that closes it is on the board, and De Tijd needs it.
 - **Nothing checks the token until an alert needs it.** A revoked token is found when the
   alert you needed fails. The declaration carries `expires: manual` so that whatever watches
   credentials will find it — and nothing watches yet.
+
+## How a capability reports its own failure
+
+A connector that knows its feed died, or its credential lapsed, says so:
+
+```python
+def fetch(self):
+    try:
+        ...
+    except httpx.HTTPError as error:
+        self._context.alert(f'{self.source} has stopped answering: {error}', key='feed-down')
+        return []
+```
+
+**`log` is for whoever is reading the log. `alert` is for whoever is not.** A note about an
+unrecognised weather code is a log line. A feed that has been dead since March is an alert.
+
+`key` makes a fault the same fault — one message a day, however often it happens. Harry
+scopes it to your capability, so two connectors can both use `"down"` without silencing each
+other and neither has to think about it.
+
+**Your declared secrets are scrubbed from the message** before any sink sees it. An alert
+goes further than a log line: the log stays on the machine, this reaches Slack.
+
+It never raises, and it returns whether anybody was told. Two things to know:
+
+- **An alert raised while your capability is still registering goes to the log.** A sink is
+  itself a capability and has to load first, so at that moment there is nowhere to send.
+  Rare — nearly every alert happens at call time, hours later.
+- **A sink must not alert about itself.** The thing that carries the news cannot carry news
+  about itself. Harry refuses the re-entry rather than recursing, but the rule is yours.
 
 ## Adding somewhere else for alerts to go
 

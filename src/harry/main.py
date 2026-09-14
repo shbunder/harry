@@ -61,11 +61,13 @@ def build_app() -> FastAPI:
     exactly this running again — which is what puts a revealed tool back out of the roster.
     """
     configure_logging()
-    catalogue = load()
 
-    # Built after loading and not before: a sink is a capability, so it has to load before
-    # it can carry news about anything — including about the capabilities beside it.
-    alerts = Alerts.from_catalogue(catalogue)
+    # Built empty and handed to every capability, so each can raise an alert of its own.
+    # Its sinks are attached after loading, because a sink is itself a capability and has
+    # to load before it can carry news — including news about the capabilities beside it.
+    alerts = Alerts()
+    catalogue = load(alerts=alerts)
+    alerts.attach(catalogue)
     report_start_up(catalogue, alerts)
 
     store = Store(config.get_settings().data_dir / 'jobs.json')

@@ -49,17 +49,21 @@ class Skip(Exception):
     """
 
 
-def load(roots: Sequence[Path] | None = None) -> Catalogue:
+def load(roots: Sequence[Path] | None = None, alerts: Any = None) -> Catalogue:
     """Everything Harry can do, as far as this machine is concerned.
 
     `roots` is for tests and for anything that wants to load a tree that is not this
     instance's. Left out, it is whatever `capability_roots()` resolves to.
+
+    `alerts` is handed to every capability so it can report its own failures. It arrives
+    before its sinks do, because a sink is itself a capability and has to load first — see
+    `Alerts.attach`.
     """
     searched = list(roots) if roots is not None else capability_roots()
     catalogue = Catalogue(roots=searched)
     for kind in KINDS:
         for capability in _winners(kind, searched, catalogue):
-            _load_one(capability, catalogue)
+            _load_one(capability, catalogue, alerts)
     _say_what_happened(catalogue)
     return catalogue
 
@@ -86,7 +90,7 @@ def _winners(kind: Kind, roots: Iterable[Path], catalogue: Catalogue) -> list[Ca
     return list(chosen.values())
 
 
-def _load_one(capability: Capability, catalogue: Catalogue) -> None:
+def _load_one(capability: Capability, catalogue: Catalogue, alerts: Any = None) -> None:
     """One capability, start to finish, inside one try/except.
 
     The `except Exception` is deliberate and is the rule this module exists for. A
@@ -109,6 +113,7 @@ def _load_one(capability: Capability, catalogue: Catalogue) -> None:
             body=body,
             config=config,
             log=logging.getLogger(f'harry.capability.{capability.name}'),
+            alerts=alerts,
             connectors=connectors,
         )
         _register(capability, kind)
