@@ -33,7 +33,7 @@ difference between a page that did not arrive and a page nobody knows did not ar
 - [ ] `make remarkable-pair CODE=…` exchanges the code once, writes the token to the gitignored .env.local, and prints that it worked without printing the token
 - [ ] remarkapy is pinned to exactly 0.3.1 with the reason on the same line, and nothing requires a Go rmapi binary
 - [ ] A live test pushes a real page to a real tablet, marked live and never in the gate
-- [ ] docs/sources.md and the connector runbook say how to pair, what happens when a push fails, and what lands in Slack
+- [ ] docs/sources.md and the connector runbook say how to pair, what happens when a push fails, and what lands in Slack — by inspection: prose, and no automation can judge whether a re-pairing procedure reads clearly to somebody doing it at 07:00
 
 ## Subtasks
 
