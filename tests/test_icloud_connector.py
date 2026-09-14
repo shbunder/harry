@@ -58,13 +58,17 @@ class Found:
 
 
 class StandInCalendar:
-    """One calendar on the account. Only `name` and `search`, which is all the connector uses."""
+    """One calendar on the account. Only `get_display_name` and `search`, which is all the
+    connector uses."""
 
     def __init__(self, name: str, documents: list[icalendar.Calendar]) -> None:
-        self.name = name
+        self._name = name
         self._documents = documents
         self.searched: list[tuple] = []
         self.fails_with: Exception | None = None
+
+    def get_display_name(self) -> str:
+        return self._name
 
     def search(self, xml=None, server_expand: bool = False, **searchargs):
         if self.fails_with is not None:
@@ -284,6 +288,25 @@ def test_naming_calendars_reads_only_those(icloud):
     assert account[2].searched == [], 'Birthdays should not have been read'
 
 
+def test_a_calendars_name_is_read_the_way_caldav_still_supports(icloud, recwarn):
+    """caldav 3.3 deprecated `Calendar.name`. Using it worked in every stand-in test and
+    raised against a real account, because this repository turns Harry's own deprecation
+    warnings into errors — so the first thing that ever exercised the production path was
+    the live test, and it went red on the first run.
+    """
+    import warnings
+
+    account = [StandInCalendar('Home', recorded('afternoon.ics'))]
+    built = icloud(calendars=account, settings=f'USERNAME=u\nAPP_PASSWORD={PASSWORD}\nCALENDARS=Home\n')
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error', DeprecationWarning)
+        assert [event['title'] for event in connector(built).on(MONDAY)] == ['design review']
+
+    source = (REPO / '.harry' / 'connectors' / 'icloud' / 'connector.py').read_text(encoding='utf-8')
+    assert 'calendar.name' not in source, 'the deprecated attribute is back'
+
+
 def test_a_calendar_name_that_matches_nothing_is_logged_and_skipped(icloud, caplog):
     """A typo in a setting costs one calendar and a log line, not the agenda."""
     account = [StandInCalendar('Home', recorded('afternoon.ics'))]
@@ -443,6 +466,8 @@ def test_the_stand_in_has_the_same_shape_as_the_real_client():
     ours = inspect.signature(StandInCalendar.search).parameters
 
     assert 'server_expand' in theirs, 'caldav renamed the expand argument'
+    assert hasattr(caldav.Calendar, 'get_display_name'), 'caldav renamed the display-name call'
+    assert hasattr(StandInCalendar, 'get_display_name'), 'the stand-in does not offer it'
     assert set(ours) <= set(theirs) | {'searchargs'}, 'the stand-in takes something caldav does not'
     for name in ('xml', 'server_expand'):
         assert theirs[name].default == ours[name].default, f'{name} default has drifted'

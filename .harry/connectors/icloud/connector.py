@@ -178,7 +178,10 @@ class Agenda:
         if not self._wanted:
             return every
 
-        by_name = {str(calendar.name): calendar for calendar in every}
+        # `get_display_name()`, not `.name` — caldav 3.3 deprecated the attribute, and a
+        # DeprecationWarning raised mid-way through building a page is not a thing to leave
+        # for later. The live test against a real account is what found it.
+        by_name = {str(calendar.get_display_name()): calendar for calendar in every}
         for name in self._wanted:
             if name not in by_name:
                 self._log.warning('no calendar called %r on this account; skipping it', name)
