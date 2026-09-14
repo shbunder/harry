@@ -26,7 +26,14 @@ dependencies = [
     "trafilatura>=2.0",     # article text extraction
     "playwright>=1.49",     # for sites that block scripted clients
     "weasyprint>=63",       # HTML + CSS to PDF, with a real outline
-    "remarkapy>=0.2",       # reMarkable cloud. rmapy and rmcl are archived and dead.
+    "markdown-it-py>=3.0",  # markdown to HTML, on the way to a PDF the tablet can read
+    # EXACT, not a range. The reMarkable protocol is reverse-engineered and a release
+    # broke every write in August 2026. 0.3.1 is the version that paired, pushed, and was
+    # confirmed on the device. Move it deliberately, then run
+    # `make test-live ARGS=tests/test_remarkable_connector.py` against a real tablet.
+    # rmapy and rmcl are archived and dead; the Go rmapi binary is not needed — remarkapy
+    # pairs on its own with register_device(code).
+    "remarkapy==0.3.1",
 ]
 
 [build-system]

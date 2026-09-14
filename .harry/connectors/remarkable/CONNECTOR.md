@@ -1,0 +1,72 @@
+---
+name: remarkable
+description: The reMarkable tablet — where a finished page ends up
+provides: [remarkable_push_document, remarkable_list_documents]
+expires: never
+enabled: true
+config:
+  device_token:
+    description: 'The long token from pairing. Get it with: make remarkable-pair CODE=<the 8 characters from my.remarkable.com/device/desktop/connect>. It does not expire, but revoking the device at my.remarkable.com kills it.'
+    required: true
+    secret: true
+  folder:
+    description: Which folder on the tablet documents go into. Created at the top level the first time, if it is not already there.
+    default: Harry
+---
+
+Where Harry's output goes. One write, one folder, and the most dangerous credential in this
+repository.
+
+**The device token grants complete read and write access to every document on the tablet,
+with no scopes and no expiry.** There is no read-only variant to ask for. That is why this
+connector does one thing — add a document — and why deleting, moving and renaming are not
+exposed even though the token permits all three.
+
+**What Harry sends:** nothing, in the normal case. A push that fails twice puts one line in
+Slack, once per 24 hours.
+
+## Pairing
+
+Once per machine. The code is 8 characters and expires in a few minutes, so fetch it and use
+it in the same sitting:
+
+1. Open **my.remarkable.com/device/desktop/connect** and copy the code.
+2. Run it:
+
+```bash
+make remarkable-pair CODE=abcd1234
+```
+
+That exchanges the code for a permanent device token and writes it to
+`.harry/connectors/remarkable/.env.local`, which is gitignored. It prints that it worked and
+does not print the token.
+
+If the code has already expired you get `the code was refused` — go back and get another.
+
+**The token is not kept in `~/.rmapi`.** A file in a home directory is outside the repository,
+which is the good half, and outside the container, which is the bad half: the NUC would have
+nowhere to read it from. A container injects `HARRY_REMARKABLE_DEVICE_TOKEN` instead.
+
+To revoke it, go to my.remarkable.com and remove the device. Then pair again.
+
+## What it does
+
+One folder, named in `FOLDER` and `Harry` by default. It is created at the top level the first
+time something is pushed, and found rather than re-created after that.
+
+A push that fails is tried **exactly once more**. A retry that works is not a fault and says
+nothing. Two failures raise — so whoever asked knows the page did not arrive — and put one
+line in Slack.
+
+**The morning page survives a failed push.** `digest_build` writes the PDF to disk first and
+pushes second, so a push that fails costs you the delivery and not the page.
+
+## When it stops working
+
+| What happened | What you see | What to do |
+|---|---|---|
+| The cloud is unreachable or slow | Retried once, then `the tablet could not be reached`; one Slack line | Usually transient. The next push is a fresh attempt |
+| The token has been revoked | `the tablet refused the token — pair this machine again`; one Slack line | `make remarkable-pair CODE=…` with a fresh code |
+| A push succeeds but nothing appears on the device | — | The tablet syncs when it has wifi and the screen is on. Give it a minute, then open the folder |
+| Every write started failing and nothing here changed | Two failures, one Slack line | reMarkable changed the protocol. It happened in August 2026. Bump the exact `remarkapy` pin in `pyproject.toml` and run `make test-live ARGS=tests/test_remarkable_connector.py` |
+| A document you never touched disappeared | — | The free tier removes documents nobody opens after 50 days. Irrelevant for a page replaced every morning |
