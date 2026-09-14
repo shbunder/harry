@@ -333,3 +333,30 @@ def test_a_shadowed_capability_reads_differently_from_a_broken_one(tmp_path):
     row = catalogue.as_health()['capabilities'][0]
     assert row['status'] == 'skipped'
     assert row['shadowed_by'] == str(tmp_path / 'instance' / 'icloud')
+
+
+def test_the_context_surface_is_pinned():
+    """Context has grown three times — connectors, then alert, each with an ADR. Nothing
+    held that line until now: the test above pins what `harry.sdk` exports and says nothing
+    about what is on the objects it exports.
+
+    A twelfth name should be deliberate. If you are here because this went red, that is the
+    test working: add the name below and say why in the decision record."""
+    fields = set(Context.__dataclass_fields__)
+    methods = {name for name in vars(Context) if not name.startswith('_') and callable(vars(Context)[name])}
+    public = fields | methods
+
+    assert public == {
+        'name',
+        'kind',
+        'folder',
+        'declaration',
+        'body',
+        'config',
+        'log',
+        'alerts',
+        'connectors',
+        'config_for',
+        'redact',
+        'alert',
+    }

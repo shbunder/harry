@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from pathlib import Path
 
 import pytest
 
 from harry.alerts import QUIET_FOR, Alerts, report_start_up
 from harry.loader import load
-from harry.registry import Capability, Catalogue, ContractError, Registry
+from harry.registry import Capability, Catalogue, Context, ContractError, Registry
 
 from .test_loader import root_with
 
@@ -74,10 +75,14 @@ def test_the_message_is_what_the_caller_wrote_with_nothing_added():
     assert sink.heard == ['De Tijd login needs refreshing']
 
 
-def test_nothing_registered_is_a_working_harry(caplog):
+def test_nothing_registered_is_a_working_harry(caplog, tmp_path):
     """A fresh checkout has no Slack credential. Alerting that fell over without one would
-    make the unconfigured case the broken case, which is backwards."""
+    make the unconfigured case the broken case, which is backwards.
+
+    Attached with nothing, so the log line **is** the delivery — which is what makes a
+    keyed fault log once a day rather than every five minutes."""
     alerts = Alerts()
+    alerts.attach(Catalogue())
 
     with caplog.at_level(logging.WARNING, logger='harry.alerts'):
         assert alerts.send('nobody is listening yet') is True
@@ -340,3 +345,245 @@ def test_forgetting_keeps_the_record_from_growing_without_limit():
         clock.forward(hours=25)
 
     assert len(alerts._said) == 1
+
+
+# ---------------------------------------------------------------------------
+# A capability saying something went wrong
+# ---------------------------------------------------------------------------
+
+
+def a_context(alerts, *, name='icloud', kind='connector', declaration=None, config=None) -> Context:
+    return Context(
+        name=name,
+        kind=kind,
+        folder=Path('/nowhere'),
+        declaration=declaration or {},
+        body='',
+        config=config or {},
+        log=logging.getLogger(f'harry.capability.{name}'),
+        alerts=alerts,
+    )
+
+
+def test_a_capability_can_say_that_something_went_wrong():
+    """The half that was missing. A capability could offer somewhere alerts go and had no
+    way to raise one — so the connector that knows its credential has lapsed could not
+    say so, which is the exact thing alerting exists for."""
+    sink = Somewhere()
+    alerts = Alerts()
+    alerts.attach(Catalogue())
+    alerts._sinks = [sink]  # noqa: SLF001 — a catalogue here would be a fixture for one line
+
+    assert a_context(alerts).alert('the app password has stopped working') is True
+    assert sink.heard == ['the app password has stopped working']
+
+
+def test_the_message_is_exactly_what_the_capability_wrote():
+    sink = Somewhere()
+    alerts = Alerts([sink])
+
+    a_context(alerts).alert('De Tijd login needs refreshing')
+
+    assert sink.heard == ['De Tijd login needs refreshing']
+
+
+def test_two_capabilities_using_the_same_key_do_not_silence_each_other():
+    """Core scopes the key, so a capability passes what is meaningful to it and never has
+    to think about what anybody else might have picked."""
+    sink = Somewhere()
+    alerts = Alerts([sink], now=Clock())
+
+    a_context(alerts, name='icloud').alert('icloud is down', key='down')
+    a_context(alerts, name='news').alert('the feed is down', key='down')
+
+    assert len(sink.heard) == 2
+
+
+def test_one_capability_repeating_itself_still_reports_once_a_day():
+    clock = Clock()
+    sink = Somewhere()
+    alerts = Alerts([sink], now=clock)
+    context = a_context(alerts)
+
+    assert context.alert('the feed is down', key='feed') is True
+    clock.forward(hours=4)
+    assert context.alert('the feed is down', key='feed') is False
+    clock.forward(hours=20, seconds=1)
+    assert context.alert('the feed is down', key='feed') is True
+
+
+def test_a_declared_secret_is_scrubbed_before_any_sink_sees_it():
+    """A log line stays on the machine. An alert goes to Slack, so this path needs the
+    scrubbing more than the one it was built for."""
+    sink = Somewhere()
+    context = a_context(
+        Alerts([sink]),
+        declaration={'config': {'app_password': {'description': 'x', 'secret': True}}},
+        config={'app_password': 'abcd-efgh-ijkl-mnop'},
+    )
+
+    context.alert('the service rejected abcd-efgh-ijkl-mnop')
+
+    assert sink.heard == ['the service rejected [redacted]']
+
+
+def test_alerting_never_breaks_the_capability(caplog):
+    broken = Somewhere()
+    broken.broken = True
+
+    with caplog.at_level(logging.WARNING, logger='harry.alerts'):
+        assert a_context(Alerts([broken])).alert('something happened') is False
+
+    assert 'the workspace is unreachable' in caplog.text
+
+
+def test_before_the_sinks_are_attached_the_key_is_not_recorded(caplog):
+    """The bug this feature nearly shipped. Attached-with-nothing counts as delivery, so
+    reusing it for not-attached-yet would record the key against nobody — and hold back the
+    same fault when it happens for real at 06:30."""
+    clock = Clock()
+    alerts = Alerts(now=clock)
+    context = a_context(alerts)
+
+    with caplog.at_level(logging.WARNING, logger='harry.alerts'):
+        assert context.alert('the session has expired', key='session') is False
+
+    sink = Somewhere()
+    alerts._sinks = [sink]  # noqa: SLF001 — standing in for attach() with one sink
+    alerts._attached = True  # noqa: SLF001
+    clock.forward(minutes=5)
+
+    assert context.alert('the session has expired', key='session') is True
+    assert sink.heard == ['the session has expired']
+
+
+def test_a_sink_that_alerts_about_itself_is_refused_re_entry(caplog):
+    """The Slack connector is a sink. Alerting from its own failure path would recurse:
+    send, deliver, sink, alert, send. The key cannot stop it — the key is written only
+    after delivery returns."""
+    alerts = Alerts()
+    heard: list[str] = []
+
+    def a_sink_that_alerts(message: str) -> None:
+        heard.append(message)
+        a_context(alerts, name='slack').alert('I could not deliver that', key='undeliverable')
+
+    alerts.attach(Catalogue())
+    alerts._sinks = [a_sink_that_alerts]  # noqa: SLF001
+
+    with caplog.at_level(logging.WARNING, logger='harry.alerts'):
+        alerts.send('the tablet push failed')
+
+    assert heard == ['the tablet push failed'], 'the inner alert should not have gone round again'
+    assert 'dropped an alert raised while delivering one' in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Through the loader, the way production reaches it
+# ---------------------------------------------------------------------------
+
+
+def test_a_loaded_capability_alerts_through_the_one_it_was_handed(tmp_path, monkeypatch):
+    """Every test above builds a Context by hand. This one goes through load(), which is
+    the only thing that builds one in production."""
+    monkeypatch.delenv('HARRY_COMPLAINER_TOKEN', raising=False)
+    root = root_with(tmp_path / 'root', 'connectors/complainer')
+    (root / 'connectors' / 'complainer' / '.env.local').write_text('TOKEN=sk-live-not-for-slack\n', encoding='utf-8')
+
+    sink = Somewhere()
+    alerts = Alerts()
+    catalogue = load([root], alerts=alerts)
+    alerts.attach(catalogue)
+    alerts._sinks = [sink]  # noqa: SLF001 — the catalogue has no sink capability in it
+
+    complainer = catalogue.get('connector', 'complainer')
+    assert complainer is not None and complainer.target is not None
+    assert complainer.target.give_up() is True
+
+    assert sink.heard == ['the service rejected [redacted]'], 'the credential reached Slack'
+
+
+def test_an_alert_raised_while_loading_is_logged_and_leaves_the_key_free(tmp_path, caplog):
+    """The bug this feature nearly shipped, through the real path."""
+    root = root_with(tmp_path / 'root', 'connectors/tattletale')
+    alerts = Alerts()
+
+    with caplog.at_level(logging.WARNING, logger='harry.alerts'):
+        catalogue = load([root], alerts=alerts)
+        alerts.attach(catalogue)
+
+    assert 'I have nothing to say yet' in caplog.text
+    tattletale = catalogue.get('connector', 'tattletale')
+    assert tattletale is not None, 'it should still load'
+
+    sink = Somewhere()
+    alerts._sinks = [sink]  # noqa: SLF001
+    context = tattletale.context
+    assert context is not None
+    assert context.alert('I have something to say now', key='too-early') is True
+    assert sink.heard == ['I have something to say now']
+
+
+def test_a_capability_reaching_for_harry_alerts_is_still_refused(tmp_path):
+    """context.alert is the only way in. Reaching for the module directly would hand a
+    capability every sink, which is core's business."""
+    catalogue = load([root_with(tmp_path / 'root', 'connectors/eavesdropper')])
+
+    eavesdropper = catalogue.get('connector', 'eavesdropper')
+    assert eavesdropper is not None and eavesdropper.status == 'skipped'
+    assert 'harry.alerts' in eavesdropper.reason
+
+
+def test_the_no_sink_log_line_names_the_capability(caplog):
+    """With nothing registered the log line *is* the delivery, and one that does not say
+    which capability raised it is unusable the moment there are thirty of them and the
+    message is "the feed is down"."""
+    alerts = Alerts()
+    alerts.attach(Catalogue())
+
+    with caplog.at_level(logging.WARNING, logger='harry.alerts'):
+        a_context(alerts, name='tijd').alert('the session has expired')
+
+    assert 'connector tijd: the session has expired' in caplog.text
+
+
+def test_a_context_with_no_alerts_at_all_logs_under_its_own_name(caplog):
+    """What `load()` builds when nobody passes an Alerts, which is most of this suite. Its
+    own logger already carries the capability's name."""
+    with caplog.at_level(logging.WARNING, logger='harry.capability.tijd'):
+        assert a_context(None, name='tijd').alert('the session has expired') is False
+
+    assert 'the session has expired' in caplog.text
+
+
+def test_the_constructor_and_the_flag_cannot_disagree():
+    """`Alerts([])` is not attached — nothing has read a catalogue — so a keyed alert is not
+    recorded against nobody. `Alerts([sink])` is."""
+    assert Alerts([]).send('nowhere to go', key='k') is False
+    assert Alerts([Somewhere()]).send('somewhere to go', key='k') is True
+
+
+def test_an_alert_from_another_thread_is_not_dropped_while_a_sink_is_busy():
+    """The guard is for a sink alerting about itself — re-entry on one thread. Process-wide
+    it would also drop an unrelated alert raised while a sink was blocking, and the Slack
+    sink blocks for up to five seconds while the scheduler runs beside it."""
+    import threading
+    import time
+
+    heard: list[str] = []
+    started = threading.Event()
+
+    def slow(message: str) -> None:
+        heard.append(message)
+        started.set()
+        time.sleep(0.4)
+
+    alerts = Alerts([slow])
+    first = threading.Thread(target=lambda: alerts.send('the tablet push failed twice'))
+    first.start()
+    assert started.wait(2), 'the slow sink never started'
+
+    alerts.send('the De Tijd session has expired')
+    first.join(2)
+
+    assert sorted(heard) == ['the De Tijd session has expired', 'the tablet push failed twice']

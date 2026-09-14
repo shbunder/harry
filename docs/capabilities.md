@@ -75,6 +75,10 @@ You get exactly what you declared. A connector that did not load, or that regist
 nothing to hand over, means this capability is skipped at start-up with the reason — rather
 than failing on its first call.
 
+`alert()` is the other half of alerting: `registry.alerts()` below offers somewhere alerts
+*go*, and this is how a capability raises one. **`log` is for whoever is reading the log;
+`alert` is for whoever is not.** See [alerting.md](alerting.md).
+
 A capability may also take on a **role** alongside its kind. There is one today:
 `registry.alerts(fn)` offers this capability as somewhere Harry can report a fault, and it
 does not use up the folder's one implementation — see [alerting.md](alerting.md).
@@ -91,6 +95,7 @@ does not use up the folder's one implementation — see [alerting.md](alerting.m
 | `config_for(principal)` | The same settings for one person — the NUC serves more than one |
 | `connectors` | What `requires:` named, as the objects those connectors registered |
 | `log` | A logger named for this capability |
+| `alert(message, key)` | Say something went wrong, to whoever is *not* reading the log |
 
 **Only `harry.sdk` may be imported.** Reaching for `harry.scheduler`, `harry.store`,
 `harry.mcp` or `harry.main` — or `harry` itself — is refused *before* the module runs, so a

@@ -75,6 +75,9 @@ class Context:
     """The declaration's body, verbatim. Harry serves it and never reads it."""
     config: Mapping[str, Any]
     log: logging.Logger
+    alerts: Any = None
+    """Where `alert()` sends. Core's, handed over rather than reachable — a capability
+    importing `harry.alerts` is still refused."""
     connectors: Mapping[str, Any] = field(default_factory=Connectors)
     """What `requires:` named, as the objects those connectors registered.
 
@@ -96,6 +99,32 @@ class Context:
         """
         schema = self.declaration.get('config') or {}
         return read_capability_config(self.folder, self.name, schema, principal=principal)
+
+    def alert(self, message: str, key: str | None = None) -> bool:
+        """Say that something went wrong, to whoever is not reading the log.
+
+        **`log` is for whoever is reading the log; `alert` is for whoever is not.** A feed
+        that started 404ing in March, a browser session that expired on Tuesday, a push that
+        failed twice — each is this. A note about an unrecognised code is not.
+
+        `key` makes a fault the same fault: one carrying a key is said at most once in 24
+        hours. It is scoped to this capability before it is used, so two capabilities can
+        both pick `"down"` without silencing each other, and neither has to think about it.
+
+        The message is scrubbed of this capability's declared secrets first. An alert goes
+        further than a log line does — a log line stays on the machine, this reaches Slack.
+
+        Returns whether anybody was told. Never raises: the code trying to report a problem
+        must not be taken down by the reporting.
+        """
+        said = self.redact(message)
+        if self.alerts is None:
+            # A Context built without one — which is what `load()` does when nobody passes
+            # an Alerts, and what most tests do. Its own logger already carries its name.
+            self.log.warning('%s', said)
+            return False
+        scoped = f'{self.kind}:{self.name}:{key}' if key is not None else None
+        return bool(self.alerts.send(said, key=scoped, raised_by=f'{self.kind} {self.name}'))
 
     def redact(self, text: str) -> str:
         """This capability's declared secrets, taken out of anything about to be reported.

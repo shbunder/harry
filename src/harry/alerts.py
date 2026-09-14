@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import threading
 from collections.abc import Callable, Iterable, Sequence
 
 from harry.registry import Capability, Catalogue
@@ -40,27 +41,73 @@ class Alerts:
 
     def __init__(self, sinks: Sequence[Sink] = (), *, now: Callable[[], dt.datetime] | None = None) -> None:
         self._sinks = list(sinks)
+        self._attached = False
+        """Whether the catalogue has been read yet. Only `attach()` sets it.
+
+        The difference between *attached with nothing* and *not attached yet* is the whole
+        reason this flag exists, and it is not cosmetic. With nothing registered, the log
+        line **is** the delivery — a keyed fault in a Harry with no Slack is logged once a
+        day rather than every five minutes. Before the sinks are attached there is no
+        delivery at all, so recording the key would hold back the same fault when it
+        happens for real at 06:30.
+        """
         self._now = now or (lambda: dt.datetime.now(dt.UTC))
         self._said: dict[str, dt.datetime] = {}
+        self._delivering = threading.local()
+        """Per thread, not per process.
+
+        The guard below is for a sink that alerts about itself, which is re-entry on one
+        thread. A process-wide flag would also drop an unrelated alert raised while a
+        sink was blocking — and the Slack sink blocks for up to five seconds while the
+        scheduler runs beside it, so that is a real morning, not a thought experiment."""
 
     @classmethod
     def from_catalogue(cls, catalogue: Catalogue, *, now: Callable[[], dt.datetime] | None = None) -> Alerts:
-        sinks = [c.alert_sink for c in catalogue.loaded if c.alert_sink is not None]
-        LOG.info('%d place(s) to send an alert', len(sinks))
-        return cls(sinks, now=now)
+        made = cls(now=now)
+        made.attach(catalogue)
+        return made
 
-    def send(self, message: str, *, key: str | None = None) -> bool:
+    def attach(self, catalogue: Catalogue) -> None:
+        """Take the sinks from what loaded.
+
+        Separate from construction because every capability is handed this object while it
+        is still being built — a capability has to be able to raise an alert, and a sink is
+        itself a capability, so the list cannot be known until loading finishes.
+        """
+        self._sinks = [c.alert_sink for c in catalogue.loaded if c.alert_sink is not None]
+        self._attached = True
+        LOG.info('%d place(s) to send an alert', len(self._sinks))
+
+    def send(self, message: str, *, key: str | None = None, raised_by: str | None = None) -> bool:
         """Report one fault. True if it was said, False if it was held back.
 
         `key` is what makes a fault the same fault. One carrying a key is said at most once
         in 24 hours; one with no key is always said, because a caller that did not name the
         fault cannot have meant "this is the same one".
+
+        `raised_by` names whoever raised it, for the log. With no sinks the log line **is**
+        the delivery, and one that does not say which capability is unusable the moment
+        there are thirty of them and the message is "the feed is down".
         """
         if key is not None and self._still_quiet(key):
             LOG.debug('already reported %s today: %s', key, message)
             return False
 
-        delivered = self._deliver(message)
+        if getattr(self._delivering, 'busy', False):
+            # A sink alerting from its own failure path would recurse: send, deliver, sink,
+            # alert, send. The key cannot stop it, because the key is written only after
+            # delivery returns. A sink should not alert about itself — the thing that
+            # carries the news cannot carry news about itself — and this is the guard
+            # because the rule is easy to forget.
+            LOG.warning('dropped an alert raised while delivering one: %s', message)
+            return False
+
+        self._delivering.busy = True
+        try:
+            delivered = self._deliver(message, raised_by)
+        finally:
+            self._delivering.busy = False
+
         if delivered and key is not None:
             self._forget_what_is_old()
             self._said[key] = self._now()
@@ -80,7 +127,7 @@ class Alerts:
         said = self._said.get(key)
         return said is not None and self._now() - said < QUIET_FOR
 
-    def _deliver(self, message: str) -> bool:
+    def _deliver(self, message: str, raised_by: str | None = None) -> bool:
         """Hand the message to every sink. True if any of them took it.
 
         **A sink that raises does not count**, and that is the whole reason this returns
@@ -91,8 +138,10 @@ class Alerts:
         with nowhere to send, not a failed send.
         """
         if not self._sinks:
-            LOG.warning('%s', message)
-            return True
+            LOG.warning('%s', f'{raised_by}: {message}' if raised_by else message)
+            # Attached with nothing is a delivery: a Harry configured with nowhere to send
+            # has the log as its channel. Not attached yet is not — see `_attached`.
+            return self._attached
 
         delivered = False
         for sink in self._sinks:
@@ -104,7 +153,7 @@ class Alerts:
                 # this particular code to fail in.
                 LOG.warning('could not send an alert: %s: %s', type(error).__name__, error)
         if not delivered:
-            LOG.warning('nobody was told: %s', message)
+            LOG.warning('nobody was told: %s', f'{raised_by}: {message}' if raised_by else message)
         return delivered
 
 

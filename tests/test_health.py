@@ -237,3 +237,32 @@ def test_health_says_what_the_clock_is_doing(harry, tmp_path):
     assert [row['name'] for row in jobs['watched']] == ['morning-page']
     assert jobs['watched'][0]['deadline'] == '07:00'
     assert jobs['watched'][0]['last_finished'] is None
+
+
+def test_a_loaded_capability_can_reach_slack_through_the_real_app(tmp_path, monkeypatch):
+    """The one line that makes this feature work in production. Delete `alerts=alerts` from
+    build_app's load() call and every capability on the NUC gets Context.alerts None — the
+    feature silently not existing, with nothing red to say so."""
+    import harry.config
+    from harry.main import build_app
+
+    monkeypatch.delenv('HARRY_COMPLAINER_TOKEN', raising=False)
+    harry.config.get_settings.cache_clear()
+    monkeypatch.setattr(harry.config, 'BUNDLED_CAPABILITIES', tmp_path / 'no-bundled')
+    root_with(tmp_path / '.harry', 'connectors/listener', 'connectors/complainer')
+    (tmp_path / '.harry' / 'connectors' / 'complainer' / '.env.local').write_text(
+        'TOKEN=sk-live-not-for-slack\n', encoding='utf-8'
+    )
+    monkeypatch.chdir(tmp_path)
+
+    try:
+        app = build_app()
+    finally:
+        harry.config.get_settings.cache_clear()
+
+    complainer = app.state.catalogue.get('connector', 'complainer')
+    assert complainer is not None and complainer.target is not None
+    assert complainer.target.give_up() is True, 'the capability was handed no alert path'
+
+    heard = (tmp_path / '.harry' / 'connectors' / 'listener' / 'heard.txt').read_text(encoding='utf-8').splitlines()
+    assert 'the service rejected [redacted]' in heard
