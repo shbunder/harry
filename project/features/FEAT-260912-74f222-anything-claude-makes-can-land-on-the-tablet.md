@@ -4,8 +4,8 @@ title: Anything Claude makes can land on the tablet
 track: full
 created: 2026-09-12
 touches: [connectors/remarkable]
-stories: []
-decisions: []
+stories: [STORY-260914-461f63, STORY-260914-6db95b]
+decisions: [ADR-260914-6b0608]
 ---
 
 # FEAT-260912-74f222 — Anything Claude makes can land on the tablet
@@ -19,16 +19,27 @@ The output surface, and the one holding the most dangerous credential in the rep
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] A PDF pushed with remarkapy appears in the configured folder on the tablet
-- [ ] A remarkable_push_document tool puts markdown or a PDF there from any Claude session
-- [ ] A remarkable_list_documents tool says what is already in the folder
-- [ ] A push that fails is retried once, and a second failure puts one message in Slack
-- [ ] The device token never reaches a log, a span, or an error message
-- [ ] rmapi and remarkapy are pinned to exact versions, with the reason recorded beside the pin
+- [ ] A PDF is uploaded under the name given, inside the configured folder, and the answer says the folder and the id
+- [ ] A folder that does not exist is created once; the next push finds it rather than making a second
+- [ ] A push that fails once is retried exactly once, and a successful retry puts nothing in Slack
+- [ ] Two failed attempts raise, and put one line in Slack naming the tablet and why, once per 24 hours
+- [ ] A revoked token says so and says to re-pair, rather than reporting a network problem
+- [ ] The device token reaches no log line, no exception message and no Slack message
+- [ ] With no DEVICE_TOKEN the connector and both tools are skipped, saying what is missing, and the rest of Harry loads
+- [ ] `make remarkable-pair CODE=…` exchanges the code once and writes the token to the gitignored .env.local without printing it
+- [ ] `remarkable_push_document` takes either a PDF path or markdown text, and neither-or-both is an error naming which
+- [ ] Markdown is rendered at 509.34 by 679.13 points before it is pushed
+- [ ] `remarkable_list_documents` says what is in the folder, newest first, and an absent folder is an empty list
+- [ ] The push tool is readOnlyHint false and destructiveHint false; the list tool is readOnlyHint true; both defer
+- [ ] remarkapy is pinned to exactly 0.3.1 with the reason on the same line, and nothing needs a Go rmapi binary
+- [ ] A live test pushes a real page to a real tablet, marked live and never in the gate
+- [ ] docs/sources.md and the runbook say how to pair, what a failed push does, and what lands in Slack
 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
+- [ ] [[STORY-260914-461f63]] — Harry can put a page on the tablet, and says so when it cannot
+- [ ] [[STORY-260914-6db95b]] — Claude can push a document to the tablet and see what is there
 
 ## Notes
 
@@ -41,3 +52,5 @@ The output surface, and the one holding the most dangerous credential in the rep
 ## Links
 
 - Requirements: [[FEAT-260912-74f222]]
+- Decision: [[ADR-260914-6b0608]] — remarkapy is pinned to an exact version, and there is no Go rmapi binary
+
