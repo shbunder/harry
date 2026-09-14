@@ -532,3 +532,58 @@ def test_a_capability_reaching_for_harry_alerts_is_still_refused(tmp_path):
     eavesdropper = catalogue.get('connector', 'eavesdropper')
     assert eavesdropper is not None and eavesdropper.status == 'skipped'
     assert 'harry.alerts' in eavesdropper.reason
+
+
+def test_the_no_sink_log_line_names_the_capability(caplog):
+    """With nothing registered the log line *is* the delivery, and one that does not say
+    which capability raised it is unusable the moment there are thirty of them and the
+    message is "the feed is down"."""
+    alerts = Alerts()
+    alerts.attach(Catalogue())
+
+    with caplog.at_level(logging.WARNING, logger='harry.alerts'):
+        a_context(alerts, name='tijd').alert('the session has expired')
+
+    assert 'connector tijd: the session has expired' in caplog.text
+
+
+def test_a_context_with_no_alerts_at_all_logs_under_its_own_name(caplog):
+    """What `load()` builds when nobody passes an Alerts, which is most of this suite. Its
+    own logger already carries the capability's name."""
+    with caplog.at_level(logging.WARNING, logger='harry.capability.tijd'):
+        assert a_context(None, name='tijd').alert('the session has expired') is False
+
+    assert 'the session has expired' in caplog.text
+
+
+def test_the_constructor_and_the_flag_cannot_disagree():
+    """`Alerts([])` is not attached — nothing has read a catalogue — so a keyed alert is not
+    recorded against nobody. `Alerts([sink])` is."""
+    assert Alerts([]).send('nowhere to go', key='k') is False
+    assert Alerts([Somewhere()]).send('somewhere to go', key='k') is True
+
+
+def test_an_alert_from_another_thread_is_not_dropped_while_a_sink_is_busy():
+    """The guard is for a sink alerting about itself — re-entry on one thread. Process-wide
+    it would also drop an unrelated alert raised while a sink was blocking, and the Slack
+    sink blocks for up to five seconds while the scheduler runs beside it."""
+    import threading
+    import time
+
+    heard: list[str] = []
+    started = threading.Event()
+
+    def slow(message: str) -> None:
+        heard.append(message)
+        started.set()
+        time.sleep(0.4)
+
+    alerts = Alerts([slow])
+    first = threading.Thread(target=lambda: alerts.send('the tablet push failed twice'))
+    first.start()
+    assert started.wait(2), 'the slow sink never started'
+
+    alerts.send('the De Tijd session has expired')
+    first.join(2)
+
+    assert sorted(heard) == ['the De Tijd session has expired', 'the tablet push failed twice']

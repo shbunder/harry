@@ -118,11 +118,13 @@ class Context:
         must not be taken down by the reporting.
         """
         said = self.redact(message)
-        if self.alerts is None:  # pragma: no cover — the loader always hands one over
+        if self.alerts is None:
+            # A Context built without one — which is what `load()` does when nobody passes
+            # an Alerts, and what most tests do. Its own logger already carries its name.
             self.log.warning('%s', said)
             return False
         scoped = f'{self.kind}:{self.name}:{key}' if key is not None else None
-        return bool(self.alerts.send(said, key=scoped))
+        return bool(self.alerts.send(said, key=scoped, raised_by=f'{self.kind} {self.name}'))
 
     def redact(self, text: str) -> str:
         """This capability's declared secrets, taken out of anything about to be reported.
