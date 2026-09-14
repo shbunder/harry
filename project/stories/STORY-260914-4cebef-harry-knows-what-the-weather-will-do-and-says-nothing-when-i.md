@@ -21,11 +21,12 @@ The connector: one call to Open-Meteo, four facts back, and None whenever it can
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] weather.today() returns {summary, high, low, rain_chance} from a single GET carrying the configured coordinates and timezone
+- [ ] weather.today() returns {summary, high, low, rain_chance} from a single GET asking for weather_code, temperature_2m_max, temperature_2m_min and precipitation_probability_max
 - [ ] high and low are whole degrees and rain_chance is a whole percentage — the page is read at arm's length
 - [ ] A refused connection, a 500, or no answer within 5 seconds returns None rather than raising
 - [ ] A 200 whose body has no entry for today returns None and says so in the log, rather than a KeyError mid-page
-- [ ] latitude, longitude, timezone and place are the connector's own settings, defaulting to Leuven
+- [ ] summary comes from the WMO table on the requirements page, and an unlisted code gives summary None with the three numbers intact
+- [ ] latitude, longitude, timezone and place are declared in config: and generated into the committed .env with the Leuven defaults
 - [ ] Every test runs against a recorded answer; none reaches api.open-meteo.com
 
 ## Subtasks

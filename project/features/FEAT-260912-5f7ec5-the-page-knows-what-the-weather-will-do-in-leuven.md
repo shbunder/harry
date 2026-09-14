@@ -19,13 +19,14 @@ The smallest connector, and the one that proves the shape. Open-Meteo needs no k
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] weather.today() returns {summary, high, low, rain_chance} from one call with no key, rounded to whole degrees and a whole percentage
-- [ ] A weather_forecast tool returns the same four facts and the place they are for, and is deferred rather than in the roster every request
-- [ ] Open-Meteo refusing, erroring, or not answering within 5 seconds makes today() return None and the tool answer {available: false, why}, without raising
+- [ ] weather.today() returns {summary, high, low, rain_chance} from one GET asking for weather_code, temperature_2m_max, temperature_2m_min and precipitation_probability_max, rounded to whole degrees and a whole percentage
+- [ ] summary comes from a WMO code table written down on the requirements page, and a code the table does not have gives summary None and the three numbers, logged
+- [ ] weather_forecast answers {available: true, place, summary, high, low, rain_chance}, is deferred, and is listed in the connector's provides: — which make lint enforces
+- [ ] Open-Meteo refusing, erroring, or not answering within 5 seconds makes today() return None and the tool answer {available: false, place, why}, without raising — available is on both answers so Claude reads one key
 - [ ] A 200 whose body is missing today's entry returns None and says so in the log, rather than raising a KeyError mid-page
-- [ ] latitude, longitude, timezone and place are the connector's own settings, defaulting to Leuven
+- [ ] latitude, longitude, timezone and place are declared in config:, generated into the committed .env with the Leuven defaults, and overridden by .env.local
 - [ ] Every test runs against a recorded answer — the happy path, the 500, the timeout and the malformed body — and none reaches api.open-meteo.com
-- [ ] The Slack connector's provides: is untouched; weather exposes weather_forecast in its own
+- [ ] Nothing here reaches Slack, and the requirements page says why weather is a deliberate exception and what would have to exist for it not to be
 
 ## Stories
 
