@@ -27,7 +27,8 @@ Today's calendar and to-dos, from iCloud over CalDAV. Apple's Reminders support 
 - [ ] A free day is an empty list, not an error
 - [ ] Which calendars are read is configurable, and leaving it empty means all of them
 - [ ] A calendar name that matches nothing is logged and skipped; one malformed event is skipped too
-- [ ] iCloud unreachable raises after 15 seconds, the page says "Agenda unavailable", and the rest renders
+- [ ] iCloud unreachable raises rather than returning an empty day, so a dead calendar is never reported as a free morning
+- [ ] The 15-second ceiling is per request, and both the runbook and the Slack line say so rather than promising a total
 - [ ] A revoked password says to make a new one at account.apple.com
 - [ ] Either failure puts one line in Slack, once per 24 hours, carrying no password, URL or response body
 - [ ] The app-specific password reaches no log, no exception and no Slack message
@@ -44,6 +45,8 @@ Today's calendar and to-dos, from iCloud over CalDAV. Apple's Reminders support 
 - [ ] [[STORY-260914-2245c2]] — Claude can ask what a day looks like
 
 ## Notes
+
+- **The page half of "Agenda unavailable" is the digest's, not this feature's.** This connector raises; what a page prints when it does belongs to FEAT-260912-0f2744, which has the criterion. Nothing in this repository renders an agenda yet.
 
 <!-- Appended by `board.py note`. -->
 - **2026-09-13** — iCloud spike, three results. (1) CONNECTION PASS: app-specific password authenticates against https://caldav.icloud.com, 17 calendars listed. (2) REMINDERS FAIL: 14 VTODO items come back and every single one is an Apple upgrade placeholder - 'De maker van deze lijst heeft deze herinneringen bijgewerkt' / 'Waar zijn mij herinneringen?' - across 17 lists. Zero real reminders. These lists have been upgraded to a format CalDAV does not expose. The to-do section must move source or drop; it blocks nothing else. (3) RECURRENCE FAIL: searching today with expand=True returned one event whose DTSTART is 2026-09-07, i.e. the series start rather than today's instance. The agenda needs instance times, so this connector has to expand client-side or read RRULE itself. Budget for that; it is not a one-liner.

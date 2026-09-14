@@ -42,7 +42,8 @@ looks exactly like a meeting that was cancelled.
 - [ ] `expand=True` is not passed to iCloud at all, because it is accepted and ignored
 - [ ] Every parsing test runs against an iCalendar document in tests/fixtures/icloud/, never a live account — the documents are written by hand against RFC 5545, because no account was configured when they were written, and the README says so and says what they therefore cannot prove
 - [ ] A live test reads a real account, marked live and never in the gate
-- [ ] docs/sources.md and the runbook say where the password comes from, what a failure does, and what lands in Slack — by inspection: prose, and no automation can judge whether a renewal procedure reads clearly
+- [ ] docs/sources.md and the runbook name account.apple.com and say what a lapsed password looks like — both greppable, and tested
+- [ ] Those pages read clearly to somebody doing the renewal at 07:00 — by inspection: no automation can judge that, and it is the half that matters
 
 ## Subtasks
 
