@@ -28,7 +28,8 @@ stories — and a feed that is not a feed.
 - [ ] The recorded VRT NWS Atom feed yields candidates with title, summary, source name, published time and link
 - [ ] The recorded BBC RSS 2.0 feed yields the same five fields
 - [ ] The VRT link taken is the entry's `rel="alternate"` link, not its `rel="self"` one, which is another feed document
-- [ ] A VRT entry published 2026-09-12 titled "Tessenderlo-Ham hakt knoop door: vanaf 1 januari 2027 brengt OCMW niet langer maaltijden aan huis" gets the id `vrt-2026-09-12-tessenderlo-ham-hakt-knoop-door`
+- [ ] The VRT entry titled "Tessenderlo-Ham hakt knoop door: vanaf 1 januari 2027 brengt OCMW niet langer maaltijden aan huis", published 2026-09-14T09:05:56Z, gets the id `vrt-2026-09-14-tessenderlo-ham-hakt-knoop-door`
+- [ ] A story published 2026-09-13T22:30:00Z gets an id dated 2026-09-14, because Europe/Brussels is two hours ahead in September
 - [ ] Two stories from one feed on one day whose first 6 title words match get ids ending `-2`, and both are returned
 - [ ] The story at `bbc.co.uk/news/videos/cx2z5gjj838o`, carried by both recorded BBC feeds under different headlines, appears once
 - [ ] A link with `?at_medium=RSS&at_campaign=rss` and the same link without it are one story

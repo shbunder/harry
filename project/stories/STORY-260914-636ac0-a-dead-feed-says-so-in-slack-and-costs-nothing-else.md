@@ -25,15 +25,17 @@ does.
 
 ## Acceptance criteria
 
-- [ ] A feed answering 404 leaves the other feeds' candidates intact and lists that source in `unavailable` with why
-- [ ] A feed that times out after 10 seconds does the same
+- [ ] A feed answering 404 leaves the other feeds' candidates intact, and `news_search` lists that source in `unavailable` with why
+- [ ] A feed is waited on for 10 seconds and asked once — the timeout is the argument passed, not a resolved default, and nothing retries
 - [ ] A feed answering 200 with HTML instead of XML does the same
 - [ ] A feed whose document declares `<!DOCTYPE` before its root element is refused without being parsed, and does the same
 - [ ] Every feed being down gives an empty candidate list and every feed in `unavailable`
+- [ ] `candidates()` stays a plain list and never grows an `unavailable` key — the digest learns about a dead feed from Slack
 - [ ] A failing feed puts one line in Slack naming the source and what happened
 - [ ] A feed that has already failed within 24 hours puts nothing further in Slack
-- [ ] Slack never carries the feed URL or the response body, only the source name and a sentence
-- [ ] Two calls to `candidates()` within 5 minutes fetch each feed once; a call after 5 minutes fetches again
+- [ ] The Slack line for a 404 is exactly `VRT NWS: VRT NWS answered 404` — no URL, nothing from the response body
+- [ ] A `FEEDS` entry that is not `slug=Name=url` is skipped with a log line and the other feeds still load; `FEEDS` empty raises at registration, so the connector is skipped rather than loading with nothing to read
+- [ ] `news_search` followed by three `news_article` calls within one minute, all through MCP, fetch each feed once; a call after 5 minutes fetches again
 - [ ] A feed that failed is not served from the cache on the next call
 
 ## Subtasks

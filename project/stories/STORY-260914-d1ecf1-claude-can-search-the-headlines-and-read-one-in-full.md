@@ -25,11 +25,13 @@ keeps that from costing seven downloads.
 
 ## Acceptance criteria
 
-- [ ] `news_search()` returns the 20 newest candidates
+- [ ] `news_search()` returns the 20 newest candidates, and `news_search(limit=40)` returns 40
 - [ ] `news_search(limit=100)` returns at most 50
 - [ ] `news_search(source="bbc")` returns only BBC candidates
 - [ ] `news_search(since="2026-09-14")` returns only candidates published on or after that date
 - [ ] `news_search(query="train")` returns only candidates whose title or summary contains it, case-insensitively
+- [ ] `news_search()` defaults to `detail="concise"`: id, title, source, feed, date and a summary cut to 200 characters, and no link
+- [ ] `news_search(detail="full")` carries the whole summary and the link
 - [ ] `news_search` reports `unavailable` alongside the candidates, so a dead feed is visible to Claude as well as in Slack
 - [ ] `news_article(id)` returns at least 1000 characters of text from the recorded BBC page for `cy5zg41dkqwo`
 - [ ] `news_article` fetches with a browser `User-Agent` and follows redirects, which is what the short `vrtnws.be/p.…` links need
@@ -38,6 +40,7 @@ keeps that from costing seven downloads.
 - [ ] `news_article` on a page with no extractable article text returns `available: false` with why
 - [ ] Both tools are deferred, `readOnlyHint: true`, and namespaced `news_`
 - [ ] The connector lists both in `provides:`
+- [ ] `docs/sources.md` describes the news source: the `FEEDS` and `TIMEZONE` settings, what a candidate and an article carry, what happens when a feed or an article page dies, and what lands in Slack
 
 ## Subtasks
 
