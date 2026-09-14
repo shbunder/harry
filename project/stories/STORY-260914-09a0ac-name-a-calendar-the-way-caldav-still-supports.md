@@ -2,7 +2,7 @@
 id: STORY-260914-09a0ac
 title: Name a calendar the way caldav still supports
 feature: FEAT-260914-4dc021
-status: Backlog
+status: Done
 created: 2026-09-14
 ---
 
@@ -16,10 +16,10 @@ One call swapped, one stand-in corrected, and two guards so neither can come bac
 
 ## Acceptance criteria
 
-- [ ] `get_display_name()` is what reads a calendar's name, and `calendar.name` is nowhere in the connector
-- [ ] Reading a named calendar with `DeprecationWarning` raised as an error passes
-- [ ] The stand-in offers `get_display_name()`, and the shape test asserts caldav and the stand-in both have it
-- [ ] The live test passes against a real account
+- [x] `get_display_name()` is what reads a calendar's name, and `calendar.name` is nowhere in the connector
+- [x] Reading a named calendar with `DeprecationWarning` raised as an error passes
+- [x] The stand-in offers `get_display_name()`, and the shape test asserts caldav and the stand-in both have it
+- [x] The live test passes against a real account
 
 ## Subtasks
 

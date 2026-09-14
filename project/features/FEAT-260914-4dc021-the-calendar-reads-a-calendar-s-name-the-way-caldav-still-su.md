@@ -27,19 +27,20 @@ cover it** — it pinned `search`, which the recurrence decision turns on, and n
 
 ## Acceptance criteria
 
-- [ ] The connector reads a calendar's name with `get_display_name()`, and `calendar.name` appears nowhere in it
-- [ ] A test raises on `DeprecationWarning` while reading a named calendar, so the deprecated call cannot come back quietly
-- [ ] The stand-in offers `get_display_name()` rather than `.name`, and the shape test asserts both the library and the stand-in have it
-- [ ] `make test-live ARGS=tests/test_icloud_connector.py` passes against a real account
+- [x] The connector reads a calendar's name with `get_display_name()`, and `calendar.name` appears nowhere in it
+- [x] A test raises on `DeprecationWarning` while reading a named calendar, so the deprecated call cannot come back quietly
+- [x] The stand-in offers `get_display_name()` rather than `.name`, and the shape test asserts both the library and the stand-in have it
+- [x] `make test-live ARGS=tests/test_icloud_connector.py` passes against a real account
 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
-- [ ] [[STORY-260914-09a0ac]] — Name a calendar the way caldav still supports
+- [x] [[STORY-260914-09a0ac]] — Name a calendar the way caldav still supports
 
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-14** — Reflection: found by the live test on its first run, minutes after FEAT-260912-e7ce2d merged — the only thing that had ever executed the production call path. 45 stand-in tests stayed green throughout because the stand-in offered the deprecated attribute too. Lesson: a shape test that pins one method pins one method; the stand-in drifts everywhere else. Verified against a real account.
 
 ## Links
 
