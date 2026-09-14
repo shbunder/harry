@@ -46,6 +46,7 @@ What all of it is for. At 06:30 a Claude scheduled task asks Harry for candidate
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-14** — 2026-09-14: returned to Backlog before any code, on Shaun's re-sequencing — sources first, then the page. The plan stays and is the more valuable half: the five source signatures the page will call are written down, so weather, calendar, news, De Tijd and the tablet each have something concrete to satisfy rather than an interface invented when the page is built. The branch carried only board files and was cherry-picked to main, so this feature is Backlog again with its requirements intact. ADR-260913-c477cd still stands: its motivation shifts from 'the sources do not exist yet' to 'a lapsed credential should cost one section of the page, not the page', which is the stronger argument anyway.
 
 ## Links
 
