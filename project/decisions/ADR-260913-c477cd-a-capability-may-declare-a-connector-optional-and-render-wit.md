@@ -78,8 +78,8 @@ optional: [weather, icloud, news, tijd, remarkable]
 
 ```python
 def register(registry: Registry, context: Context) -> None:
-    slack = context.connectors['slack']            # guaranteed by `requires:`
-    weather = context.connectors.get('weather')    # None when it did not load
+    slack = context.connectors['slack']  # guaranteed by `requires:`
+    weather = context.connectors.get('weather')  # None when it did not load
 ```
 
 The digest declares **everything** optional, including the tablet — a page with no tablet
