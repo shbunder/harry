@@ -27,11 +27,11 @@ messages and three pages say the opposite.
 
 ## Acceptance criteria
 
-- [ ] A broken link says to get a fresh one from whoever publishes that calendar, rather than assuming the reader can republish it
-- [ ] The message still fits on one line in Slack and still names the link
-- [ ] `CONNECTOR.md` says plainly that a link you do not own cannot be revoked by you, and what follows from that
-- [ ] `docs/operating.md`'s credential table says which credentials can be rotated and which cannot
-- [ ] A test asserts the messages do not tell the reader to do something only a calendar's owner can do
+- [x] A broken link says to get a fresh one from whoever publishes that calendar, rather than assuming the reader can republish it
+- [x] The message still fits on one line in Slack and still names the link
+- [x] `CONNECTOR.md` says plainly that a link you do not own cannot be revoked by you, and what follows from that
+- [x] `docs/operating.md`'s credential table says which credentials can be rotated and which cannot
+- [x] A test asserts the messages do not tell the reader to do something only a calendar's owner can do
 
 ## Stories
 
