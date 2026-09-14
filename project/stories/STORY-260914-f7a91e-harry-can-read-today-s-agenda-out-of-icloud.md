@@ -40,7 +40,7 @@ looks exactly like a meeting that was cancelled.
 - [ ] The app-specific password reaches no log line, no exception message and no Slack message — asserted against a planted value
 - [ ] With no credential the connector is skipped naming both missing settings, and the rest of Harry loads
 - [ ] `expand=True` is not passed to iCloud at all, because it is accepted and ignored
-- [ ] Every parsing test runs against an iCalendar document recorded in tests/fixtures/icloud/, never a live account
+- [ ] Every parsing test runs against an iCalendar document in tests/fixtures/icloud/, never a live account — the documents are written by hand against RFC 5545, because no account was configured when they were written, and the README says so and says what they therefore cannot prove
 - [ ] A live test reads a real account, marked live and never in the gate
 - [ ] docs/sources.md and the runbook say where the password comes from, what a failure does, and what lands in Slack — by inspection: prose, and no automation can judge whether a renewal procedure reads clearly
 

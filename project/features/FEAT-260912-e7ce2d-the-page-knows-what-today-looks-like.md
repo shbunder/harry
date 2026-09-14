@@ -34,7 +34,7 @@ Today's calendar and to-dos, from iCloud over CalDAV. Apple's Reminders support 
 - [ ] With no credential the connector and its tool are skipped, saying what is missing, and the rest of Harry loads
 - [ ] `icloud_list_events(day)` answers for today or a named day, is readOnlyHint true, defers, and is in `provides:`
 - [ ] Reminders are not read, and the reason is recorded rather than left as an empty section
-- [ ] Every parsing test uses a recorded iCalendar document; the one live test is never in the gate
+- [ ] Every parsing test uses an iCalendar document in tests/fixtures/icloud/, and its README says they are handmade and why; the one live test is never in the gate
 - [ ] docs/sources.md and the runbook say where the password comes from and what happens when it lapses
 
 ## Stories
