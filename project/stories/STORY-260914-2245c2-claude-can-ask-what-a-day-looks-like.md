@@ -2,7 +2,7 @@
 id: STORY-260914-2245c2
 title: Claude can ask what a day looks like
 feature: FEAT-260912-e7ce2d
-status: Backlog
+status: Done
 created: 2026-09-14
 ---
 
@@ -21,13 +21,13 @@ CalDAV can be asked.
 
 ## Acceptance criteria
 
-- [ ] `icloud_list_events()` returns today, in the configured timezone
-- [ ] `icloud_list_events(day="2026-09-15")` returns that day
-- [ ] A day that is not an ISO date is an error naming the format wanted
-- [ ] The tool is readOnlyHint true and defers
-- [ ] It is listed in the connector's `provides:`
-- [ ] It is skipped, saying it needs the connector, when no credential is configured
-- [ ] iCloud being down reaches Claude as an error rather than an empty day, so a dead source is never reported as a free morning
+- [x] `icloud_list_events()` returns today, in the configured timezone
+- [x] `icloud_list_events(day="2026-09-15")` returns that day
+- [x] A day that is not an ISO date is an error naming the format wanted
+- [x] The tool is readOnlyHint true and defers
+- [x] It is listed in the connector's `provides:`
+- [x] It is skipped, saying it needs the connector, when no credential is configured
+- [x] iCloud being down reaches Claude as an error rather than an empty day, so a dead source is never reported as a free morning
 
 ## Subtasks
 
