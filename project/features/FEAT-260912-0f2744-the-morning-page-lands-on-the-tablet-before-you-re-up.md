@@ -3,7 +3,7 @@ id: FEAT-260912-0f2744
 title: The morning page lands on the tablet before you're up
 track: full
 created: 2026-09-12
-touches: [core/registry, core/loader, jobs/morning-page, tools/digest, scripts]
+touches: [core, docs, jobs/morning-page, scripts, tools/digest]
 stories: [STORY-260914-397bbd, STORY-260914-abef7c, STORY-260914-46e9e7]
 decisions: [ADR-260913-c477cd, ADR-260913-210e08, ADR-260912-b22e46, ADR-260912-bd36c2]
 ---
