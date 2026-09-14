@@ -563,6 +563,27 @@ def test_the_feed_call_carries_a_ten_second_ceiling(news, monkeypatch):
     assert passed['timeout'] == 10.0, 'the connector did not choose a ceiling of its own'
 
 
+def test_the_article_call_carries_a_fifteen_second_ceiling(news, monkeypatch):
+    """An article page gets longer than a feed — half a megabyte of news-site HTML against
+    a 60 KB document. Asserted on the argument, because httpx has a default of its own and
+    a call that chose nothing looks identical from outside."""
+    asked: list[dict] = []
+
+    def spy(url, **kwargs):
+        asked.append({'url': str(url), **kwargs})
+        article = 'bbc.co.uk/news/articles' in str(url)
+        body = recorded('bbc-article.html') if article else recorded('bbc-news.xml')
+        return httpx.Response(200, text=body, request=httpx.Request('GET', url))
+
+    monkeypatch.setattr(httpx, 'get', spy)
+    reader = connector(news(settings=f'FEEDS=bbc=BBC News={BBC}\n'))
+    reader.article('bbc-2026-09-14-russia-hits-ukrainian-train-shortly')
+
+    page = next(call for call in asked if 'bbc.co.uk/news/articles' in call['url'])
+    assert page['timeout'] == 15.0, 'the article fetch did not choose a ceiling of its own'
+    assert page['follow_redirects'] is True, 'VRT links are short URLs that redirect'
+
+
 # ---------------------------------------------------------------------------
 # Fetched once every five minutes
 # ---------------------------------------------------------------------------

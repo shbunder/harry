@@ -12,5 +12,5 @@ def register(registry: Registry, context: Context) -> None:
     news = context.connectors['news']
 
     @registry.tool
-    def news_article(id: str) -> dict:  # noqa: A002
+    def news_article(id: str) -> dict:  # noqa: A002 — `id` is the argument name Claude reads in the schema; shadowing the builtin inside four lines is the lesser cost
         return news.article(id)

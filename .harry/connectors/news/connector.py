@@ -285,7 +285,7 @@ class News:
         try:
             text = self._read(story['link'])
         except (httpx.HTTPError, Unreadable) as error:
-            why = _why(error, story['source'])
+            why = _why(error, story['source'], ARTICLE_TIMEOUT)
             self._log.warning('no text for %s: %s', story_id, why)
             self._alert(f'{story["source"]}: {why}', key=f'article:{story["feed"]}')
             return {**known, 'available': False, 'why': why}
@@ -340,7 +340,7 @@ class News:
             try:
                 raw = _parse(self._fetch(feed), feed)
             except (httpx.HTTPError, Unreadable) as error:
-                why = _why(error, feed.name)
+                why = _why(error, feed.name, FEED_TIMEOUT)
                 self._log.warning('%s is unavailable: %s', feed.name, why)
                 self._alert(f'{feed.name}: {why}', key=f'feed:{feed.slug}')
                 unavailable.append({'source': feed.name, 'why': why})
@@ -415,16 +415,20 @@ def _concise(candidate: dict) -> dict:
     return {**{field: candidate[field] for field in CONCISE_FIELDS}, 'summary': summary}
 
 
-def _why(error: Exception, name: str) -> str:
+def _why(error: Exception, name: str, ceiling: float) -> str:
     """What to tell somebody, from what went wrong. One sentence, no traceback, no URL.
 
     The URL stays out deliberately: this sentence goes to Slack, and a feed URL can carry a
     key in its query string.
+
+    `ceiling` is passed rather than read from a constant because the two callers wait for
+    different lengths of time, and the number in a line somebody reads over coffee is the
+    part they would act on.
     """
     if isinstance(error, Unreadable):
         return str(error)
     if isinstance(error, httpx.TimeoutException):
-        return f'{name} did not answer within {FEED_TIMEOUT:g}s'
+        return f'{name} did not answer within {ceiling:g}s'
     if isinstance(error, httpx.HTTPStatusError):
         return f'{name} answered {error.response.status_code}'
     return f'{name} could not be reached'

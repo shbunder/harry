@@ -146,12 +146,11 @@ async def test_search_returns_the_twenty_newest(harry):
     assert answer['unavailable'] == []
 
 
-@respx.mock
-async def test_search_never_returns_more_than_fifty(harry):
-    """Forty is what the morning page chooses from. Fifty is the ceiling."""
+def sixty_stories() -> str:
+    """The recorded BBC feed with 60 distinct items in it, so a cap has something to cut."""
     many = recorded('bbc-news.xml')
     one_item = '<item>' + many.split('<item>', 1)[1].split('</item>')[0] + '</item>'
-    stuffed = (
+    return (
         many.split('<item>')[0]
         + ''.join(
             one_item.replace('cy5zg41dkqwo', f'story{n:03d}').replace('<title>', f'<title>Story number {n} ')
@@ -159,14 +158,25 @@ async def test_search_never_returns_more_than_fifty(harry):
         )
         + '</channel></rss>'
     )
-    respx.get(BBC).mock(return_value=httpx.Response(200, text=stuffed))
+
+
+@pytest.mark.parametrize(('asked', 'back'), [({}, 20), ({'limit': 40}, 40), ({'limit': 100}, 50)])
+@respx.mock
+async def test_the_default_is_twenty_and_the_ceiling_is_fifty(harry, asked, back):
+    """20 is for somebody asking what happened today. The morning page asks for 40 by name,
+    because 40 is what it chooses six from. 50 is the ceiling.
+
+    Every other test here has 16 candidates to work with, so it would pass with any default
+    at all. This one puts 68 in front of the tool.
+    """
+    respx.get(BBC).mock(return_value=httpx.Response(200, text=sixty_stories()))
     respx.get(VRT).mock(return_value=httpx.Response(200, text=recorded('vrt-nws.xml')))
     server, _ = harry()
 
     async with Client(server) as connected:
-        answer = (await found_through(connected, 'news_search', {'limit': 100})).data
+        answer = (await found_through(connected, 'news_search', asked)).data
 
-    assert len(answer['candidates']) == 50
+    assert len(answer['candidates']) == back
 
 
 @respx.mock
@@ -313,7 +323,7 @@ async def test_an_id_no_feed_carries_says_to_search_again(harry):
         )
 
     assert result.is_error is True
-    said = str(result.content[0].text)  # type: ignore[union-attr]
+    said = str(result.content[0].text)  # type: ignore[union-attr] — an error result is always one TextContent
     assert 'bbc-2026-01-01-a-story-that-never-was' in said
     assert 'news_search again' in said
 
@@ -354,6 +364,22 @@ async def test_a_page_with_no_prose_in_it_says_so(harry):
     assert answer['available'] is False
     assert answer['why'] == 'the page loaded but there was no article text in it'
     assert sink.heard == ['BBC News: the page loaded but there was no article text in it']
+
+
+@respx.mock
+async def test_an_article_that_never_answers_says_how_long_it_waited(harry):
+    """The number in a line somebody reads over coffee is the part they would act on, and
+    an article page is given longer than a feed — half a megabyte of news-site HTML."""
+    feeds_are_up()
+    respx.get(url__startswith=TRAIN).mock(side_effect=httpx.ReadTimeout('too slow'))
+    server, sink = harry()
+
+    async with Client(server) as connected:
+        answer = (await found_through(connected, 'news_article', {'id': TRAIN_ID})).data
+
+    assert answer['available'] is False
+    assert answer['why'] == 'BBC News did not answer within 15s', 'the feed ceiling is 10s, and this is not a feed'
+    assert sink.heard == ['BBC News: BBC News did not answer within 15s']
 
 
 @respx.mock

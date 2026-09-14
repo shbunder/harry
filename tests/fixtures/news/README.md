@@ -29,8 +29,8 @@ filtering by date has something real to exclude.
 
 | File | What it is |
 |---|---|
-| `collision.xml` | Three Atom entries whose first six title words are identical, so two ids must collide. One is published 22:30 UTC, which is the next day in Brussels |
-| `bomb.xml` | A "billion laughs" entity bomb. Nine levels of nested entities from about 800 bytes. **Do not parse this file without the `<!DOCTYPE` refusal** — `xml.etree.ElementTree` expands it |
+| `collision.xml` | Three Atom entries whose first five title words are identical, so two ids must collide. One is published 22:30 UTC, which is the next day in Brussels |
+| `bomb.xml` | A "billion laughs" entity bomb. Nine levels of nested entities from about 800 bytes. **Do not parse this file without the entity refusal** — `xml.etree.ElementTree` expands it |
 | `not-a-feed.html` | An HTML error page, for a feed URL that answers 200 with the wrong thing |
 
 These three are handmade because no real feed offers them. Everything a real feed can

@@ -81,7 +81,7 @@ ages is worse than a short one, because nothing on the page says how old it is.
 | A feed 404s or is unreachable | That source in `unavailable` with why; one Slack line | Open the URL in a browser. Feed URLs move |
 | A feed times out after 10s | The same | Usually transient. It retries on the next call |
 | A feed answers HTML — a consent wall, an error page | `the document is not XML`, in `unavailable` | The URL is probably now a web page, not a feed |
-| A feed is XML but not RSS 2.0 or Atom | `the document is XML but not a feed`, with its root element | Harry reads RSS 2.0 and Atom. See ADR-260914-5a682c |
+| A feed is XML but not RSS 2.0 or Atom | `the document is XML but not a feed`, with its root element | Harry reads RSS 2.0 and Atom. A third format is one unavailable source, not a parser to add — swap the feed, or add the branch in `connector.py` |
 | A feed declares its own entities | `the document declares its own entities` | Nothing is wrong with Harry. Refusing it is deliberate — that is how an XML parser is made to eat all the memory on the machine |
 | An article page answers 403 | `available: false` with why; one Slack line | The site started blocking scripted clients. It needs a browser session, like De Tijd |
 | An article page loads but has no prose | `there was no article text in it` | Usually a video or a live blog. Nothing to do |
