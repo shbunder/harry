@@ -70,15 +70,23 @@ which is exactly why they need an alert rather than a health check.
 
 Three, and they fail in different ways:
 
-| Credential | How it dies | What you see | Where the steps are |
-|---|---|---|---|
-| The De Tijd browser session | On its own, after a few weeks | Articles fall back to their RSS summary | Below |
-| The iCloud app-specific password | The day you change your Apple ID password, which revokes every one at once | `Agenda unavailable`, and `iCloud: the password was refused` in Slack | [sources.md § The calendar](sources.md) |
-| A published calendar link | When the calendar is republished, or the sharer withdraws it | `Agenda unavailable`, and the link's name in Slack | [sources.md § A calendar your work publishes](sources.md) |
-| The reMarkable device token | Only if you revoke the device at my.remarkable.com | A failed push, and `reMarkable: the tablet refused the token` in Slack | [sources.md § The tablet](sources.md) |
+| Credential | How it dies | What you see | Can you rotate it? | Where the steps are |
+|---|---|---|---|---|
+| The De Tijd browser session | On its own, after a few weeks | Articles fall back to their RSS summary | Yes — log in again | Below |
+| The iCloud app-specific password | The day you change your Apple ID password, which revokes every one at once | `Agenda unavailable`, and `Calendar: the password was refused` in Slack | Yes — generate a new one | [sources.md § The calendar](sources.md) |
+| A published calendar link | When the calendar is republished, or the sharer withdraws it | `Agenda unavailable`, and the link's name in Slack | **Only if the calendar is yours.** Otherwise it is theirs to reissue | [sources.md § A calendar your work publishes](sources.md) |
+| The reMarkable device token | Only if you revoke the device at my.remarkable.com | A failed push, and `reMarkable: the tablet refused the token` in Slack | Yes — remove the device and pair again | [sources.md § The tablet](sources.md) |
 
-The second one is the one that surprises people: changing your Apple password is a thing you
-do for unrelated reasons, and it stops Harry's agenda the same morning.
+Two of these are worth knowing before you need them.
+
+Changing your Apple password is a thing you do for unrelated reasons, and it stops Harry's
+agenda the same morning.
+
+And **the last row is the only credential here you may not be able to rotate.** A calendar
+link published by somebody else — an employer, a shared team calendar — is revoked by
+republishing it, which only its owner can do. If such a link leaks, it stays leaked until
+they reissue it, and they may never need to. Every other credential in Harry has an
+owner-side revocation; this one does not.
 
 ### The De Tijd browser session
 

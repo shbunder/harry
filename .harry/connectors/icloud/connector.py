@@ -224,7 +224,7 @@ class Agenda:
 
         Neither the exception nor the alert carries the URL. The random segment in it is the
         password, so the label is what a person is given — which is also the thing they can
-        act on, since the fix is to republish that calendar in Outlook.
+        act on: getting a fresh link from whoever publishes that calendar.
         """
         cached = self._fetched.get(link.url)
         if cached and self._now() - cached[0] < FRESH_FOR:
@@ -247,8 +247,8 @@ class Agenda:
         except Exception:  # noqa: BLE001 — icalendar raises several types, and an
             # expired link answers 200 with a sign-in page, which is the common case here.
             raise self._give_up(
-                f'{link.label} answered something that is not a calendar — if the link has expired, '
-                'republish that calendar in Outlook and put the new link in SUBSCRIBED',
+                f'{link.label} answered something that is not a calendar, which is what an expired '
+                'link does. Ask whoever publishes that calendar for a fresh link and put it in SUBSCRIBED',
                 key=f'link:{link.label}',
             ) from None  # icalendar quotes the line it choked on, which is somebody's page
 
@@ -375,7 +375,7 @@ def _why_link(error: Exception, label: str) -> str:
         if answered in (401, 403, 404):
             return (
                 f'{label} answered {answered} — that link has probably been withdrawn. '
-                'Republish that calendar in Outlook and put the new link in SUBSCRIBED'
+                'Ask whoever publishes that calendar for a fresh link and put it in SUBSCRIBED'
             )
         return f'{label} answered {answered}'
     return f'{label} could not be reached'

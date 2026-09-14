@@ -293,9 +293,14 @@ feed this was built against carries 234 events, 40 of them repeating and 76 of t
 instances moved out of their series, and all of it expands correctly.
 
 **That link is a password.** The long random segment in the URL is the whole of its security,
-so anyone holding it can read that calendar. It goes in `.env.local` and nowhere else, Harry
-never prints it — a link that fails is named, not quoted — and **the only way to revoke it is
-to republish that calendar in Outlook**, which issues a new URL and kills the old one.
+so anyone holding it can read that calendar. It goes in `.env.local` and nowhere else, and
+Harry never prints it — a link that fails is named, not quoted.
+
+**Revoking it means republishing the calendar, which only its owner can do.** If it is your
+own calendar, that is a two-minute job. If it is your employer's, you cannot: the link is
+theirs to reissue, on their schedule or never. **That makes a published link you do not own
+the one credential here that its user cannot rotate** — every other one in Harry has an
+owner-side revocation, and this one does not. Worth knowing before you paste one anywhere.
 
 Harry's HTTP client would otherwise write that URL into the log on every read, at `INFO`.
 `configure_logging` in `harry/main.py` keeps `httpx` and friends at `WARNING` for exactly
@@ -335,8 +340,8 @@ first. No `day` means today; `day="2026-09-15"` means that day.
 | iCloud unreachable or slow | `Agenda unavailable`; one Slack line | Usually transient. The ceiling is 15 seconds **per request**, and every calendar is a request — name the ones you want in `CALENDARS` if a slow morning matters |
 | The password was refused | `the password was refused`; one Slack line | Make a new one at account.apple.com and replace it in `.env.local` |
 | A calendar in `CALENDARS` does not exist | The others' events, and a log line | Check the name as it appears in the Calendar app |
-| A `SUBSCRIBED` link answers 404 or 403 | `Agenda unavailable`; one Slack line naming the link | It has been withdrawn. Republish that calendar in Outlook and put the new link in `.env.local` |
-| A `SUBSCRIBED` link answers a sign-in page | `Agenda unavailable`; one Slack line | Same fix — the link has expired |
+| A `SUBSCRIBED` link answers 404 or 403 | `Agenda unavailable`; one Slack line naming the link | It has been withdrawn. Ask whoever publishes that calendar for a fresh link — if it is yours, republish it |
+| A `SUBSCRIBED` link answers a sign-in page | `Agenda unavailable`; one Slack line | Same — and the same person reissues it |
 | A `SUBSCRIBED` entry is not `Name=url` | The other links, and a log line naming its position | Check for a missing `=` or a stray pipe |
 | One event will not parse | The rest of the day, and a log line | Nothing. One bad entry is not an outage |
 | `Nothing on today` and nothing in Slack | — | A free day. An empty agenda and a dead one are different answers here on purpose |
