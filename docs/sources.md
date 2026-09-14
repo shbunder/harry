@@ -152,6 +152,12 @@ The other feeds still return, and `news_search` lists what failed:
 `candidates()` — what the page calls — stays a plain list and never grows an `unavailable`
 key. It cannot report a dead feed and it is not asked to.
 
+**A feed that answers 200 and carries nothing is reported too**, saying it answered an empty
+feed, under its own key. That is not a hypothetical: VRT served a valid Atom document with
+zero entries for a while on 14 September 2026, an hour after carrying fifty stories, and the
+first version of this connector said nothing at all about it — which is precisely the quiet
+news day this whole feature exists to distinguish from a broken one.
+
 **A feed that failed is never served from the last success.** A headline list that silently
 ages is worse than a short one, because nothing on the page says how old it is.
 
