@@ -38,8 +38,8 @@ The output surface, and the one holding the most dangerous credential in the rep
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
-- [ ] [[STORY-260914-461f63]] — Harry can put a page on the tablet, and says so when it cannot
-- [ ] [[STORY-260914-6db95b]] — Claude can push a document to the tablet and see what is there
+- [x] [[STORY-260914-461f63]] — Harry can put a page on the tablet, and says so when it cannot
+- [x] [[STORY-260914-6db95b]] — Claude can push a document to the tablet and see what is there
 
 ## Notes
 
@@ -48,6 +48,7 @@ The output surface, and the one holding the most dangerous credential in the rep
 - **2026-09-12** — Finding against the plan: remarkapy 0.3.1 exposes register_device(code) and register_device_wizard(), so pairing needs no Go rmapi binary. The plan assumed rmapi for the one-time pairing. rmapi may still be worth having as a fallback pusher, but it is not on the critical path and the Dockerfile may not need it.
 - **2026-09-13** — reMarkable spike PASS. Paired and pushed: a 9,778-byte PDF rendered at 509.34 x 679.13 pt reached the cloud as 77abc664-09ad-454f-993d-54b91a9a9683. No Connect subscription was needed for the upload to be accepted - pending confirmation it actually appears on the device. Pairing used remarkapy's own register_device(code); the Go rmapi binary was never installed, so the Dockerfile does not need it. Pin remarkapy 0.3.1 exactly: the protocol is reverse-engineered and a release broke every write in August 2026. Token is in ~/.rmapi, outside the repo.
 - **2026-09-13** — CONFIRMED ON THE DEVICE. The pushed PDF appeared on the tablet, so the free tier carries cloud sync for a daily push and no Connect subscription is needed. That settles the question two implementers disagreed about. Caveat to carry forward rather than forget: the 50-day rule still applies to a document nobody touches, which is irrelevant for a page replaced every morning and relevant the moment the tablet becomes an archive.
+- **2026-09-14** — Reflection: pre-close-verifier ran twice. First pass REQUEST CHANGES with three Critical — one alert key for every operation, so a failed listing silenced the 06:30 push; an unguarded persist_config that would have written the device token to ~/.rmapi; and the Go rmapi binary still in the image against its own accepted ADR. Second pass REQUEST CHANGES with four controls that could not fail, all test-only. Traceability 15/15 criteria to named tests, one marked by inspection. Degraded paths tested: cloud unreachable, slow, socket death, protocol rejection, revoked token, absent folder, no credential, refused pairing code. Scope drift: a listing cap that no criterion asked for, kept because tool-design.md requires one. Found outside the verifier: a bare pytest run was executing the live test and pushed eight copies of a test page to a real tablet.
 
 ## Links
 
