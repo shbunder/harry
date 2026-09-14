@@ -979,7 +979,7 @@ def test_a_withdrawn_link_says_to_republish_it(icloud):
     serving(status=404)
     built = icloud(documents=(), settings=subscribed())
 
-    with pytest.raises(Exception, match='[Rr]epublish that calendar in Outlook'):
+    with pytest.raises(Exception, match='Ask whoever publishes that calendar'):
         connector(built).on(MONDAY)
 
 
@@ -1018,7 +1018,7 @@ def test_a_link_answering_a_sign_in_page_says_it_is_not_a_calendar(icloud):
         connector(built).on(MONDAY)
 
     _, sink = built
-    assert 'republish that calendar in Outlook' in sink.heard[0]
+    assert 'Ask whoever publishes that calendar' in sink.heard[0]
 
 
 @respx.mock
@@ -1235,13 +1235,43 @@ def _connector_globals() -> dict:
     return found.target.on.__func__.__globals__
 
 
+def test_a_broken_link_does_not_tell_the_reader_to_do_somebody_else_s_job():
+    """The link this connector was built against is published by an employer. Telling its
+    reader to republish the calendar sends them looking for a button that is not theirs —
+    and it is the difference between a two-minute fix and an afternoon.
+
+    Read off the shipped source, so a message added later is held to the same rule.
+    """
+    source = (REPO / '.harry' / 'connectors' / 'icloud' / 'connector.py').read_text(encoding='utf-8')
+    sentences = [line for line in source.splitlines() if 'SUBSCRIBED' in line and 'link' in line.lower()]
+
+    assert sentences, 'no message about a broken link — has this moved?'
+    for sentence in sentences:
+        assert 'epublish' not in sentence, f'only the calendar owner can do that: {sentence.strip()}'
+
+
+def test_the_docs_say_who_can_reissue_a_published_link():
+    """A link you do not own is the one credential here its user cannot rotate, and that is
+    the sentence somebody needs *before* they paste one, not after."""
+    for page in (REPO / 'docs' / 'sources.md', REPO / '.harry' / 'connectors' / 'icloud' / 'CONNECTOR.md'):
+        prose = ' '.join(page.read_text(encoding='utf-8').split())
+        assert 'only its owner can do' in prose or 'only the calendar' in prose.lower(), (
+            f'{page.name} does not say who can revoke a link'
+        )
+
+    operating = ' '.join((REPO / 'docs' / 'operating.md').read_text(encoding='utf-8').split())
+    assert 'cannot rotate' in operating or 'may not be able to rotate' in operating, (
+        'the runbook does not say which credentials can be rotated'
+    )
+
+
 def test_the_docs_say_the_link_is_a_credential_and_how_to_revoke_it():
     """Republishing in Outlook is the only way to undo a leaked link, and this connector now
     has two hand-renewed credentials rather than one. The page that says how is the
     difference between a two-minute job and an afternoon."""
     for page in (REPO / 'docs' / 'sources.md', REPO / '.harry' / 'connectors' / 'icloud' / 'CONNECTOR.md'):
         prose = ' '.join(page.read_text(encoding='utf-8').split())
-        assert 'republish' in prose.lower(), f'{page.name} does not say how to revoke a link'
+        assert 'republish' in prose.lower(), f'{page.name} does not say what revoking a link means'
         assert 'SUBSCRIBED' in prose, f'{page.name} does not name the setting'
         assert 'password' in prose.lower(), f'{page.name} does not say the link is a credential'
 

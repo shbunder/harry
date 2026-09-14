@@ -83,8 +83,20 @@ is the whole of its security, so anyone who has the link can read that calendar.
 
 - It goes in `.env.local` and nowhere else. Never in a message, a ticket, or `.env`.
 - Harry never prints it. A link that fails is reported by its name.
-- **To revoke it, republish that calendar in Outlook.** That issues a new URL and kills the
-  old one. There is no other way to take it back.
+
+**Whether you can revoke it depends on whose calendar it is.** Republishing a calendar issues
+a new URL and kills the old one — but only the calendar's owner can do that.
+
+| Whose calendar | Can you revoke it? |
+|---|---|
+| Yours | Yes. Republish it in Outlook or Google, then put the new link in `.env.local` |
+| Somebody else's — an employer, a shared team calendar | **No.** Only they can reissue it, on their schedule or not at all |
+
+That second row is worth sitting with before you add such a link. **It is the only credential
+Harry holds that its user cannot rotate.** The reMarkable token is revoked by removing the
+device; the Apple app-specific password by generating a new one; the De Tijd session by
+logging in again. A link you do not own is somebody else's to withdraw — so if it leaks, it
+stays leaked, and the only remedy is asking them.
 
 **A link that cannot be read costs the whole agenda, on purpose.** Everywhere else in Harry a
 dead source costs its own section and the page renders. Here the section is your day, and a
@@ -118,8 +130,8 @@ with moved instances at their new time and cancelled ones absent.
 | iCloud is unreachable or slow | `Agenda unavailable` on the page; one Slack line | Usually transient. The next build is a fresh attempt. The 15-second ceiling is **per request**, and reading every calendar is one request each — name the ones you care about in `CALENDARS` if a slow morning matters |
 | The password was refused | `the password was refused`; one Slack line | Make a new app-specific password at account.apple.com and replace it in `.env.local` |
 | A calendar in `CALENDARS` does not exist | The other calendars' events, and a log line | Check the name — it is the name as it appears in the Calendar app |
-| A `SUBSCRIBED` link answers 404 or 403 | `Agenda unavailable`; one Slack line naming the link | The link has been withdrawn. Republish that calendar in Outlook and put the new link in `.env.local` |
-| A `SUBSCRIBED` link answers a sign-in page | `Agenda unavailable`; one Slack line saying it is not a calendar | Same fix — the link has expired |
+| A `SUBSCRIBED` link answers 404 or 403 | `Agenda unavailable`; one Slack line naming the link | It has been withdrawn. Ask whoever publishes that calendar for a fresh link, and put it in `.env.local`. If it is your own calendar, republish it |
+| A `SUBSCRIBED` link answers a sign-in page | `Agenda unavailable`; one Slack line saying it is not a calendar | Same — the link has expired, and the same person reissues it |
 | A `SUBSCRIBED` entry is not `Name=url` | The other links, and a log line naming its position | Check for a missing `=` or a stray `|` |
 | One event will not parse | The rest of the day, and a log line | Nothing. One malformed entry is not an outage |
 | Nothing on the page and nothing in Slack | `Nothing on today` | That is a free day. An empty agenda and a dead one are different answers here on purpose |
