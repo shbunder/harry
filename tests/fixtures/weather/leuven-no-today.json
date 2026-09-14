@@ -1,0 +1,19 @@
+{
+  "latitude": 50.872,
+  "longitude": 4.698,
+  "generationtime_ms": 0.1055002212524414,
+  "utc_offset_seconds": 7200,
+  "timezone": "Europe/Brussels",
+  "timezone_abbreviation": "GMT+2",
+  "elevation": 26.0,
+  "daily_units": {
+    "time": "iso8601",
+    "weather_code": "wmo code",
+    "temperature_2m_max": "\u00b0C",
+    "temperature_2m_min": "\u00b0C",
+    "precipitation_probability_max": "%"
+  },
+  "daily": {
+    "time": []
+  }
+}
