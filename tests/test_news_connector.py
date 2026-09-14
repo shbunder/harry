@@ -130,7 +130,9 @@ def test_an_rss_feed_becomes_the_same_shape(news):
 
 @respx.mock
 def test_every_candidate_carries_the_five_fields_the_digest_asked_for(news):
-    """FEAT-260912-0f2744 wrote this shape down before any source existed."""
+    """The morning page wrote this shape down before any source existed, so that each
+    source had something to satisfy rather than an interface invented when the page finally
+    called it. Dropping a field here breaks a caller that is not written yet."""
     both_feeds()
 
     for candidate in connector(news()).candidates(50):
@@ -626,3 +628,48 @@ def test_the_connector_imports_the_sdk_and_nothing_else():
     assert forbidden_imports(REPO / '.harry' / 'connectors' / 'news') == []
     assert forbidden_imports(REPO / '.harry' / 'tools' / 'news_search') == []
     assert forbidden_imports(REPO / '.harry' / 'tools' / 'news_article') == []
+
+
+# ---------------------------------------------------------------------------
+# The feeds themselves, which no fixture can vouch for
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.live
+def test_the_real_feeds_still_serve_what_was_recorded():
+    """The one thing the fixtures cannot prove: that VRT NWS and the BBC still answer.
+
+    Everything above asserts what Harry does with two documents recorded on 14 September
+    2026. This reaches both URLs for real, so it fails the day a feed moves, changes format
+    or starts refusing scripted clients — which is exactly the failure the fixtures make
+    invisible.
+
+    Run it deliberately: `make test-live ARGS=tests/test_news_connector.py`.
+    """
+    found = load().get('connector', 'news')
+    assert found is not None and found.target is not None, 'no news connector on disk'
+
+    answer = found.target.search(limit=50, detail='full')
+
+    assert answer['unavailable'] == [], 'a configured feed did not answer'
+    assert len(answer['candidates']) >= 20, 'both feeds should be carrying stories'
+    assert {candidate['feed'] for candidate in answer['candidates']} == {'vrt', 'bbc'}
+    for candidate in answer['candidates']:
+        assert candidate['title'] and candidate['link'] and candidate['published'], candidate
+
+
+@pytest.mark.live
+def test_a_real_article_still_extracts():
+    """A news site that starts blocking scripted clients does it without announcing it.
+
+    Takes the newest BBC story, because the BBC is the one whose page shape this was built
+    against and the one with a redirect-free link.
+    """
+    found = load().get('connector', 'news')
+    assert found is not None and found.target is not None
+
+    newest = next(c for c in found.target.candidates(50) if c['feed'] == 'bbc')
+    article = found.target.article(newest['id'])
+
+    assert article['available'] is True, article.get('why')
+    assert len(article['text']) > 500, article['text'][:200]
