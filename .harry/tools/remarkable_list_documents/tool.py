@@ -11,5 +11,7 @@ def register(registry: Registry, context: Context) -> None:
     tablet = context.connectors['remarkable']
 
     @registry.tool
-    def remarkable_list_documents(limit: int = 50) -> list[dict]:
-        return tablet.documents(limit)
+    def remarkable_list_documents(limit: int | None = None) -> list[dict]:
+        # The cap is the connector's — one number, in the place that enforces it. A default
+        # spelled again here would be a second owner, and the two disagree eventually.
+        return tablet.documents() if limit is None else tablet.documents(limit)

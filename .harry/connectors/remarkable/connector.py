@@ -262,9 +262,13 @@ def _when(stamp: str | None) -> str | None:
 def _reach_remarkable(token: str) -> Client:
     """A remarkapy client that touches nothing outside this process.
 
-    `persist_config` stays off — the default would write the token into `~/.rmapi`, and the
-    one place this token lives is the `.env.local` a person put it in. `interactive` stays
-    off because there is nobody at the keyboard at 06:30.
+    `interactive` stays off because there is nobody at the keyboard at 06:30, and a client
+    with no token would otherwise call `register_device_wizard()` and block on `input()`.
+
+    `persist_config` is belt and braces: remarkapy already refuses to persist when a token
+    is injected, which it always is here. It is written out because the day somebody changes
+    this function to read a config file instead, the default flips and a credential that can
+    rewrite every document on the tablet lands in `~/.rmapi` in plaintext.
     """
     return Client(device_token=token, timeout=TIMEOUT, interactive=False, persist_config=False)
 

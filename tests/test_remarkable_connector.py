@@ -453,7 +453,7 @@ def test_the_device_token_reaches_no_log_no_error_and_no_slack(tablet, tmp_path,
     assert TOKEN not in ' '.join(sink.heard), 'the token reached Slack'
 
 
-def test_no_token_skips_the_connector_and_everything_else_loads(tablet):
+def test_no_token_skips_the_connector_and_says_which_setting(tablet):
     catalogue, _ = tablet(settings='FOLDER=Harry\n')
 
     found = catalogue.get('connector', 'remarkable')
@@ -540,15 +540,47 @@ POINTS_PER_PIXEL = 72 / 96
 what `@page size` is written in, so one of the two has to be converted to compare them."""
 
 
+def rendered_document(tablet, markdown: str, title: str) -> str:
+    """The HTML `render_markdown` actually hands WeasyPrint.
+
+    Rendering a document the test built itself would prove the stylesheet constant is right
+    and nothing about whether the function uses it. Delete the `<style>` from
+    `render_markdown` and the render silently falls back to A4 — measured, 595.28 by 841.89
+    points — with the tablet rescaling every page and the type going soft.
+    """
+    import weasyprint
+
+    module = _connector_module(tablet)
+    handed: list[str] = []
+
+    class Capturing:
+        def __init__(self, string: str) -> None:
+            handed.append(string)
+
+        def write_pdf(self) -> bytes:
+            return b'%PDF-1.7 not rendered'
+
+    original = weasyprint.HTML
+    try:
+        weasyprint.HTML = Capturing  # type: ignore[assignment] — put back in the finally
+        module['render_markdown'](markdown, title)
+    finally:
+        weasyprint.HTML = original
+    assert len(handed) == 1
+    return handed[0]
+
+
 def test_markdown_is_rendered_at_the_page_the_tablet_will_not_rescale(tablet):
     """509.34 by 679.13 points, measured against a Paper Pro. At any other size the tablet
-    rescales what it is given and the type goes soft."""
+    rescales what it is given and the type goes soft.
+
+    Rendered from the document `render_markdown` produced, not from one this test wrote, so
+    the stylesheet going missing is a red test rather than a soft page.
+    """
     from weasyprint import HTML
 
-    css = _connector_module(tablet)['MARKDOWN_CSS']
-    rendered = HTML(string=f'<style>{css}</style><h1>A page</h1>').render()
+    page = HTML(string=rendered_document(tablet, '# A page\n\nSome prose.', 'A page')).render().pages[0]
 
-    page = rendered.pages[0]
     assert round(page.width * POINTS_PER_PIXEL, 2) == 509.34
     assert round(page.height * POINTS_PER_PIXEL, 2) == 679.13
 
@@ -564,10 +596,18 @@ def test_markdown_becomes_a_real_pdf_with_the_prose_in_it(tablet):
 
 def test_a_title_with_markup_in_it_cannot_reach_the_document_as_markup(tablet):
     """The title is the one caller string that lands inside markup — the markdown itself is
-    rendered with HTML turned off, and the title does not go through that renderer."""
-    render = _connector_module(tablet)['render_markdown']
+    rendered with HTML turned off, and the title does not go through that renderer.
 
-    assert render('hello', '<script>alert(1)</script>').startswith(b'%PDF')
+    A title of `</title><style>@page{size:A4}</style>` would otherwise replace the page
+    size, which is the one thing about this document that has to be right.
+    """
+    escaping = '</title><style>@page{size:A4}</style>'
+
+    document = rendered_document(tablet, 'hello', escaping)
+
+    assert escaping not in document, 'the title reached the document as markup'
+    assert '&lt;/title&gt;' in document
+    assert 'size: 509.340000pt' in document, 'the injected page size won'
 
 
 def test_html_inside_the_markdown_is_shown_rather_than_run(tablet):
@@ -947,11 +987,30 @@ def test_the_tablet_client_is_built_with_the_ceiling_the_slack_line_quotes(table
     assert built._interactive is False, 'an unattended Harry must never wait on input() at 06:30'
 
 
-def test_the_tablet_client_keeps_the_token_out_of_a_home_directory(tablet, no_network):
-    """The one place this token lives is the `.env.local` a person put it in."""
-    built = _connector_module(tablet)['_reach_remarkable']('a-device-token')
+def test_the_tablet_client_never_writes_the_token_anywhere(tablet, no_network, monkeypatch):
+    """The one place this token lives is the `.env.local` a person put it in.
 
-    assert built._persist_config is False, 'the token would be written to disk'
+    **This guards the property, not the keyword.** `_reach_remarkable` passes
+    `persist_config=False`, and deleting it changes nothing today — remarkapy sets the same
+    flag itself whenever a token is injected, which it always is here. Two guarantees for
+    one property, and only one of them is visible in Harry's own code.
+
+    So the assertion is on what comes out: a client that does not persist, and would not
+    persist into a home directory if it did. That is what goes red the day somebody changes
+    this function to read a config file instead of taking a token — which is the change that
+    would otherwise put a tablet-wide credential in `~/.rmapi` with the suite green.
+    """
+    import remarkapy.auth
+
+    def refuse(*args, **kwargs):
+        raise AssertionError('the device token was written to disk')
+
+    monkeypatch.setattr(remarkapy.auth, 'write_config', refuse)
+
+    built = _connector_module(tablet)['_reach_remarkable']('a-device-token')
+    built.refresh_user_token()
+
+    assert built._persist_config is False, 'the client would write the token to disk'
     assert built._config_path != the_home_copy(), 'a write would land in a home directory'
 
 
@@ -1035,3 +1094,39 @@ async def test_something_that_is_not_a_pdf_is_refused_through_the_tool(tablet, t
     assert result.is_error is True
     assert 'not a PDF' in str(result.content[0].text)  # type: ignore[union-attr] — an error is one TextContent
     assert cloud.pushed == []
+
+
+def test_a_plain_pytest_run_cannot_reach_the_tablet():
+    """The guard that exists because seven copies of a test page reached a real one.
+
+    `-m 'not live'` lives in `addopts` rather than only in the Makefile, so the marker is
+    opt-in however the suite is started. Nothing else watches that line: tidy it away and a
+    bare `pytest tests/test_remarkable_connector.py` pushes real documents again.
+
+    Collected in a subprocess with no `-m` of its own, which is exactly how somebody runs
+    one file while working on it.
+    """
+    import subprocess
+
+    collected = subprocess.run(
+        ['python', '-m', 'pytest', '--collect-only', '-q', str(Path(__file__).name)],
+        cwd=REPO / 'tests',
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert 'test_a_real_page_reaches_a_real_tablet' not in collected.stdout, (
+        'a plain pytest run would push a document to a real tablet'
+    )
+    assert 'deselected' in collected.stdout, collected.stdout[-400:]
+
+
+def test_the_pairing_target_runs_the_pairing_script():
+    """The criterion names `make remarkable-pair`. Renaming either side would leave it
+    broken with a green gate, because every other test calls the script directly."""
+    recipe = (REPO / 'Makefile').read_text(encoding='utf-8').partition('\nremarkable-pair:')[2].partition('\n\n')[0]
+
+    assert 'scripts/remarkable_pair.py' in recipe
+    assert '$(CODE)' in recipe, 'the target takes the code from the command line'
+    assert 'my.remarkable.com/device/desktop/connect' in recipe, 'it should say where a code comes from'
