@@ -185,11 +185,15 @@ def test_the_table_drops_intensity_on_purpose():
 )
 @respx.mock
 def test_a_source_that_is_down_is_none_and_a_reason(weather, failure, why, caplog):
-    respx.get(FORECAST).mock(side_effect=failure)
+    route = respx.get(FORECAST).mock(side_effect=failure)
     client = connector(weather())
 
     with caplog.at_level(logging.WARNING, logger='harry.capability.weather'):
         assert client.today() is None
+
+    # One attempt. A retry loop here would quietly turn the five-second ceiling into
+    # fifteen inside the digest's build, which is the call that already blocks.
+    assert route.call_count == 1
 
     answer = client.forecast()
     assert answer['available'] is False

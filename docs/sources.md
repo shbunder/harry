@@ -12,8 +12,9 @@ remember exists. This page is the index and the part that is true of all of them
 
 ## What every source promises
 
-The page calls each one the same way, and the contract was written down before any of them
-existed:
+**The page itself is not built yet** — only weather is. The contract below was written down
+first, deliberately, so each source has something to satisfy rather than an interface
+invented when the page finally calls it:
 
 ```
 weather.today()          → {summary, high, low, rain_chance}, or None
@@ -23,9 +24,13 @@ news.article(id)         → {id, title, source, published, text}
 tablet.push(path, name)  → {where}
 ```
 
-**A source that cannot answer returns nothing rather than raising.** One dead source costs
-one section of the page; everything else renders. That is not politeness, it is the whole
-reason the page is worth having on a morning when something is broken.
+**A source that cannot answer today's question returns nothing rather than raising** — the
+one exception being `news.article(id)`, which raises on an id it does not know, because that
+is a caller asking for something that was never offered rather than a source being down.
+
+One dead source costs one section of the page; everything else renders. That is not
+politeness, it is the whole reason the page is worth having on a morning when something is
+broken.
 
 ## Weather
 

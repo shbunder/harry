@@ -111,11 +111,15 @@ it is reporting. Whatever raised the alert is never broken by the reporting — 
 that raises takes down the code that was trying to tell you about a problem, which is the
 worst possible direction for it to fail in.
 
-**Two holes this cannot close**, named so nobody rediscovers them:
+**Three holes this cannot close**, named so nobody rediscovers them:
 
 - **If the Slack connector itself failed to load, nothing can report that.** It is in
   `/health` and in the log on the machine you just restarted, and nowhere else. The thing
   that reports failures cannot report its own absence.
+- **A capability cannot raise an alert, only receive one.** The section below shows how to
+  offer somewhere for alerts to go; there is no matching way for a connector to say "my
+  credential has lapsed". Core alerts on a capability's behalf when it fails to load, and
+  that is all. The feature that closes it is on the board, and De Tijd needs it.
 - **Nothing checks the token until an alert needs it.** A revoked token is found when the
   alert you needed fails. The declaration carries `expires: manual` so that whatever watches
   credentials will find it — and nothing watches yet.
