@@ -307,8 +307,8 @@ class Agenda:
             at = ALL_DAY
         return {
             'at': at,
-            'title': str(occurrence.get('SUMMARY') or '').strip(),
-            'where': str(occurrence.get('LOCATION') or '').strip(),
+            'title': _one_line(occurrence.get('SUMMARY')),
+            'where': _one_line(occurrence.get('LOCATION')),
         }
 
     def _give_up(self, why: str, key: str) -> Unreachable:
@@ -325,6 +325,20 @@ class Agenda:
         self._alert(f'Calendar: {why}', key=key)
         self._principal = None
         return Unreachable(why)
+
+
+def _one_line(value: Any) -> str:
+    """Free text from a calendar, folded onto one line.
+
+    People put newlines in event titles — `'Kids\n School [15:15 - 15:30]'` is a real entry
+    from a real account, five times in one week. iCalendar carries it faithfully and it is
+    not wrong, but the morning page is a PDF read at arm's length and a one-line row that is
+    two lines breaks it.
+
+    Folding, not shortening: every word survives, and a title that was already one line comes
+    back character for character.
+    """
+    return ' '.join(str(value or '').split())
 
 
 def _a_date(day: dt.date | str) -> dt.date:
