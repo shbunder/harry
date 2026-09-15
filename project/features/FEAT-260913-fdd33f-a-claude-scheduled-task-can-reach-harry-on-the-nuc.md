@@ -36,6 +36,7 @@ It blocks only the morning page. Core, alerting and every connector can be built
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-15** — The NUC already runs cloudflared, and the reusable part is the account, not the tunnel. A named tunnel 'marcel' (b7748dba-28df-47c5-9604-273f8a22fecf) has run as /etc/systemd/system/cloudflared-marcel.service since April, serving the zone marcel-bot.com. It starts with `cloudflared tunnel run --url http://localhost:7420 marcel` and there is no config.yml anywhere — ~/.cloudflared holds only cert.pem and the tunnel credentials JSON. A --url tunnel is single-origin, so adding harry.marcel-bot.com to it means dropping --url, writing ingress rules and restarting the process that carries Telegram's webhook. One cloudflared failure would then take out both the bot and the morning page. Make a second tunnel instead: cert.pem is account-scoped, so `cloudflared tunnel create harry`, `cloudflared tunnel route dns harry harry.marcel-bot.com` and a cloudflared-harry.service beside marcel's need no new Cloudflare setup and leave marcel untouched. Domain for the first acceptance criterion: harry.marcel-bot.com. Ports 7430 and 7431 are free; marcel owns 7420 and 7421.
 
 ## Links
 

@@ -17,9 +17,10 @@ time, restarting with the machine — and puts a **dev stack beside it** on the 
 its own port, data and credentials, so a change can be tried without touching the morning.
 
 The plan is on the requirements page and is written to be picked up by a session with no
-memory of the one that wrote it. Start with the compose file: there is not one, so `make up`
-fails today, and Scenario 1 — a first boot with nothing configured at all — is the acceptance
-test that needs no credentials.
+memory of the one that wrote it. Start by reading `docker-compose.yml` — it exists and `make
+up` works today, so the job is to extend it, not to write one. Scenario 1 is the acceptance
+test that needs no credentials, and it is not "everything is skipped": weather and news
+declare no required setting and load on a bare machine.
 
 ## Acceptance criteria
 
