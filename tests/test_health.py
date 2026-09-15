@@ -146,7 +146,7 @@ def test_no_capabilities_at_all_is_a_valid_start(harry):
         'loaded': 0,
         'skipped': 0,
         'capabilities': [],
-        'jobs': {'scheduled': [], 'watched': []},
+        'jobs': {'enabled': True, 'scheduled': [], 'watched': []},
     }
 
 

@@ -64,6 +64,51 @@ The two digest tools name all four connectors under `optional:` rather than `req
 they load with none of them — a lapsed calendar password costs the agenda column, not the
 page.
 
+## Two stacks on one machine
+
+The real one delivers the morning page. The dev one is where a change is tried, and it is
+the same image — code is identical, everything else is configuration.
+
+```bash
+make up        make up-dev        # start. `make up` never starts dev; the profile sees to that
+make down      make down-dev      # stop, each leaving the other running
+make logs      make logs-dev      # follow
+make health    make health-dev    # what loaded, and whether the clock is on
+```
+
+| | Real | Dev |
+|---|---|---|
+| Port | 7430 | 7431 |
+| Container | `harry` | `harry-dev` |
+| Volume | `harry-data` | `harry-dev-data` |
+| Credentials | `.env.local` | `.env.dev.local` |
+| Clock | **on** | **off** |
+
+**How to tell them apart from outside**, with no access to either one's settings: ask
+`/health` and read `jobs.enabled`. The real stack answers `true` and lists what it is
+watching; dev answers `false` with empty lists.
+
+**The clock is the one real asymmetry, and it is the reason there are two stacks rather
+than two ports.** Both would otherwise watch the morning page's 07:00 deadline, and dev
+would report a miss for a page the real stack had delivered. A Slack channel that carries
+one wrong "no page today" a day stops being read, and then the real one goes unread with
+it. So dev schedules nothing, registers no watchdog, and never starts its scheduler —
+`HARRY_SCHEDULER_ENABLED=false`, set on the service in `docker-compose.yml`.
+
+Dev has its own volume, so `docker compose down -v` on dev cannot take the real store with
+it, and its own credentials file, so a token pasted in to try something is never the token
+the morning page is using.
+
+### Why the port is set on the service and not left to a file
+
+Both services pin `HARRY_PORT` and `HARRY_DATA_DIR` under `environment:`, which outranks
+`env_file:`. Without that, a stray `HARRY_PORT` in somebody's `.env.local` moves the port
+Harry listens on while compose still publishes the old one — and **that failure reports
+itself as healthy**, because the image's healthcheck reads the same variable and follows it
+to the right place while the outside world knocks on the wrong one. It was measured before
+being fixed: `/data` empty, the store written to a path that dies with the container, and
+`Container harry Healthy` on the console.
+
 ## Configuration
 
 Two files, and `.env.local` wins:

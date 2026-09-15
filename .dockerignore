@@ -6,6 +6,10 @@
 .env
 .env.local
 **/.env.local
+# The dev stack's own credentials file. Same reason as the line above it, and it needs
+# saying separately because `.env.local` does not match `.env.dev.local`.
+.env.*.local
+**/.env.*.local
 storage-state*.json
 
 # Local state and working copies.

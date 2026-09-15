@@ -34,7 +34,7 @@ OFF   := \033[0m
 
 .PHONY: help env-install check lint format typecheck test test-cov lock env-template \
         board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-candidates remarkable-pair \
-        image up down logs health docs clean
+        image up down logs health up-dev down-dev logs-dev health-dev docs clean
 
 help:  ## Show this help
 	@echo ""
@@ -172,14 +172,36 @@ image:  ## Build Harry's image
 up:  ## Start Harry with compose, and wait until it is actually answering
 	docker compose up -d --wait --wait-timeout 120
 
+# This service by name, not `docker compose down`: that takes the project's network with
+# it and prints "Resource is still in use" whenever the dev stack is up — a line that reads
+# like a failure, exits 0 and means nothing.
 down:  ## Stop Harry. The data volume is not touched — that needs `docker compose down -v`
-	docker compose down
+	docker compose stop harry
+	docker compose rm -f harry
 
 logs:  ## Follow Harry's logs
 	docker compose logs -f harry
 
 health:  ## What loaded, what did not, and why — from the running container
 	docker compose exec harry python -c "import urllib.request,os,json,sys; \
+	  print(json.dumps(json.load(urllib.request.urlopen(f'http://localhost:{os.environ[\"HARRY_PORT\"]}/health')), indent=2))"
+
+# The dev stack. Separate targets rather than a flag, so nothing that starts, stops or
+# rebuilds the real one can reach dev by accident, or the other way round. The `dev`
+# profile is what keeps `make up` from starting it at all.
+
+up-dev:  ## Start the dev stack on 7431, with its clock off
+	docker compose --profile dev up -d --wait --wait-timeout 120 harry-dev
+
+down-dev:  ## Stop the dev stack. The real one is untouched
+	docker compose --profile dev stop harry-dev
+	docker compose --profile dev rm -f harry-dev
+
+logs-dev:  ## Follow the dev stack's logs
+	docker compose --profile dev logs -f harry-dev
+
+health-dev:  ## What the dev stack loaded. `jobs.enabled` is false here, and true on the real one
+	docker compose exec harry-dev python -c "import urllib.request,os,json,sys; \
 	  print(json.dumps(json.load(urllib.request.urlopen(f'http://localhost:{os.environ[\"HARRY_PORT\"]}/health')), indent=2))"
 
 # ---------------------------------------------------------------------------

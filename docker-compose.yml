@@ -24,9 +24,52 @@ services:
       - harry-data:/data
       # Nothing of yours is mounted here. Harry never calls a model, so it needs no
       # provider credential — see .claude/rules/no-model-calls.md.
-    # Europe/Brussels matters: the 06:30 job is a local time, not a UTC one.
+    environment:
+      # Europe/Brussels matters: the 06:30 job is a local time, not a UTC one.
+      TZ: Europe/Brussels
+      # These two are set here, not left to the env files, because `environment:` outranks
+      # `env_file:` — which is what stops a stray key in someone's .env.local moving the
+      # port Harry listens on away from the port published above. That failure reports
+      # itself as healthy, because the image's healthcheck reads the same HARRY_PORT and
+      # follows it to the wrong place, so there is nothing to notice from outside.
+      HARRY_PORT: 7430
+      HARRY_DATA_DIR: /data
+      # The real stack keeps the clock. Only one Harry on this machine may.
+      HARRY_SCHEDULER_ENABLED: "true"
+
+  # The stack a change is tried on. Same image, same code, different everything else.
+  # `profiles:` is what keeps it out of a plain `make up` — compose ignores a profiled
+  # service unless it is asked for by name, so starting dev is always deliberate.
+  # Decided in project/decisions/: one image, two compose profiles, not two images.
+  harry-dev:
+    profiles: [dev]
+    build: .
+    image: harry:latest
+    container_name: harry-dev
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: true
+      # NOT .env.local. The dev stack has its own credentials, so that a token pasted here
+      # to try something cannot be the one the morning page is using.
+      - path: .env.dev.local
+        required: false
+    ports:
+      - "7431:7431"
+    volumes:
+      # Its own volume. `docker compose down -v` on dev cannot take the real store with it.
+      - harry-dev-data:/data
     environment:
       TZ: Europe/Brussels
+      HARRY_PORT: 7431
+      HARRY_DATA_DIR: /data
+      # The one real asymmetry between the two stacks, and the reason there are two.
+      # Two schedulers would both watch morning-page's 07:00 deadline, and this one would
+      # report a miss for a page the real stack delivered — which is how the channel that
+      # carries actual failures stops being read. A stack with this off schedules nothing,
+      # registers no watchdog, and says `"enabled": false` under `jobs` in /health.
+      HARRY_SCHEDULER_ENABLED: "false"
 
 volumes:
   harry-data:
+  harry-dev-data:

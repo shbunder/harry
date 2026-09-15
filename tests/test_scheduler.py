@@ -44,8 +44,8 @@ def harry(tmp_path, monkeypatch):
     """A loaded Harry with a clock, a store and somewhere for alerts to go."""
     import harry.config
 
-    settings = harry.config.Settings(data_dir=tmp_path / 'data')
-    monkeypatch.setattr(harry.config, 'get_settings', lambda: settings)
+    current = harry.config.Settings(data_dir=tmp_path / 'data')
+    monkeypatch.setattr(harry.config, 'get_settings', lambda: current)
 
     made: list[Jobs] = []
     sink = Somewhere()
@@ -57,7 +57,17 @@ def harry(tmp_path, monkeypatch):
         def store(self) -> Store:
             return Store(tmp_path / 'data' / 'jobs.json')
 
-        def __call__(self, *capabilities: str, now: dt.datetime | Callable[[], dt.datetime] | None = None) -> Jobs:
+        def __call__(
+            self,
+            *capabilities: str,
+            now: dt.datetime | Callable[[], dt.datetime] | None = None,
+            scheduler: bool = True,
+        ) -> Jobs:
+            # `scheduler=False` is the second stack on one machine. Set before `Jobs` is
+            # built, because the settings object is read at construction as well as at
+            # start, and a test that flipped it afterwards would be testing neither state.
+            nonlocal current
+            current = harry.config.Settings(data_dir=tmp_path / 'data', scheduler_enabled=scheduler)
             # Only what is not there yet, so a test can build a second Jobs over the same
             # tree — which is what a restart looks like from here.
             root_with(self.root, *(name for name in capabilities if not (self.root / name).exists()))
@@ -404,3 +414,81 @@ def test_a_switched_off_job_is_not_watched(harry):
     jobs.check_deadlines()
 
     assert harry.heard == []
+
+
+# ---------------------------------------------------------------------------
+# A second stack on one machine, with its clock off
+# ---------------------------------------------------------------------------
+#
+# Two Harrys on one box would both watch the same deadlines, and the spare one would
+# report a missed morning the real one delivered. These make the deadline actually pass
+# and then ask who was told — the mute is the failure, so the alert is what is asserted
+# on, not the setting that suppresses it.
+
+
+def test_the_real_stack_reports_a_missed_morning_at_start_up(harry):
+    """The control this pair exists to protect. Start with a deadline already past and
+    somebody hears about it — this is the behaviour dev must not duplicate."""
+    jobs = harry('jobs/morning-page', now=at(7, 5))
+
+    jobs.start()
+
+    assert harry.heard == ['morning-page has not run today. It was due by 07:00.']
+
+
+def test_a_stack_with_the_scheduler_off_says_nothing_about_a_deadline_it_passed(harry):
+    """The same morning, on the dev stack: silence.
+
+    This is the whole reason the asymmetry exists. Delete the guard in `start()` and this
+    goes red with the real stack's sentence in it, which is exactly the message that would
+    have reached Slack about a page that was in fact delivered.
+    """
+    jobs = harry('jobs/morning-page', now=at(7, 5), scheduler=False)
+
+    jobs.start()
+
+    assert harry.heard == []
+
+
+def test_a_stack_with_the_scheduler_off_registers_nothing_and_never_starts_the_clock(harry):
+    """Not "it did not alert" but "there is nothing there to alert with".
+
+    An empty scheduler that is running would pass a test about alerts today and hand a job
+    to both stacks the day somebody adds one, so the clock itself has to be stopped.
+    """
+    jobs = harry('jobs/morning-page', 'jobs/refresh', scheduler=False)
+
+    jobs.start()
+
+    assert jobs.running is False
+    assert jobs.scheduler.get_jobs() == []
+    assert jobs.scheduler.get_job(WATCHDOG_ID) is None
+
+
+def test_the_real_stack_does_register_the_watchdog(harry):
+    """The other half of the pair: with the clock on, the watchdog is really there."""
+    jobs = harry('jobs/morning-page', 'jobs/refresh')
+
+    jobs.start()
+
+    assert jobs.running is True
+    assert jobs.scheduler.get_job(WATCHDOG_ID) is not None
+
+
+def test_health_says_the_clock_is_off_rather_than_listing_deadlines_nobody_watches(harry):
+    """How you tell the two stacks apart from outside, with no access to either's settings.
+
+    Reporting `morning-page, due 07:00` from a stack that is not watching it would read as
+    covered to the person checking at 07:10 — the one moment the answer has to be exact.
+    """
+    off = harry('jobs/morning-page', scheduler=False)
+    off.start()
+
+    assert off.as_health() == {'enabled': False, 'scheduled': [], 'watched': []}
+
+    on = harry('jobs/morning-page')
+    on.start()
+    watching = on.as_health()
+
+    assert watching['enabled'] is True
+    assert [w['name'] for w in watching['watched']] == ['morning-page']
