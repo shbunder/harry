@@ -47,14 +47,25 @@ other setting still comes from the committed file. That is the whole reason ther
 two: a key added to `.env` reaches every machine at once, and no machine has to be
 told twice.
 
-### Why there are no `export` prefixes, and why make does not load either file
+### `export` is allowed on a key with a value, and never on an empty one
 
-In the repo this was adapted from, `make` pulled both files in with `-include` and every
-key in both had to carry an `export` prefix. `export` in a Makefile puts the value into
-the *process environment*, which outranks any dotenv file — so a key exported empty in
-the committed file and set without `export` in the machine's file resolved to empty,
-silently. The arrangement worked, and it needed a paragraph of documentation to be
-survivable.
+The root `.env` carries `export` prefixes so it can be `source`d by hand. Both readers
+strip them — pydantic's dotenv parser and Docker Compose's `env_file` — so they change
+nothing about the order above. **A capability's generated `.env` carries none**, because
+those are written by `make env-template` and never sourced; hand-adding one there makes
+`make lint` fail on drift, which is how it is caught.
+
+**The exception is the whole point.** `export` puts a value in the *process environment*,
+which outranks `.env.local`. A key exported **empty** in the committed file therefore
+shadows the real value on every machine, the moment anybody sources the file — silently,
+and resolving to whatever "unset" means for that key. For `HARRY_API_TOKEN` that is
+"nobody is authorised".
+
+This is not hypothetical. In the repo Harry was adapted from, `make` pulled both files in
+with `-include`, every key carried `export`, and a key exported empty in the committed file
+and set without `export` in the machine's file resolved to empty. It took a paragraph of
+documentation to be survivable. Here it is one assertion instead:
+`tests/test_config.py::test_no_key_in_the_committed_env_is_exported_with_an_empty_value`.
 
 Harry's Makefile loads neither file. `harry/config.py` is the only reader, so the order
 above is simply what it does. Two consequences worth knowing:
@@ -93,7 +104,11 @@ no sharing the storage state.
 - Put a real secret in `.env`. It is committed. Secrets go in `.env.local`
 - Copy `.env` to `.env.local`. A full copy means the next key added to `.env` is shadowed
   by a stale value on every machine that copied it
-- `export`-prefix a key in either file, or load either file from the Makefile
+- `export`-prefix a key that has **no value**. It shadows `.env.local` for anything that
+  sources the file. A key with a real default may carry one
+- Hand-edit a capability's generated `.env`, including to add an `export`. Change `config:`
+  and run `make env-template`
+- Load either file from the Makefile
 - Log, trace, or return a value read from a secret field
 - Put a storage-state file anywhere but the data volume
 
@@ -134,6 +149,7 @@ quietly inside a job. That is **Alerting**.
 | "The token is read-only" | The reMarkable token is not. There is no read-only mode. |
 | "I'll just put it in the root .env" | Then the capability is not self-contained, and the root file goes back to belonging to nobody. |
 | "I'll edit the generated .env directly" | `make lint` fails on it. Change `config:` and regenerate. |
+| "Adding `export` everywhere is consistent" | Consistent with the one spelling that breaks it. An empty exported key shadows the real one. |
 | "I'll copy `.env` to `.env.local` and edit it" | Then every key you did not change is frozen at today's value. Put in only what differs. |
 | "The Makefile needs the port" | It needs to start Harry. `python -m harry` knows the port. |
 | "I'll add the expiry alert later" | Later is three weeks of a silently worse page. |

@@ -52,11 +52,17 @@ RETIRED = {
 
 
 def declared_keys() -> set[str]:
+    """Every key the committed `.env` declares, however it is spelled.
+
+    `export ` is stripped: the file carries the prefix on keys that have a value, so it
+    can be sourced by hand, and a parser that did not strip it would report every one of
+    those keys as absent while looking at the line that declares it.
+    """
     path = ROOT / '.env'
     if not path.exists():
         pytest.skip('no .env in this tree')
     return {
-        line.split('=', 1)[0].strip()
+        line.split('=', 1)[0].strip().removeprefix('export ').strip()
         for line in path.read_text(encoding='utf-8').splitlines()
         if '=' in line and not line.lstrip().startswith('#')
     }

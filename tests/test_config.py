@@ -211,3 +211,52 @@ def test_every_key_the_committed_env_leaves_empty_resolves_to_empty(monkeypatch)
     assert settings.api_token.get_secret_value() == '', 'an unset token must authorise nobody'
     assert settings.public_url is None
     assert settings.capabilities_dir is None
+
+
+# ---------------------------------------------------------------------------
+# `export` in the committed file, and the one spelling of it that is a trap
+# ---------------------------------------------------------------------------
+
+
+def test_an_export_prefix_is_stripped_and_does_not_change_what_a_key_resolves_to(tmp_path):
+    """`.env` carries `export` so it can also be sourced by hand. Both readers drop it.
+
+    Asserted rather than believed, because the whole file's meaning rests on it: if the
+    prefix were kept, every key in the committed file would be named `export HARRY_…`
+    and every default would silently vanish.
+    """
+    plain = tmp_path / 'plain.env'
+    plain.write_text('HARRY_PORT=7455\nHARRY_LOG_LEVEL=DEBUG\n', encoding='utf-8')
+    exported = tmp_path / 'exported.env'
+    exported.write_text('export HARRY_PORT=7455\nexport HARRY_LOG_LEVEL=DEBUG\n', encoding='utf-8')
+
+    assert settings_from(exported).port == settings_from(plain).port == 7455
+    assert settings_from(exported).log_level == 'DEBUG'
+
+
+def test_no_key_in_the_committed_env_is_exported_with_an_empty_value():
+    """The failure the two-file split was designed around, and the only way `export` causes it.
+
+    `export` puts a value in the **process environment**, which outranks `.env.local`. So
+    `export HARRY_API_TOKEN=` in this committed file, once anybody sources it, sets the
+    token to empty for every process downstream — and the real one in `.env.local` is
+    never read. It resolves to "nobody is authorised" and nothing says why.
+
+    A key with a real default is safe to export: sourcing it just reproduces the default.
+    An empty one is not, and that is the whole rule. `secrets-and-config.md` records this
+    happening in the repository Harry was adapted from.
+    """
+    repo = Path(__file__).parent.parent
+    if not (repo / '.env').exists():
+        pytest.skip('no committed .env in this tree')
+
+    exported_empty = [
+        line.split('=')[0].removeprefix('export ').strip()
+        for line in (repo / '.env').read_text(encoding='utf-8').splitlines()
+        if line.startswith('export ') and not line.split('=', 1)[1].strip()
+    ]
+
+    assert exported_empty == [], (
+        f'{exported_empty} are exported with no value, so sourcing .env would shadow .env.local. '
+        'Drop the `export` on those keys; keep it on the ones that carry a real default.'
+    )
