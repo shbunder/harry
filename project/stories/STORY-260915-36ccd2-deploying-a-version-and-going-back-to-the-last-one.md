@@ -2,7 +2,7 @@
 id: STORY-260915-36ccd2
 title: Deploying a version, and going back to the last one
 feature: FEAT-260915-2a6ce1
-status: Backlog
+status: Done
 created: 2026-09-15
 ---
 
@@ -21,11 +21,11 @@ failure is discovered on the morning you most need it not to be.
 
 ## Acceptance criteria
 
-- [ ] Every build is tagged with something that cannot be reused — the date, or the short commit
-- [ ] The real service names a tag; the dev one may track `latest`
-- [ ] Deploying is one command, and the data volume is untouched by it
-- [ ] Going back to the previous tag is one command, and the data volume is untouched by that too
-- [ ] `docs/operating.md` carries both commands, written out, with a real tag in them
+- [x] Every build is tagged with something that cannot be reused — the date, or the short commit
+- [x] The real service names a tag; the dev one may track `latest`
+- [x] Deploying is one command, and the data volume is untouched by it
+- [x] Going back to the previous tag is one command, and the data volume is untouched by that too
+- [x] `docs/operating.md` carries both commands, written out, with a real tag in them
 
 ## Subtasks
 

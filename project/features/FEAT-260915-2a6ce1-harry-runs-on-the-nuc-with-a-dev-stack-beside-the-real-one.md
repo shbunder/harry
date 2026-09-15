@@ -33,8 +33,8 @@ declare no required setting and load on a bare machine.
 - [x] Stopping or rebuilding either stack leaves the other running
 - [ ] A page is built inside the container through `scripts/call_tool.py`, written under the data volume, with nothing pushed
 - [ ] Harry restarts with the machine and keeps its data across a reboot
-- [ ] Every build is tagged with something that cannot be reused, the real service names a tag, and going back to the previous one is one command
-- [ ] `xvfb` is in the image and nothing uses it yet, so the De Tijd feature does not have to rebuild it
+- [x] Every build is tagged with something that cannot be reused, the real service names a tag, and going back to the previous one is one command
+- [x] `xvfb` is in the image and nothing uses it yet, so the De Tijd feature does not have to rebuild it
 - [ ] `docs/operating.md` describes what is actually on the NUC, in the present tense
 
 ## Stories
