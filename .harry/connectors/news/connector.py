@@ -41,6 +41,14 @@ import trafilatura
 from harry.sdk import Context, Registry
 
 ATOM = 'http://www.w3.org/2005/Atom'
+MEDIA = 'http://search.yahoo.com/mrss/'
+"""Media RSS, which is how the BBC attaches a picture to an item. VRT uses Atom's own
+`rel="enclosure"` instead — two feeds, two spellings of the same fact."""
+
+POSTAGE_STAMP, READABLE = '/standard/240/', '/standard/800/'
+"""The BBC publishes a 240px thumbnail and serves any size from the same path. 240px is a
+postage stamp on a page read at arm's length; 800 is a picture. A fixed substitution, not a
+judgement — the same two strings every time, whatever the story."""
 
 FEED_TIMEOUT = 10.0
 """Seconds. Longer than the weather's five: these are 20–60 KB documents from a CDN, and
@@ -87,9 +95,12 @@ is about, which is all a candidate is for — the whole thing is a `detail="full
 the article itself is one `news_article` away.
 """
 
-CONCISE_FIELDS = ('id', 'title', 'source', 'feed', 'date')
+CONCISE_FIELDS = ('id', 'title', 'source', 'feed', 'date', 'image')
 """What survives `detail="concise"`, besides the trimmed summary. `published` and `link`
-are dropped: `date` is the part a person reads, and nothing chooses a story by its URL."""
+are dropped: `date` is the part a person reads, and nothing chooses a story by its URL.
+
+`image` stays, at about a hundred characters each. Whether a story has a picture is part of
+choosing which one leads the page, and forty URLs is four kilobytes."""
 
 
 class Unreadable(Exception):
@@ -208,6 +219,7 @@ def _parse(document: str, feed: Feed) -> list[dict]:
 
 
 def _from_rss(item: ElementTree.Element, feed: Feed) -> dict:
+    thumbnail = item.find(f'{{{MEDIA}}}thumbnail')
     return {
         'title': (item.findtext('title') or '').strip(),
         'summary': (item.findtext('description') or '').strip(),
@@ -215,6 +227,7 @@ def _from_rss(item: ElementTree.Element, feed: Feed) -> dict:
         'at': _when(item.findtext('pubDate')),
         'source': feed.name,
         'feed': feed.slug,
+        'image': _bigger(thumbnail.get('url') if thumbnail is not None else None),
     }
 
 
@@ -229,6 +242,7 @@ def _from_atom(entry: ElementTree.Element, feed: Feed) -> dict:
     chosen = next((link for link in links if link.get('rel') == 'alternate'), None)
     if chosen is None:
         chosen = next((link for link in links if link.get('rel') not in ('self', 'enclosure')), None)
+    enclosure = next((link for link in links if link.get('rel') == 'enclosure'), None)
     return {
         'title': (entry.findtext(f'{{{ATOM}}}title') or '').strip(),
         'summary': (entry.findtext(f'{{{ATOM}}}summary') or '').strip(),
@@ -236,7 +250,23 @@ def _from_atom(entry: ElementTree.Element, feed: Feed) -> dict:
         'at': _when(entry.findtext(f'{{{ATOM}}}published') or entry.findtext(f'{{{ATOM}}}updated')),
         'source': feed.name,
         'feed': feed.slug,
+        'image': _bigger(enclosure.get('href') if enclosure is not None else None),
     }
+
+
+def _bigger(url: str | None) -> str | None:
+    """A picture's address, asked for at a size worth printing.
+
+    Nothing is fetched here, on purpose. The connector hands over the address and whoever
+    renders fetches it: forty candidates carry about thirty pictures at 90 KB each, so
+    inlining them would put 3.6 MB of base64 through a tool call for pictures mostly about
+    to be discarded — and it would make one slow image host able to slow down listing the
+    news. It also keeps feed parsing a pure function over a document, which is what lets it
+    be tested against recorded fixtures with no network at all.
+    """
+    if not url:
+        return None
+    return url.replace(POSTAGE_STAMP, READABLE)
 
 
 class News:
@@ -281,7 +311,9 @@ class News:
         if story is None:
             raise UnknownStory(f'no feed carries {story_id!r} — run news_search again, the feeds have moved on')
 
-        known = {key: story[key] for key in ('id', 'title', 'source', 'published', 'link')}
+        # `summary` and `image` come along, so a story whose page will not load still has
+        # something to print. The feed's own description was always going to be readable.
+        known = {key: story[key] for key in ('id', 'title', 'source', 'published', 'link', 'summary', 'image')}
         try:
             text = self._read(story['link'])
         except (httpx.HTTPError, Unreadable) as error:
@@ -379,6 +411,7 @@ class News:
             'date': date,
             'summary': item['summary'],
             'link': item['link'],
+            'image': item['image'],
         }
 
     @staticmethod

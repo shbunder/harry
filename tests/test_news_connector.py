@@ -764,3 +764,94 @@ def test_every_feed_empty_is_still_a_list_rather_than_an_error(news):
     assert [row['source'] for row in answer['unavailable']] == ['VRT NWS', 'BBC News']
     _, sink = built
     assert len(sink.heard) == 2
+
+
+# ---------------------------------------------------------------------------
+# The picture the feed published, and the summary it wrote
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_a_vrt_candidate_carries_the_picture_from_its_enclosure(news):
+    """VRT attaches a picture as an Atom link with `rel="enclosure"`. It was being parsed
+    and thrown away, so a page of headlines had no pictures on it."""
+    both_feeds()
+
+    found = connector(news()).candidates(50)
+
+    vrt = [candidate for candidate in found if candidate['feed'] == 'vrt']
+    assert vrt[0]['image'].startswith('https://images.vrt.be/vrtnws_share/')
+    assert all(candidate['image'] for candidate in vrt), 'every VRT entry in the fixture has one'
+
+
+@respx.mock
+def test_a_bbc_candidate_asks_for_a_picture_rather_than_a_postage_stamp(news):
+    """The feed publishes 240px and the same path serves any size. 240 is a thumbnail on a
+    page read at arm's length."""
+    assert '/standard/240/' in recorded('bbc-news.xml'), 'the feed still publishes the small one'
+    both_feeds()
+
+    found = connector(news()).candidates(50)
+
+    bbc = [candidate for candidate in found if candidate['feed'] == 'bbc']
+    assert bbc[0]['image'].startswith('https://ichef.bbci.co.uk/ace/standard/800/')
+    assert not any('/standard/240/' in (candidate['image'] or '') for candidate in bbc)
+
+
+@respx.mock
+def test_nothing_is_fetched_to_find_out_what_a_picture_is(news):
+    """The connector hands over the address. Forty candidates carry about thirty pictures,
+    and fetching them all to list headlines is 3.6 MB for pictures mostly about to be
+    discarded — so the only requests here are the two feeds."""
+    both_feeds()
+
+    connector(news()).candidates(50)
+
+    assert len(respx.calls) == 2, 'two feeds, two requests, no pictures'
+
+
+@respx.mock
+def test_a_feed_with_no_pictures_is_a_feed_not_a_fault(news, caplog):
+    """`collision.xml` is three real-shaped entries with no image on any of them. A source
+    that simply does not publish pictures must not look like a source that broke."""
+    assert 'enclosure' not in recorded('collision.xml')
+    serving(**{VRT: 'collision.xml', BBC: 'bbc-news.xml'})
+    built = news()
+
+    with caplog.at_level(logging.WARNING, logger='harry.capability.news'):
+        found = connector(built).candidates(50)
+
+    assert [candidate['image'] for candidate in found if candidate['feed'] == 'vrt'] == [None, None, None]
+    assert built[1].heard == [], 'nothing for Slack'
+
+
+@respx.mock
+def test_an_article_carries_the_summary_the_feed_wrote(news):
+    """`article()` rebuilt its answer from five keys and dropped the one thing that was
+    always going to be readable."""
+    both_feeds()
+    client = connector(news())
+    story = next(c for c in client.candidates(50) if c['feed'] == 'vrt')
+    respx.get(story['link']).mock(return_value=httpx.Response(200, text=recorded('vrt-article.html')))
+
+    got = client.article(story['id'])
+
+    assert got['summary'] == story['summary']
+    assert got['image'] == story['image']
+    assert got['available'] is True
+
+
+@respx.mock
+def test_a_story_whose_page_will_not_load_still_has_something_to_print(news):
+    """The degraded path, and the reason `summary` is on the article at all: a page that
+    answers 403 leaves the feed's own description as the whole of the story."""
+    both_feeds()
+    client = connector(news())
+    story = next(c for c in client.candidates(50) if c['feed'] == 'vrt')
+    respx.get(story['link']).mock(return_value=httpx.Response(403))
+
+    got = client.article(story['id'])
+
+    assert got['available'] is False and got['why']
+    assert got['summary'] == story['summary'] and got['summary'] != ''
+    assert got['image'] == story['image']

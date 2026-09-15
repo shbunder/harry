@@ -23,17 +23,18 @@ invented when the page finally calls it:
 weather.today()          → {summary, high, low, rain_chance}, or None
 weather.forecast()       → the same four, plus available, place and hours
 calendar.today()         → [{at, ends, title, where, calendar}], empty list on a free day
-news.candidates(limit)   → [{id, title, source, feed, published, date, summary, link}], newest first
-news.article(id)         → {available, id, title, source, published, link, text}
+news.candidates(limit)   → [{id, title, source, feed, published, date, summary, link, image}], newest first
+news.article(id)         → {available, id, title, source, published, link, summary, image, text}
 tablet.push(path, name)  → {where}
 ```
 
-News carries three fields beyond what was first written down. `feed` is the slug you filter
-by, `date` is the local day the id is built from, and `link` is what makes a headline
-clickable on a page. `article()` carries `available`: on a page that will not load it is
-`false`, there is no `text`, and `why` says what happened — **the headline, the source and
-the time are still there**, so the page can print the story and say the text could not be
-read.
+News carries four fields beyond what was first written down. `feed` is the slug you filter
+by, `date` is the local day the id is built from, `link` is what makes a headline clickable
+on a page, and `image` is the address of the picture the feed published — or `null` where it
+published none. `article()` carries `available`: on a page that will not load it is
+`false`, there is no `text`, and `why` says what happened — **the headline, the source, the
+time, the feed's own summary and the picture are still there**, so the page can print the
+story and say the text could not be read.
 
 **A source that cannot answer today's question returns nothing rather than raising** — the
 one exception being `news.article(id)`, which raises on an id it does not know, because that
@@ -113,6 +114,24 @@ bbc-2026-09-14-russia-hits-ukrainian-train-shortly   BBC News
 An id is the feed slug, the date and the first five words of the title. The date is local —
 a story published 22:30 UTC is filed under the next morning, which is the day you would have
 read it.
+
+### The picture
+
+Every candidate carries `image`: **the address of the picture the feed published**, or `null`
+where it published none. VRT attaches one as an Atom `rel="enclosure"` link and the BBC as a
+`media:thumbnail`. The BBC's is 240 pixels wide and the same path serves any size, so Harry
+asks for 800 — a fixed substitution, `/standard/240/` for `/standard/800/`, the same two
+strings every time.
+
+**Nothing is fetched to answer this.** Forty candidates carry about thirty pictures at 90 KB
+each; downloading them to list headlines would be 3.6 MB of base64 through the tool call for
+pictures mostly about to be discarded, and it would make one slow image host able to slow down
+listing the news. Whoever renders a page fetches the ones it chose, and owns the awkward hosts
+— `images.tijd.be` answers 403 to a plain request and 200 to a browser. See
+[ADR-260915-c01ab8](../project/decisions/ADR-260915-c01ab8-a-connector-hands-over-a-picture-s-address-never-the-picture.md).
+
+A feed that publishes no pictures is a feed, not a fault: `image` is `null` and nothing
+reaches Slack.
 
 **Claude reaches it with two tools**, both deferred, so a session finds them with
 `harry_find_tools("news")` first:
