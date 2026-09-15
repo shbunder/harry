@@ -36,8 +36,8 @@ HOURLY = 'temperature_2m,weather_code'
 so asking twice would be a second call for something the first could have carried.
 
 `weather_code` as well as the temperature, because a strip of numbers is half a forecast:
-nine degrees under a sun and nine under a thundercloud are different mornings, and the page
-draws an icon for each hour."""
+nine degrees under a sun and nine under a thundercloud are different mornings. Claude reads
+both through `weather_forecast`."""
 
 FIRST_HOUR, LAST_HOUR = 6, 22
 """The hours worth printing. Before six nobody is reading and after ten nobody is going out,
@@ -151,8 +151,18 @@ class Weather:
             self._log.info('no hourly temperatures for %s; the page carries the day without its strip', self.place)
             return []
         # An hourly block with no codes is still a strip worth drawing — the numbers are the
-        # part that cannot be guessed from the day's own summary.
+        # part that cannot be guessed from the day's own summary. But it is said out loud: a
+        # single unrecognised code already warns, and the larger loss going quiet is how a
+        # strip of bare numbers arrives for a month and nobody wonders why.
         codes = hourly.get('weather_code') or []
+        if len(codes) < len(times):
+            self._log.info(
+                'the hourly forecast for %s carried %d code(s) for %d hour(s); '
+                'those hours draw a temperature and no sky',
+                self.place,
+                len(codes),
+                len(times),
+            )
         found: list[dict] = []
         unknown: set[int] = set()
         # `strict=False`: arrays of different lengths are a malformed answer, and the honest
@@ -187,7 +197,9 @@ class Weather:
         about what a code means.
         """
         try:
-            number = int(code)  # type: ignore[arg-type] — None and a string both land below
+            # pyright: ignore[reportArgumentType] — None and a non-numeric string both land
+            # below. A numeric string does not: int("3") is 3, and 3 is a code the table has.
+            number = int(code)  # pyright: ignore[reportArgumentType]
         except (TypeError, ValueError):
             return None
         word = WORDS.get(number)

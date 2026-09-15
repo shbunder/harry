@@ -61,4 +61,7 @@ ENV
 | Open-Meteo is down or unreachable | `Weather unavailable` | Nothing. One attempt, five seconds, and tomorrow is a new call |
 | It answers a shape this connector does not understand | `Weather unavailable`, logged | Check open-meteo.com/en/docs — a free endpoint may have changed |
 | A WMO code with no word | `18–22°, 59% rain`, and the code in the log | Add the code to the table in `connector.py` |
+| An hourly code with no word | That hour keeps its temperature and has no sky. One WARNING per answer, naming every code it could not read | Add them to the same table — the day and the hours read it together, so one edit fixes both |
+| The hourly block arrives with no `weather_code` | Every hour keeps its temperature and none has a sky. One INFO line saying how many codes came for how many hours | Check open-meteo.com/en/docs. The strip still draws; it is numbers without weather |
+| No hourly block at all | `hours: []`. One INFO line | Same. The day's own four facts are unaffected |
 | Coordinates in the sea | A forecast for the sea | Nothing validates this, and nothing can |

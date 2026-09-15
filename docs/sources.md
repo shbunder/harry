@@ -68,13 +68,18 @@ the school run or after supper. Each hour's `summary` is read from **the same WM
 day's word comes from**, so an hour and the day it belongs to can never disagree about what a
 code means — and it is `null` for a code the table does not carry, exactly as the day's is.
 An unrecognised code is logged **once per answer naming every code it could not read**, not
-once per hour.
+once per hour — a day of the same unknown code would otherwise print the same line
+seventeen times.
 
 **An answer that carries the day but not the hours gives `hours: []`** — the panel keeps its
 word, its high, its low and its rain chance, and loses only the strip. **An answer with the
 hours but no codes keeps all seventeen readings**, each with `summary: null`: the numbers are
-the part that cannot be guessed from the day's own word. Nothing is said in Slack for either,
-because the day arrived.
+the part that cannot be guessed from the day's own word.
+
+Both of those say so in the log, at INFO — the second one naming how many codes arrived for
+how many hours. **Nothing reaches Slack for either**, because the day arrived; but a strip
+that has been drawing bare numbers since the endpoint changed is not something to discover by
+squinting at it, and one unrecognised code already warns.
 
 Ships pointed at Leuven and works from a fresh clone. To point it somewhere else, put only
 what differs in `.env.local` beside the declaration — never in `.env`, which is generated:

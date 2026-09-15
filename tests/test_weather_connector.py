@@ -330,6 +330,7 @@ def test_the_forecast_carries_the_day_hour_by_hour(weather):
 
     assert [entry['at'] for entry in hours] == [f'{hour:02d}:00' for hour in range(6, 23)]
     assert hours[0] == {'at': '06:00', 'temperature': 17, 'summary': 'clear'}
+    # 20.5 at 22:00 in the recording, and Python rounds a half to even — so 20, not 21.
     assert hours[-1] == {'at': '22:00', 'temperature': 20, 'summary': 'overcast'}
     assert all(isinstance(entry['temperature'], int) for entry in hours), 'decimals are noise on paper'
 
@@ -477,18 +478,40 @@ def test_the_day_and_its_hours_read_the_same_table(weather):
 
 
 @respx.mock
-def test_an_hourly_block_with_no_codes_still_draws_the_numbers(weather):
+@pytest.mark.parametrize('code', [0, 45, 55, 63, 71, 82, 86, 96])
+def test_an_hour_and_its_day_agree_on_every_code_the_table_carries(weather, code):
+    """The fixture happens to carry two codes, so a private two-entry table of the hour's own
+    would pass every other test in this file. These are codes no recording has — drift on any
+    of the twenty-seven and the page says one thing in its panel and another in its strip."""
+    body = recorded('leuven-hourly.json')
+    body['daily']['weather_code'] = [code]
+    body['hourly']['weather_code'] = [code] * 24
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
+
+    answer = connector(weather()).forecast()
+
+    assert answer['summary'] is not None, 'the table carries this one'
+    assert {entry['summary'] for entry in answer['hours']} == {answer['summary']}
+
+
+@respx.mock
+def test_an_hourly_block_with_no_codes_still_draws_the_numbers(weather, caplog):
     """The readings are the part that cannot be guessed from the day's own summary, so losing
     the words must not lose them."""
     body = recorded('leuven-hourly.json')
     del body['hourly']['weather_code']
     respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
 
-    hours = connector(weather()).forecast()['hours']
+    with caplog.at_level(logging.INFO, logger='harry.capability.weather'):
+        hours = connector(weather()).forecast()['hours']
 
     assert len(hours) == 17
     assert [entry['summary'] for entry in hours] == [None] * 17
     assert hours[0]['temperature'] == 17
+    # The whole day losing its sky must not be quieter than one hour losing it. This is the
+    # only trace a person gets of a strip that has been drawing bare numbers for a month.
+    assert 'no sky' in caplog.text
+    assert '0 code(s) for 24 hour(s)' in caplog.text
 
 
 @respx.mock
@@ -539,18 +562,20 @@ def test_two_unknown_codes_are_both_named_in_the_one_line(weather, caplog):
 
 
 @respx.mock
-def test_a_codes_array_shorter_than_the_hours_costs_the_words_not_the_readings(weather):
+def test_a_codes_array_shorter_than_the_hours_costs_the_words_not_the_readings(weather, caplog):
     """A malformed answer where one array was truncated. The honest response keeps every
-    reading that has a time."""
+    reading that has a time, and says how many hours lost their word."""
     body = recorded('leuven-hourly.json')
     body['hourly']['weather_code'] = body['hourly']['weather_code'][:8]
     respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
 
-    hours = connector(weather()).forecast()['hours']
+    with caplog.at_level(logging.INFO, logger='harry.capability.weather'):
+        hours = connector(weather()).forecast()['hours']
 
     assert len(hours) == 17
     assert [entry['summary'] for entry in hours[:2]] == ['clear', 'clear']
     assert [entry['summary'] for entry in hours[2:]] == [None] * 15
+    assert '8 code(s) for 24 hour(s)' in caplog.text
 
 
 def test_the_docs_and_the_tool_body_describe_the_hourly_sky():
@@ -562,3 +587,9 @@ def test_the_docs_and_the_tool_body_describe_the_hourly_sky():
     assert "the same WMO table the day's word comes from" in prose
     assert 'once per answer naming every code it could not read' in prose
     assert 'the rain is at the school run or after supper' in body
+
+    runbook = ' '.join(
+        (REPO / '.harry' / 'connectors' / 'weather' / 'CONNECTOR.md').read_text(encoding='utf-8').split()
+    )
+    assert 'An hourly code with no word' in runbook
+    assert 'no `weather_code`' in runbook, 'the operator page must name the quiet failure too'
