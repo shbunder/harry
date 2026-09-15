@@ -2,7 +2,7 @@
 id: STORY-260914-397bbd
 title: A capability can declare a connector optional and still load without it
 feature: FEAT-260912-0f2744
-status: Backlog
+status: Done
 created: 2026-09-14
 ---
 
@@ -21,13 +21,13 @@ The contract addition the page needs. `requires:` refuses a capability whose con
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] A capability declaring a connector `optional:` loads whether or not that connector did
-- [ ] context.connectors carries an optional connector that loaded, and omits one that did not
-- [ ] A capability declaring both gets required ones guaranteed and optional ones only if present
-- [ ] `requires:` still refuses a capability whose connector is missing — optional does not weaken it
-- [ ] check_capabilities.py refuses an `optional:` naming a connector that does not exist, the way `requires:` does
-- [ ] The two lists do not interfere: a capability declaring both gets its required ones or is skipped, and its optional ones only if they loaded
-- [ ] The /new-tool template, .harry/README.md and docs/capabilities.md all say what the two lists mean and how to choose
+- [x] A capability declaring a connector `optional:` loads whether or not that connector did
+- [x] context.connectors carries an optional connector that loaded, and omits one that did not
+- [x] A capability declaring both gets required ones guaranteed and optional ones only if present
+- [x] `requires:` still refuses a capability whose connector is missing — optional does not weaken it
+- [x] check_capabilities.py refuses an `optional:` naming a connector that does not exist, the way `requires:` does
+- [x] The two lists do not interfere: a capability declaring both gets its required ones or is skipped, and its optional ones only if they loaded
+- [x] The /new-tool template, .harry/README.md and docs/capabilities.md all say what the two lists mean and how to choose
 
 ## Subtasks
 

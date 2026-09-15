@@ -33,7 +33,7 @@ DIM   := \033[2m
 OFF   := \033[0m
 
 .PHONY: help env-install check lint format typecheck test test-cov lock env-template \
-        board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-now remarkable-pair \
+        board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-candidates remarkable-pair \
         image up down logs docs clean
 
 help:  ## Show this help
@@ -153,12 +153,14 @@ remarkable-pair:  ## Pair this machine with the tablet. Usage: make remarkable-p
 	  exit 1; fi
 	$(PY) scripts/remarkable_pair.py $(CODE)
 
-digest-dry:  ## Build today's page to out/digest.pdf without pushing it
-	$(PY) -m harry.modules.digest --dry-run --out out/digest.pdf
-	@command -v open >/dev/null && open out/digest.pdf || true
+digest-candidates:  ## What today could contain — the weather, the agenda and the headlines
+	$(PY) scripts/call_tool.py digest_list_candidates
 
-digest-now:  ## Build today's page and push it to the tablet
-	$(PY) -m harry.modules.digest --push
+digest-dry:  ## Build today's page from PICKS=a-file.json, to out/ and nowhere else
+	@test -n "$(PICKS)" || { echo "PICKS=picks.json is required — make digest-candidates first"; exit 1; }
+	HARRY_DIGEST_BUILD_OUT_DIR=out $(PY) scripts/call_tool.py digest_build \
+	  --args "$$($(PY) -c 'import json,sys; a=json.load(open(sys.argv[1])); a["deliver"]=False; print(json.dumps(a))' $(PICKS))"
+	@command -v open >/dev/null && open out/*.pdf || true
 
 # ---------------------------------------------------------------------------
 # The container

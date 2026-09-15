@@ -56,8 +56,8 @@ Declare `--touches .harry/tools/<name>`.
 name: <namespace>_<verb>
 namespace: <namespace>
 description: <one line for the roster>
-requires: [<connector>, …]
-optional: [<connector>, …]
+requires: [<connector>, …]      # missing → this tool is skipped
+optional: [<connector>, …]      # missing → this tool loads without it
 always_load: false          # true only if it is needed nearly every run
 annotations:
   readOnlyHint: true        # required — it is how a client knows what to gate
@@ -156,7 +156,9 @@ credential that lapsed. The key makes it one message a day, and Harry scopes it 
 Your declared secrets are scrubbed from the message first.
 
 **`context.connectors` is how you use another capability** — `context.connectors['slack']`
-is what the connector you named in `requires:` registered. You never import one: two
+is what the connector you named in `requires:` or `optional:` registered — and an optional
+one that did not load is **absent**, so ask `'weather' in context.connectors` rather than
+checking for `None`. You never import one: two
 folders that import each other are two folders that cannot be swapped.
 
 **Import `harry.sdk` and nothing else under `harry`.** Reaching further is refused before

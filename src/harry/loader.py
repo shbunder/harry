@@ -172,12 +172,18 @@ def _settings(capability: Capability, fields: dict[str, Any]) -> dict[str, Any]:
 
 
 def _connectors_for(fields: dict[str, Any], catalogue: Catalogue) -> Connectors:
-    """What `requires:` named, resolved to what those connectors registered.
+    """What `requires:` and `optional:` named, resolved to what those connectors registered.
 
     One resolution rather than two: the same walk decides whether this capability may load
-    at all and what it is handed. A tool whose connector did not load would otherwise
-    register, look healthy, and fail on its first call — a worse version of the same
-    outcome, arriving later and somewhere less obvious.
+    at all and what it is handed. A tool whose required connector did not load would
+    otherwise register, look healthy, and fail on its first call — a worse version of the
+    same outcome, arriving later and somewhere less obvious.
+
+    **The two lists answer one question:** if this connector is missing, is there still
+    something worth doing? `requires:` says no and the capability is skipped. `optional:`
+    says yes and the capability loads without it, finding nothing under that name in
+    `context.connectors`. The morning page is why: a lapsed calendar password should cost
+    the agenda column, not the whole page.
     """
     wanted = [str(name) for name in fields.get('requires') or []]
 
@@ -195,7 +201,22 @@ def _connectors_for(fields: dict[str, Any], catalogue: Catalogue) -> Connectors:
         # somebody who is not debugging.
         raise Skip(f'needs {", ".join(empty)}, which registered nothing to use')
 
-    return Connectors({name: found.target for name, found in handed.items() if found is not None})
+    reached = {name: found.target for name, found in handed.items() if found is not None}
+
+    # Whatever an optional connector turns out to be — absent, skipped, or loaded but
+    # registering nothing — the answer here is the same: leave it out. A capability that
+    # declared it optional has already said it can manage, and the way it finds out is that
+    # the name is not there.
+    for name in (str(name) for name in fields.get('optional') or []):
+        found = catalogue.get('connector', name)
+        # `target is not None` is the whole question, and it is one question rather than two:
+        # a connector that was never configured has no entry, one that raised on import has
+        # no target, and one that loaded and registered nothing has no target either. Adding
+        # a status check beside it reads as thorough and tests as redundant.
+        if found is not None and found.target is not None:
+            reached[name] = found.target
+
+    return Connectors(reached)
 
 
 def _register(capability: Capability, kind: Kind) -> None:

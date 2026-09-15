@@ -113,7 +113,7 @@ def check_job(path: Path, fields: dict[str, Any], connectors: set[str]) -> None:
             'about work that was done.'
         )
 
-    check_requires(fields, connectors)
+    check_connector_lists(fields, connectors)
     check_config(fields, str(fields['name']), path)
 
 
@@ -174,7 +174,7 @@ def check_tool(path: Path, fields: dict[str, Any], connectors: set[str]) -> None
             'that signal.'
         )
 
-    check_requires(fields, connectors)
+    check_connector_lists(fields, connectors)
 
     # The body is the MCP description Claude reads to decide whether to call this tool.
     # An empty one is a tool the model can only pick by name.
@@ -275,6 +275,31 @@ def check_exposure(connectors: list[dict[str, Any]], tools: list[dict[str, Any]]
             )
 
     return problems
+
+
+def check_connector_lists(fields: dict[str, Any], connectors: set[str]) -> None:
+    """Both lists name connectors, so both are checked the same way.
+
+    `optional:` earns the same check as `requires:` for the opposite reason: a typo in
+    `requires:` skips the capability loudly, while a typo in `optional:` is silent forever —
+    the name simply never appears, and the capability degrades every morning as though the
+    connector were down.
+    """
+    check_requires(fields, connectors)
+    check_optional(fields, connectors)
+
+
+def check_optional(fields: dict[str, Any], connectors: set[str]) -> None:
+    named = fields.get('optional', [])
+    if not isinstance(named, list):
+        raise Problem('`optional` must be a list of connector names')
+    missing = sorted(str(name) for name in named if str(name) not in connectors)
+    if missing:
+        known = ', '.join(sorted(connectors)) or 'none'
+        raise Problem(f'optionally names connectors that do not exist: {", ".join(missing)} (known: {known})')
+    both = sorted(set(str(name) for name in named) & set(str(name) for name in fields.get('requires', [])))
+    if both:
+        raise Problem(f'{", ".join(both)} is in both `requires` and `optional` — it is one or the other')
 
 
 def check_requires(fields: dict[str, Any], connectors: set[str]) -> None:
