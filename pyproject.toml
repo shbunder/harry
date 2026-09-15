@@ -134,7 +134,25 @@ filterwarnings = ["error::DeprecationWarning:harry.*"]
 # ============================================================================
 [tool.coverage.run]
 branch = true
-source = ["src/harry", "project", "scripts", ".harry"]
+# `.harry` is deliberately absent, and the number this produces is about core, `project/`
+# and `scripts/` only.
+#
+# It was listed here and measured nothing. A capability test copies its folder into a
+# temporary root and loads the copy, so the executed file is `/tmp/.../connectors/icloud/
+# connector.py` and coverage attributes none of it back to `.harry/connectors/icloud/`.
+# Every capability therefore read as fully covered and was hidden by `skip_covered`.
+#
+# It is out rather than in because leaving it in is worse than either alternative: the first
+# test to load the real tree by path — `tests/test_morning_page_job.py`, which asks the real
+# scheduler whether it watches the real job — took the total from 92% to 69% by measuring
+# five connectors through one code path each. A floor that moves by twenty points depending
+# on which test ran is not a floor.
+#
+# Fixing it properly means teaching coverage that the copy and the original are the same file
+# (`[tool.coverage.paths]` aliasing, applied by `coverage combine`). That is its own feature.
+# Until then the evidence for `.harry/` is mutation probing: delete the control, and see which
+# test goes red.
+source = ["src/harry", "project", "scripts"]
 omit = ["*/tests/*", "*/scratch/*"]
 
 [tool.coverage.report]

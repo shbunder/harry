@@ -41,6 +41,8 @@ names, in the file that enforces it.
 
 ## Notes
 
+- **2026-09-15** — measured while building the morning page, and it is worse than "coverage does not see `.harry/`". The path *was* in `[tool.coverage.run] source`. It measured nothing, because a capability test copies its folder into a temporary root and loads the copy — so the executed file is `/tmp/.../connectors/icloud/connector.py` and none of it is attributed back to `.harry/connectors/icloud/`. Every capability read as **fully covered** and `skip_covered` hid it. Then `tests/test_morning_page_job.py` loaded the real tree by path, five connectors were suddenly measured through one code path each, and the total fell from 92% to 69% — a floor that moves twenty points on which test ran. `.harry` is out of `source` for now, with the reason written there. The lead worth following: `[tool.coverage.paths]` aliasing, which is exactly the mechanism for "these two paths are the same file", applied by `coverage combine` between the run and the report.
+
 <!-- Appended by `board.py note`. -->
 
 ## Links
