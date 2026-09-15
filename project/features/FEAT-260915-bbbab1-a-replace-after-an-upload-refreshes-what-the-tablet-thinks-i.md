@@ -12,31 +12,32 @@ decisions: []
 
 ## Summary
 
-**The replace that shipped yesterday does not work against a real tablet.** Every test passes
-and the stand-in cannot see it: pushing the same name twice leaves two documents on the
-device, and the connector correctly reports that it could not remove the older one.
+**Replace shipped green and did nothing on a real morning.** The page went up beside
+yesterday's copy and the log said `could not retire the older '2026-09-15': the tablet
+rejected the request`. The degraded path was exactly right — page delivered, warning logged,
+one line in Slack — and the thing it was degrading from had never run.
 
-Found by building the morning page end to end and pushing it. The log says
-`could not retire the older '2026-09-15': the tablet rejected the request`, the page arrives,
-and the Slack line fires — the degraded path is exactly right, and the thing it is degrading
-from never worked.
+A fresh client deleted the same document a moment later without complaint.
 
-The same `client.delete(id)` succeeds from a fresh client. It fails only when an upload
-happened first in the same session. reMarkable's sync API carries a generation counter, and
-`delete` is a metadata write — `move(item, TRASH_PARENT_ID)` under the hood — so after
-`put_pdf` advances the server's generation the connector is still holding the one from before
-and the write is refused.
+**The first theory was wrong and is worth recording as wrong.** reMarkable's sync API carries
+a generation counter and `delete` is a metadata write, so a client holding the generation from
+before `put_pdf` should be refused — `remarkapy` takes `refresh=` on exactly those calls. That
+fix was written, and a live test written for it, and **the live test passed against the
+unfixed connector too**, with one older copy and with two. A fix whose test cannot fail is a
+belief, so it was reverted.
 
-`remarkapy` takes `refresh=` on both the listing and the delete for precisely this. The
-connector passes neither.
+What is left is what can be shown: **the removal made one attempt where a push makes two.**
+reMarkable answers a transient error often enough that one is too few, and the cost is not a
+retry — it is a duplicate that stays forever, because nothing revisits yesterday's name once
+tomorrow's is different.
 
 ## Acceptance criteria
 
-- [ ] `_retire` reads the folder and deletes with the tablet's current state, not the one it held before the upload
-- [ ] A `live` test pushes the same name twice against the real tablet and finds one document afterwards
-- [ ] The stand-in records whether each call asked for a refresh, and a unit test asserts both did — so the fix cannot be undone silently
-- [ ] The degraded path is unchanged: a delete that still fails leaves the page on the tablet, logs, and alerts under its own key
-- [ ] The runbook says what a rejected removal means now, since "reMarkable changed the protocol" was the wrong sentence for it
+- [x] A removal refused once is tried once more, and a retry that works says nothing
+- [x] A removal refused twice stops there — the same ceiling the push has — keeps the page, logs, and alerts under its own key
+- [x] A `live` test pushes a name that already has two copies and finds one afterwards, so the protocol and the loop are both held
+- [x] That live test says at its assertion what it cannot prove: the retry, which needs the service to fail
+- [x] The runbook says a duplicate means the removal was refused twice, and that nothing will revisit that name
 
 ## Stories
 

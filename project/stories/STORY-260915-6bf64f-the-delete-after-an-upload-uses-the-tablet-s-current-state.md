@@ -2,7 +2,7 @@
 id: STORY-260915-6bf64f
 title: The delete after an upload uses the tablet's current state
 feature: FEAT-260915-bbbab1
-status: Backlog
+status: Done
 created: 2026-09-15
 ---
 
@@ -12,22 +12,22 @@ Part of [[FEAT-260915-bbbab1]].
 
 ## Description
 
-Two calls in `_retire` gain `refresh=True`: the listing, so it sees the folder as it is after
-the upload rather than as it was before, and the delete, so the metadata write carries the
-generation the server is actually on.
+`_retire` calls `client.delete` once per older copy and catches whatever comes back. A push
+goes through `_trying`, which attempts twice. The removal deserves the same, and cannot reuse
+`_trying`: that alerts and raises `Refused`, and this caller has already put the page on the
+tablet and must not raise.
 
-One unit of work because the two are the same mistake — the connector held one view of the
-tablet across a write that changed it — and because the only thing that proves either is a
-`live` test, which has to push twice whichever call is at fault.
+So a small sibling — two attempts, then let it out to `_retire`'s own handler, which keeps
+the page and says so.
 
 ## Acceptance criteria
 
-- [ ] `client.list_directory_hydrated` and `client.delete` are both called with `refresh=True` inside `_retire`
-- [ ] The stand-in records the `refresh` argument of each, and a test asserts both are true
-- [ ] `test_the_stand_in_has_the_same_shape_as_the_real_client` still passes, so `refresh` is a parameter remarkapy really takes
-- [ ] A `live` test pushes one name twice and asserts the folder holds one document with the second push's id
-- [ ] A delete that fails anyway still leaves the page, logs, and alerts under `retire`
-- [ ] The runbook row for a rejected removal says what it means, rather than pointing at a protocol change
+- [x] `_twice` attempts a call twice and re-raises the last failure
+- [x] A delete refused once then succeeding leaves one document, `replaced: 1`, and nothing in Slack
+- [x] A delete refused twice is attempted exactly twice, keeps the page, and alerts under `retire`
+- [x] Deleting once instead of twice turns a test red; deleting three times turns a test red
+- [x] The live test pushes over two existing copies and finds one, and says what it cannot prove
+- [x] The runbook and `docs/` say a removal is tried twice and what a surviving duplicate means
 
 ## Subtasks
 
