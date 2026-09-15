@@ -92,6 +92,7 @@ pair the machine again.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-15** — Reflection: pre-close verifier said REQUEST CHANGES on three Criticals and four Importants, all fixed on the branch. The three that mattered: the push tool still declared destructiveHint false and told Claude that two pushes of one name give two documents, with a test certifying it; the ordering test — the whole safety argument — passed against retire-then-push because it failed every call rather than only the upload; and the success log, the only record that something was removed from a tablet, was asserted by nothing. Behind them two real defects: a token lapsing during the removal sent somebody to tidy a folder instead of re-pairing, and a dead client was kept for the next push. Traceability 7/7 and 8/8. Eleven controls deleted one at a time, all red. Scope: the folder default moved Harry to Daily on the reader's request and now ships with a migration note, which the verifier was right to flag as drift.
 
 ## Links
 
