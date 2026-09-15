@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-import re
+import ast
 from pathlib import Path
 
 from .capability_copy import copy_capability
@@ -25,6 +25,9 @@ def test_a_copied_capability_leaves_this_machines_settings_behind(tmp_path):
     (source / 'connector.py').write_text('def register(registry, context): ...\n', encoding='utf-8')
     (source / '__pycache__').mkdir()
     (source / '__pycache__' / 'connector.cpython-312.pyc').write_bytes(b'stale')
+    # Loose, not in `__pycache__` — which is where one lands if somebody ran the file
+    # directly, and the only thing the `*.pyc` pattern is for.
+    (source / 'connector.pyc').write_bytes(b'staler')
 
     copied = copy_capability(source, tmp_path / 'root' / 'connectors' / 'example')
 
@@ -32,6 +35,7 @@ def test_a_copied_capability_leaves_this_machines_settings_behind(tmp_path):
     assert (copied / '.env').read_text(encoding='utf-8') == 'FEEDS=vrt,bbc\n'
     assert not (copied / '.env.local').exists(), 'this machine came along'
     assert not (copied / '__pycache__').exists(), 'a stale .pyc came along'
+    assert not (copied / 'connector.pyc').exists(), 'a loose stale .pyc came along'
 
 
 def test_the_committed_env_does_come_along(tmp_path):
@@ -46,23 +50,52 @@ def test_the_committed_env_does_come_along(tmp_path):
     assert (copied / '.env').read_text(encoding='utf-8') == 'PLACE=Leuven\n'
 
 
+def _copies_out_of_harry(text: str) -> bool:
+    """Whether this source copies a file out of `.harry/` with anything but the helper.
+
+    It follows the path rather than matching one spelling, because a ninth call site has
+    four easy ways to dodge a literal: assign the source to a variable first, name the
+    constant something other than `REPO`, build the path inline, or reach for `copy2` on the
+    `.env.local` itself. So: any name assigned from an expression mentioning `.harry` is
+    tainted, and a copy whose source mentions `.harry` or uses a tainted name is a finding.
+
+    `capability_copy.py` passes by construction — its source is a parameter, and the whole
+    point of the helper is that it does not know which folder it was handed.
+    """
+    tree = ast.parse(text)
+    tainted = {
+        target.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign) and '.harry' in (ast.get_source_segment(text, node.value) or '')
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        if node.func.attr not in ('copytree', 'copy2', 'copyfile', 'copy') or not node.args:
+            continue
+        source = ast.get_source_segment(text, node.args[0]) or ''
+        names = {inner.id for inner in ast.walk(node.args[0]) if isinstance(inner, ast.Name)}
+        if '.harry' in source or names & tainted:
+            return True
+    return False
+
+
 def test_no_test_copies_a_capability_any_other_way():
     """Eight call sites moved onto the helper, and this is what stops a ninth appearing.
 
-    Delete a call to `copy_capability`, put the direct copy back, and this fails — which is
-    the only thing making the move stick.
-
-    This file excludes itself: the pattern it looks for is written down here, in the line
-    above, and a guard that trips on its own definition is a guard nobody can keep.
+    It scans `tests/*.py`, not `test_*.py`, because a helper module is exactly where a
+    second copier would be written.
     """
-    reaching = re.compile(r'copytree\([^)]*REPO\s*/\s*[\'"]\.harry[\'"]', re.S)
     offenders = [
-        path.name
-        for path in sorted(TESTS.glob('test_*.py'))
-        if path.name != Path(__file__).name and reaching.search(path.read_text(encoding='utf-8'))
+        path.name for path in sorted(TESTS.glob('*.py')) if _copies_out_of_harry(path.read_text(encoding='utf-8'))
     ]
 
-    assert offenders == [], f'{offenders} copy .harry/ directly — use copy_capability from capability_copy'
+    assert offenders == [], (
+        f'{offenders} copy out of .harry/ directly — use copy_capability from capability_copy, '
+        'which leaves this machine behind'
+    )
 
 
 def test_a_local_env_beside_a_capability_never_reaches_a_loaded_test(tmp_path):

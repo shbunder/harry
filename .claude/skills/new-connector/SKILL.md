@@ -115,6 +115,10 @@ anybody will look. `.claude/rules/secrets-and-config.md`.
 
 ### 7. Tests
 
+- **Copy the folder with `copy_capability` from `tests/capability_copy.py`, never with
+  `shutil.copytree`.** A capability test loads the real folder out of `.harry/`; the helper
+  leaves this machine's `.env.local` behind, and `tests/test_capability_copy.py` fails if
+  anything copies out of `.harry/` another way.
 - The happy path, against a **recorded fixture** in `tests/fixtures/` — never a live URL.
 - The failure path: record the real 403, the malformed entry, the rejected write, and
   assert what the caller gets and what gets sent.
