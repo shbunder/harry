@@ -168,7 +168,9 @@ def register(registry: Registry, context: Context) -> None:
         if not deliver:
             delivered = {'pushed': False, 'why': 'deliver=false — the page is on disk only'}
         elif tablet is not None:
-            delivered = _deliver(tablet, where, data['today'].isoformat(), settings['log'])
+            delivered = _deliver(
+                tablet, where, data['today'].isoformat(), str(config.get('folder') or ''), settings['log']
+            )
 
         return {
             'page': made,
@@ -181,7 +183,7 @@ def register(registry: Registry, context: Context) -> None:
         }
 
 
-def _deliver(tablet: Any, where: Path, name: str, log: Any) -> dict:
+def _deliver(tablet: Any, where: Path, name: str, folder: str, log: Any) -> dict:
     """Put the page on the tablet, and say what happened either way.
 
     **A push that failed must not take the answer down.** The page is rendered and on disk by
@@ -193,7 +195,7 @@ def _deliver(tablet: Any, where: Path, name: str, log: Any) -> dict:
     to add there. What the caller needs is the path and a sentence.
     """
     try:
-        return {'pushed': True, **tablet.push(where, name)}
+        return {'pushed': True, **tablet.push(where, name, folder or None)}
     except Exception as error:  # noqa: BLE001 — the page exists; the delivery is the part that failed
         why = f'{type(error).__name__}: {error}'
         log.warning('the page is on disk but not on the tablet: %s', why)

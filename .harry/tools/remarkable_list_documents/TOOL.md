@@ -28,8 +28,14 @@ Newest first, 50 at most. The folder holds a page a day and the free tier drops 
 documents after fifty, so the cap is a ceiling rather than something you will meet — pass a
 smaller `limit` when you only want to know what arrived today.
 
-It sees **one folder**, the one Harry pushes into. It is not a view of the whole tablet, and
-it does not show anything put there by hand, by the reMarkable app, or by email.
+It sees **one folder at a time**, and by default the one Harry pushes ad-hoc documents into.
+Pass `folder` to look somewhere else — the morning page has a folder of its own, so
+`remarkable_list_documents(folder="🗞️ Daily")` is how you check whether today's paper arrived.
+An empty list from the default folder does not mean the page is missing; it means the page is
+not there.
+
+It is not a view of the whole tablet, and it does not show anything put there by hand, by the
+reMarkable app, or by email.
 
 `modified` is UTC, and it is what the **cloud** last recorded — so a page you annotated this
 morning may still show yesterday's time until the tablet syncs.

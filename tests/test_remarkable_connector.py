@@ -544,7 +544,7 @@ def test_retiring_a_copy_is_bounded_by_folder_name_and_id():
     source = (REPO / '.harry' / 'connectors' / 'remarkable' / 'connector.py').read_text(encoding='utf-8')
     body = source[source.index('def _retire') : source.index('def documents')]
 
-    assert 'self._find_folder(client)' in body, "inside this connector's own folder"
+    assert 'self._find_folder(client, folder)' in body, 'inside the folder this document was pushed to'
     assert 'entry.visibleName == name' in body, 'exactly the name just written'
     assert 'entry.id != keeping' in body, 'never the document just created'
     assert "entry.type == 'DocumentType'" in body, 'a document, never a folder'
@@ -903,7 +903,7 @@ def test_a_real_push_clears_more_than_one_older_copy():
     # each one as it went, and the pair is the whole point. This is the state a morning that
     # failed to tidy leaves behind for the next one.
     client = tablet._reach()  # noqa: SLF001 — a live test builds the state it is about
-    where = tablet._where(client)  # noqa: SLF001
+    where = tablet._where(client, tablet.folder)  # noqa: SLF001
     for _ in range(2):
         client.put_pdf(name, page.read_bytes(), parent=where)
     assert len([d for d in tablet.documents() if d['name'] == name]) >= 2
@@ -1528,3 +1528,159 @@ def test_a_removal_that_fails_twice_gives_up_and_says_so(tablet, tmp_path):
     assert answer['replaced'] == 0
     _, sink = built
     assert any('more than one' in said for said in sink.heard)
+
+
+# ---------------------------------------------------------------------------
+# The folder belongs to whoever is pushing
+# ---------------------------------------------------------------------------
+
+
+def test_a_caller_that_names_a_folder_gets_that_folder(tablet, tmp_path):
+    """The connector owns the tablet; where a document belongs is the caller's. A weekly
+    digest goes beside the daily one rather than into it."""
+    cloud = StandIn(folders=[a_folder()])
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), 'Week 38', folder='🗞️ Weekly')
+
+    assert answer['where'] == '🗞️ Weekly'
+    made = next(f for f in cloud.folders if f.visibleName == '🗞️ Weekly')
+    assert cloud.documents[0].parent == made.id
+
+
+def test_a_caller_that_names_nothing_gets_the_configured_folder(tablet, tmp_path):
+    """The setting is a default, not a rule — an ad-hoc push should not have to choose."""
+    cloud = StandIn(folders=[a_folder()])
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), 'A page')
+
+    assert answer['where'] == 'Daily'
+    assert cloud.documents[0].parent == 'folder-1'
+
+
+def test_two_callers_naming_two_folders_do_not_share_one(tablet, tmp_path):
+    """The folder id is remembered per folder. One slot handed the second caller the first
+    one's id, which is a document in somebody else's folder."""
+    cloud = StandIn(folders=[a_folder()])
+    built = tablet(cloud=cloud)
+    tidy = connector(built)
+
+    first = tidy.push(a_pdf(tmp_path / 'a.pdf'), 'Daily page', folder='🗞️ Daily')
+    second = tidy.push(a_pdf(tmp_path / 'b.pdf'), 'Weekly page', folder='🗞️ Weekly')
+
+    assert (first['where'], second['where']) == ('🗞️ Daily', '🗞️ Weekly')
+    parents = {d.visibleName: d.parent for d in cloud.documents}
+    assert parents['Daily page'] != parents['Weekly page']
+
+
+def test_a_folder_that_is_named_is_made_at_the_top_level(tablet, tmp_path):
+    """`put_folder` with no parent. A caller naming a folder puts documents beside the others
+    and never inside one of yours."""
+    cloud = StandIn()
+    built = tablet(cloud=cloud)
+
+    connector(built).push(a_pdf(tmp_path / 'page.pdf'), 'A page', folder='🗞️ Weekly')
+
+    made = next(f for f in cloud.folders if f.visibleName == '🗞️ Weekly')
+    assert made.parent == '', 'it was made inside something'
+
+
+def test_the_replacement_looks_only_in_the_folder_just_pushed_to(tablet, tmp_path):
+    """The bound moves with the folder. Otherwise a second caller's push retires a document of
+    the same name in somebody else's folder — and the token has no scopes."""
+    cloud = StandIn(
+        folders=[a_folder(), Item(id='folder-2', type='CollectionType', visibleName='🗞️ Weekly', parent='')],
+        documents=[
+            Item(id='in-daily', visibleName='2026-09-15', parent='folder-1'),
+            Item(id='in-weekly', visibleName='2026-09-15', parent='folder-2'),
+        ],
+    )
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15', folder='🗞️ Weekly')
+
+    assert answer['replaced'] == 1
+    assert cloud.deleted == ['in-weekly']
+    assert 'in-daily' in {d.id for d in cloud.documents}, 'a document in another folder was touched'
+
+
+def test_listing_takes_a_folder_too(tablet):
+    """Otherwise a caller with its own folder can push to it and never see what is in it."""
+    cloud = StandIn(
+        folders=[a_folder(), Item(id='folder-2', type='CollectionType', visibleName='🗞️ Weekly', parent='')],
+        documents=[
+            Item(id='a', visibleName='Daily page', parent='folder-1'),
+            Item(id='b', visibleName='Weekly page', parent='folder-2'),
+        ],
+    )
+    built = tablet(cloud=cloud)
+
+    assert [d['name'] for d in connector(built).documents(folder='🗞️ Weekly')] == ['Weekly page']
+    assert [d['name'] for d in connector(built).documents()] == ['Daily page']
+
+
+def test_the_duplicate_line_names_the_folder_the_document_went_to(tablet, tmp_path):
+    """This alert's whole job is to send a person to the right folder to delete a duplicate.
+    Naming the configured one when the push named another sends them where there is nothing
+    to find."""
+    cloud = StandIn(
+        folders=[a_folder(), Item(id='folder-2', type='CollectionType', visibleName='🗞️ Weekly', parent='')],
+        documents=[Item(id='in-weekly', visibleName='2026-09-15', parent='folder-2')],
+    )
+
+    def refuse(item_ref: str, refresh: bool = False):
+        raise RemarkableAPIError('the tablet said no')
+
+    cloud.delete = refuse
+    built = tablet(cloud=cloud)
+
+    connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15', folder='🗞️ Weekly')
+
+    _, sink = built
+    said = next(one for one in sink.heard if 'more than one' in one)
+    assert '🗞️ Weekly' in said
+    assert "'Daily'" not in said, 'it points at the folder nobody pushed to'
+
+
+def test_markdown_goes_to_the_folder_it_was_given_too(tablet):
+    """The same argument on the other way in. It had no caller and no test, so dropping it
+    left every test green."""
+    cloud = StandIn(folders=[a_folder()])
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push_markdown('# Notes\n\nSomething to read.', 'Notes', folder='Reading')
+
+    assert answer['where'] == 'Reading'
+    made = next(f for f in cloud.folders if f.visibleName == 'Reading')
+    assert cloud.documents[0].parent == made.id
+
+
+async def test_claude_can_ask_what_is_in_a_named_folder(tablet, tmp_path):
+    """Follow this repo's own recommended setup and the page goes to a folder of the digest's
+    own. A listing that could only see the connector's default would answer "nothing there"
+    about a page that arrived — confidently, with nothing in the log."""
+    cloud = StandIn(
+        folders=[a_folder(), Item(id='folder-2', type='CollectionType', visibleName='🗞️ Daily', parent='')],
+        documents=[
+            Item(id='ad-hoc', visibleName='Some notes', parent='folder-1'),
+            Item(id='the-page', visibleName='2026-09-15', parent='folder-2'),
+        ],
+    )
+    built = tablet(cloud=cloud, tools=BOTH_TOOLS)
+
+    answer = await through_mcp(built, tmp_path, 'remarkable_list_documents', {'folder': '🗞️ Daily'})
+
+    assert [row['name'] for row in answer.data] == ['2026-09-15']
+
+
+def test_the_listing_takes_a_folder_and_the_push_does_not():
+    """Deliberate, and worth writing down: reading a folder cannot do harm, and pushing
+    carries the delete that replaces a document of the same name. Which folder that runs in is
+    not a decision to hand a model."""
+    listing = (REPO / '.harry' / 'tools' / 'remarkable_list_documents' / 'tool.py').read_text(encoding='utf-8')
+    push = (REPO / '.harry' / 'tools' / 'remarkable_push_document' / 'tool.py').read_text(encoding='utf-8')
+
+    assert 'folder: str | None = None' in listing
+    assert 'folder' not in push.split('def register')[1], 'the push tool grew a folder argument'
+    assert 'not a decision to hand a model' in listing, 'the reason is unwritten, so it will be removed'

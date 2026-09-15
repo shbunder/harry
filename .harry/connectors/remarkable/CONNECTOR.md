@@ -51,8 +51,18 @@ To revoke it, go to my.remarkable.com and remove the device. Then pair again.
 
 ## What it does
 
-One folder, named in `FOLDER` and `Daily` by default. It is created at the top level the first
-time something is pushed, and found rather than re-created after that.
+**Whoever is pushing says which folder.** `FOLDER` is the default for a caller that does not
+care — an ad-hoc push from Claude, say — and `Daily` is the default for that. A caller that
+does care names its own: the morning page has a `folder` setting of its own, and a weekly one
+would want a different folder rather than the same.
+
+That is the line this connector draws. It owns the tablet — the credential, the client, the
+two attempts, the rule that a push replaces what it supersedes. **Where a given document
+belongs is something only the thing producing it knows.**
+
+A folder is created **at the top level** the first time something is pushed to it, and found
+rather than re-created after that. Always top level: a caller naming a folder puts documents
+beside the others and never inside one of yours.
 
 **Pushing a name that is already in the folder replaces it.** The new document goes up first;
 only then is the older copy of that name sent to the tablet's trash. A push that failed
@@ -80,6 +90,7 @@ disk where it was, and whoever asked is told it did not arrive.
 | The cloud is unreachable or slow | Retried once, then `the tablet could not be reached`; one Slack line | Usually transient. The next push is a fresh attempt |
 | The token has been revoked | `the tablet refused the token — pair this machine again`; one Slack line | `make remarkable-pair CODE=…` with a fresh code |
 | A push succeeds but nothing appears on the device | — | The tablet syncs when it has wifi and the screen is on. Give it a minute, then open the folder |
+| A folder appeared that nobody asked for | — | Something pushed with a `folder` of its own. `remarkable_list_documents` shows what is in the configured one; the rest is whatever asked for it |
 | Two documents of the same name in the folder | One Slack line saying there is more than one | The removal was refused twice. Delete the older one on the tablet — the newest is the one pushed last, and nothing here will revisit that name because tomorrow's is different |
 | Duplicates from before this connector replaced on push | — | A name Harry will push again is cleared by the next push. A name it will not — an older date, a one-off document — has to be deleted on the tablet; nothing here goes looking for them |
 | Everything is in a folder called `Harry` and nothing new arrives there | — | The default folder became `Daily` on 15 September 2026. Move them across on the tablet, or put `FOLDER=Harry` in `.env.local` |

@@ -53,6 +53,7 @@ tablet's own edit bar sits over that strip.
 cat > .harry/tools/digest_build/.env.local <<'ENV'
 NAME=The Bundervoet Daily
 COLOURS=Shaun=yellow|Jan=green|Kids=pink|KBC Agenda=blue
+FOLDER=🗞️ Daily
 ENV
 ```
 
@@ -60,10 +61,12 @@ ENV
 |---|---|---|
 | `NAME` | What the journal calls itself, on the masthead | `The Morning Page` |
 | `COLOURS` | Which ink each calendar is drawn in. One of yellow, green, pink, blue, red, purple, grey | empty, and every calendar is grey |
+| `FOLDER` | Which folder on the tablet the page goes into. Empty leaves it to the tablet connector | empty |
+| | **Name a folder of Harry's own.** A push replaces any document of the same name in it, so pointing this at a folder you keep by hand puts a document of yours called `2026-09-15` in the tablet's trash | |
 | `OUT_DIR` | Where the PDF is written. It stays there whether or not the tablet took it | `/data/digest` |
 | `TIMEZONE` | Which day "today" means, and the clock the timetable prints | `Europe/Brussels` |
 
-**Those four are the whole of what a reader sets.** Everything else about the look is decided
+**Those five are the whole of what a reader sets.** Everything else about the look is decided
 in the feature. A setting is something true of every morning; anything true of *this* morning
 is an argument on the call — the intro, the picks, the notes, the grouping, the subjects.
 

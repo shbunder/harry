@@ -375,12 +375,12 @@ def test_call_tool_knows_no_capability_by_name():
 
 def test_the_docs_say_what_a_reader_sets_and_what_breaks_quietly():
     """The page a person opens when the paper looks wrong, or when they want to change its
-    name. Four settings and one silence worth naming."""
+    name. Five settings and one silence worth naming."""
     prose = ' '.join((REPO / 'docs' / 'morning-page.md').read_text(encoding='utf-8').split())
     index = (REPO / 'docs' / 'index.md').read_text(encoding='utf-8')
 
     assert 'morning-page.md' in index, 'a page nobody links to is a page nobody reads'
-    for setting in ('NAME', 'COLOURS', 'OUT_DIR', 'TIMEZONE'):
+    for setting in ('NAME', 'COLOURS', 'FOLDER', 'OUT_DIR', 'TIMEZONE'):
         assert setting in prose, f'{setting} is not documented'
     assert 'make digest-dry PICKS=picks.json' in prose
     assert 'morning-page has not run today' in prose, 'the one failure with no other trace'
@@ -636,3 +636,46 @@ def test_an_exact_match_always_wins_over_a_longer_candidate(digest):
 
     assert answer['resolved'] == [], 'nothing needed resolving'
     assert says(text_of(answer['page']['path']), 'Story 0')
+
+
+def test_the_page_goes_to_the_folder_the_digest_names(digest):
+    """Where a document belongs is something only the thing producing it knows. A weekly
+    digest would want its own folder, and the tablet connector has no way to tell them apart."""
+    catalogue = digest(
+        sources=('weather', 'icloud', 'news', 'remarkable'),
+        settings='FOLDER=🗞️ Daily',
+        news={'many': 4},
+    )
+    answer = built(catalogue)(intro='Filed.', picks=[pick(0)])
+
+    tablet = catalogue.get('connector', 'remarkable')
+    assert tablet is not None and tablet.target is not None
+    assert [name for _, name, folder in tablet.target.pushed] == ['2026-09-15']
+    assert [folder for _, _, folder in tablet.target.pushed] == ['🗞️ Daily']
+    assert answer['delivered']['where'] == '🗞️ Daily'
+
+
+def test_an_empty_folder_setting_leaves_it_to_the_tablet(digest):
+    """The default, and the reason it is empty rather than a name: one place decides where
+    ad-hoc documents go, and it is the connector."""
+    catalogue = digest(sources=('weather', 'icloud', 'news', 'remarkable'), news={'many': 4})
+    built(catalogue)(intro='Wherever.', picks=[pick(0)])
+
+    tablet = catalogue.get('connector', 'remarkable')
+    assert tablet is not None and tablet.target is not None
+    assert [folder for _, _, folder in tablet.target.pushed] == [None], 'the connector was not left to decide'
+
+
+def test_the_docs_say_the_folder_belongs_to_whoever_is_pushing():
+    """The line this drew, and the one a reader needs when a folder appears that they did not
+    make."""
+    page = ' '.join((REPO / 'docs' / 'morning-page.md').read_text(encoding='utf-8').split())
+    sources = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
+    runbook = ' '.join(
+        (REPO / '.harry' / 'connectors' / 'remarkable' / 'CONNECTOR.md').read_text(encoding='utf-8').split()
+    )
+
+    assert 'FOLDER=🗞️ Daily' in page
+    for prose in (sources, runbook):
+        assert 'Whoever is pushing says which folder' in prose
+        assert 'top level' in prose, 'a caller must not be able to write inside your folders'
