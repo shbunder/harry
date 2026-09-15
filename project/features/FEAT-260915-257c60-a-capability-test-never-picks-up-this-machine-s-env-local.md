@@ -94,6 +94,7 @@ likely to grow a second copier the only one nobody scanned.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-15** — Reflection: pre-close verifier said REQUEST CHANGES on four findings, all fixed on the branch — a guard that matched one spelling of the mistake rather than the mistake, a '*.pyc' pattern nothing exercised, a self-exclusion whose stated reason was false, and a failure count that had gone stale in three places. Traceability 6/6 on the feature and 6/6 on the story, two marked by inspection with the command and the result because the suite cannot run itself three ways. Verified by running the whole suite with a .env.local in all twelve capability folders, in the four this machine has, and in none: 670 passed each time. Scope: one line each added to the new-connector and new-tool skills, since the ninth call site is most likely to be written by somebody following one.
 
 ## Links
 
