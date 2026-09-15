@@ -27,18 +27,53 @@ belongs.
 
 ## Acceptance criteria
 
-- [ ] `push`, `push_bytes`, `push_markdown` and `documents` each take a folder, and use the connector's setting when the caller names none
-- [ ] A named folder is found if it is there and made at the top level if it is not, exactly as the configured one is
-- [ ] Two callers naming two folders get two folders, and neither sees the other's documents
-- [ ] The replace stays bounded to the folder the document was pushed to — a name that exists in another folder is untouched
-- [ ] `digest_build` has its own `folder` setting, defaulting to empty, which means "wherever the tablet connector puts things"
-- [ ] The answer says which folder a document went to, so a caller is never guessing
-- [ ] `docs/` and the runbook say the folder belongs to whoever is pushing, and that Harry only ever makes top-level folders
+- [x] `push`, `push_bytes`, `push_markdown` and `documents` each take a folder, and use the connector's setting when the caller names none
+- [x] A named folder is found if it is there and made at the top level if it is not, exactly as the configured one is
+- [x] Two callers naming two folders get two folders, and neither sees the other's documents
+- [x] The replace stays bounded to the folder the document was pushed to — a name that exists in another folder is untouched
+- [x] `digest_build` has its own `folder` setting, defaulting to empty, which means "wherever the tablet connector puts things"
+- [x] The answer says which folder a document went to, so a caller is never guessing
+- [x] `docs/` and the runbook say the folder belongs to whoever is pushing, and that Harry only ever makes top-level folders
 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
 - [ ] [[STORY-260915-edb7a7]] — A push names its folder, and the connector supplies the default
+
+## Lessons Learned
+
+### What worked
+
+**Moving the bound with the thing it bounds.** The delete had to follow the folder, not stay
+on the configured one — otherwise a second caller's push retires a document of the same name
+in somebody else's folder, on a token with no scopes. The test builds the real trap: the same
+name in two folders, a push into one, and an assertion that the other survives.
+
+**A cache keyed by the thing it is about.** `_folder_id` was one slot. Two callers in one
+process would have shared it, and the second one's document would have landed in the first
+one's folder — a bug that ships quietly and looks like a mystery a week later.
+
+### What to do differently
+
+**Widening a boundary orphans whatever was on the other side of it.** Giving the digest its
+own folder made `remarkable_list_documents` blind to where the page goes — and its body still
+said it sees "the folder Harry pushes into", which was true the day before. "Did the page
+arrive?" then answers with an empty list and a body that says an empty list means not-yet.
+**When a thing stops being singular, find everything that assumed it was one.**
+
+**Write down why an asymmetry exists, in the code.** The listing takes a folder and the push
+does not, because reading cannot do harm and pushing carries the delete. That is a good rule
+and an obvious inconsistency, which is exactly the shape the next person "fixes". The reason
+is in the tool's own docstring and a test asserts the sentence is still there.
+
+### Patterns to reuse
+
+- **`Tablet._where(client, folder)`** — find-or-make, always at the top level, remembered per
+  name. The `put_folder` with no parent is the bound that keeps a caller-named folder beside
+  a person's documents rather than inside them.
+- **`test_the_replacement_looks_only_in_the_folder_just_pushed_to`** — the shape for any
+  scoped destructive operation: put the same target in two scopes, act on one, assert the
+  other is untouched.
 
 ## Notes
 
