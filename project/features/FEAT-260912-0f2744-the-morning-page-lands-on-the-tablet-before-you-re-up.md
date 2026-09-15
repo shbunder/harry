@@ -60,6 +60,72 @@ What all of it is for. At 06:30 a Claude scheduled task asks Harry for candidate
 - [ ] [[STORY-260914-abef7c]] — Claude can see what today could contain, and pick from it
 - [ ] [[STORY-260914-46e9e7]] — The page carries what Claude chose and what Claude wrote about it
 
+## Lessons Learned
+
+### What worked
+
+**Designing in a throwaway and showing it.** `scratch/digest-look.py` rendered the real page
+from the real sources and was revised five times on its reader's notes before a line of it
+became a tool. The first attempt was rejected in one sentence — *"not at all what I had in
+mind"* — and that cost an afternoon of a spike rather than a feature. The requirements page
+was then rewritten to match what had been approved, which is the only reason it describes a
+newspaper rather than a list.
+
+**Running the brief on the model that will actually run it.** Three runs against a real
+morning's forty headlines — Sonnet once, Haiku twice. The judgement was right every time: six
+picks, the topics, the grouping, no sport on a day with no basketball. What broke was
+clerical, twice, in opposite directions: ids truncated on the first run and **lengthened** on
+the second, after the brief had been rewritten to warn about exactly the first failure. That
+is what turned "write it more clearly" into "this is Harry's job", and it is not a conclusion
+reasoning would have reached.
+
+**Deleting each control and counting.** Nine on `digest_build`, six on `digest_list_candidates`,
+three on the loader. Two of my own tests could not fail and were rewritten: the picture-cache
+one asserted an empty dictionary after a build with no pictures in it, and the "second sheet
+overflows" one used cards with no pictures, which are half the height.
+
+### What to do differently
+
+**A source that reports its own failure is not a source that raises.** `section()` wrapped
+every answer in `available: True`, and the weather connector — the one source that catches its
+own errors and answers `{'available': False, 'why': …}` — was therefore reported to Claude as
+working, with an empty `unavailable`. Three tests exercised the *raising* path and none the
+answering one, because the stand-in's `how.get('answer') or WORKING` made the failing shape
+unexpressible. **A fixture that cannot express a failure hides it.**
+
+**Ask what a helper does when its subject already exists.** `_retire`, `_deliver`, `_forecast`
+— three places this session where the real question was "what happens when this fails *after*
+the important thing succeeded". A push that fails must not lose the path to a page that is
+already rendered.
+
+**Coverage was measuring nothing under `.harry/` and nobody noticed.** It was listed in
+`source` and the tracer never discovered the files, because capability tests load copies under
+`/tmp`. The first test to load the real tree took the total from 92% to 69%. The percentage
+has never said anything about connector or tool code — mutation probing is the only evidence
+there. `[tool.coverage.paths]` aliasing is the fix and it is smaller than it looks.
+
+**A criterion written before the code can be false rather than unmet.** "The timetable ends
+within 10 points of the bottom margin" — `hour_height` caps at 34 points an hour on purpose,
+so a quiet day leaves 200 points of white and always will. "Candidates never have ids that
+begin one another" — they do, by design, because `_unique` appends `-2`. Both were ticked.
+Re-read the criteria against the code at close, not just the tests against the criteria.
+
+### Patterns to reuse
+
+- **`inside(catalogue, name)`** (`tests/test_digest_build.py`) — digs one function out of the
+  loaded tool's own globals instead of importing the capability by path. `.harry` is off
+  pytest's path on purpose; this respects that and still allows a unit-level assertion.
+- **`scripts/call_tool.py`** — calls any tool by name with JSON arguments, no server and no
+  client, and learns no capability's name. `test_call_tool_knows_no_capability_by_name` parses
+  its AST and blanks the string constants first, so the guard bans the name in the code
+  without banning the explanation in the docstring.
+- **The two-pass `fit`** (`.harry/tools/digest_build/page.py`) — render, measure the boxes,
+  render again with what you measured. WeasyPrint reports positions in CSS pixels, so multiply
+  by 72/96 before comparing to points.
+- **`tests/fixtures/digest/connectors/`** — four stand-in connectors steered by one JSON plan
+  file named in an environment variable. One folder covers "answers", "raises", "reports its
+  own failure" and "is not there", which is four folders' worth of fixture otherwise.
+
 ## Notes
 
 - **2026-09-15** — the progress notification is the one criterion here that is not built. `digest_build` blocks for a minute or two and a silent MCP call is aborted at 300 seconds, so it is a real risk on a slow morning, not a nicety. It needs a way for a capability to reach `context.report_progress`, which is an SDK change and therefore its own feature rather than a line in this one. Measured today: a full build with eighteen articles took about ninety seconds.

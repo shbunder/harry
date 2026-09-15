@@ -2,7 +2,7 @@
 id: STORY-260914-abef7c
 title: Claude can see what today could contain, and pick from it
 feature: FEAT-260912-0f2744
-status: Backlog
+status: Done
 created: 2026-09-14
 ---
 
@@ -21,13 +21,13 @@ The first of the two calls, and the one that has to work before any source exist
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] digest_list_candidates returns today's date, a weather section, an agenda section and a headlines list
-- [ ] With no sources loaded, both sections say unavailable and the headlines are empty — and it does not raise
-- [ ] weather.today(), calendar.today() and news.candidates(limit) are each called once, and their answers are the sections
-- [ ] A source that raises leaves its own section unavailable and the others intact
-- [ ] Headlines carry a readable id, title, source, published time and summary
-- [ ] Candidates come back newest first — a fact, not a ranking — capped at limit which defaults to 40, and a capped answer says how many were dropped
-- [ ] summary is the source's own text verbatim, truncated at 280 characters under detail='concise' and whole under 'full'
+- [x] digest_list_candidates returns today's date, a weather section, an agenda section and a headlines list
+- [x] With no sources loaded, both sections say unavailable and the headlines are empty — and it does not raise
+- [x] weather.today(), calendar.today() and news.candidates(limit) are each called once, and their answers are the sections
+- [x] A source that raises leaves its own section unavailable and the others intact
+- [x] Headlines carry a readable id, title, source, published time and summary
+- [x] Candidates come back newest first — a fact, not a ranking — capped at limit which defaults to 40, and a capped answer says how many were dropped
+- [x] summary is the source's own text verbatim, truncated at 280 characters under detail='concise' and whole under 'full'
 
 ## Subtasks
 
