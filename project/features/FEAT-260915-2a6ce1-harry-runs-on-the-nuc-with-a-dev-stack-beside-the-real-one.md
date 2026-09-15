@@ -49,6 +49,7 @@ declare no required setting and load on a bare machine.
 
 <!-- Appended by `board.py note`. -->
 - **2026-09-15** — Criterion 9 ('restarts with the machine and keeps its data across a reboot') is half proven and deliberately not ticked. Proven: restart: unless-stopped is live — killing the python process inside the container brought it back healthy on its own with RestartCount=1 — and the named volume survives make down followed by make up, and survives a deploy and a rollback. Not proven: an actual reboot of the NUC, which nobody has done since Harry was containerised. Tick it after the next reboot, or reboot deliberately and tick it then. Note that docker kill and docker stop count as manual intervention, so unless-stopped correctly does not restart after those — crash the process inside the container instead, or you will conclude the policy is dead when it is not.
+- **2026-09-15** — Correction to an earlier note on this feature: it said the bare boot answers '8 loaded and 7 skipped exactly as docs/operating.md now lists'. The count was right and the claim was not — the docs table listed only the seven connectors and tools and omitted the morning-page job, which is the eighth and is the watchdog. Fixed in docs/operating.md; the table now names it and says it loads on a bare machine, so a missed 07:00 is noticed from the first boot before any source is configured.
 
 ## Links
 

@@ -33,3 +33,6 @@ failure is discovered on the morning you most need it not to be.
 
 ## Notes
 
+
+- **2026-09-15** — Two defects found by writing tests/test_deploy.py, which drives the real make targets against a stub docker rather than reimplementing them. First: the dirty-tree gate used 'git diff --quiet HEAD', which reports clean when the only change is an untracked file — and the Dockerfile does COPY .harry/ and COPY src/, so an untracked module reached the image under a tag naming a commit it was not in. Now git status --porcelain, and the refusal prints what is in the way. Second: .deployed-tags was written before 'compose up', so a deploy that never came healthy was recorded as the running version and 'make versions' would report it. The write moved after the stack is up. Both are guarded: deleting either gate turns a named test red.
+
