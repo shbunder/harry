@@ -11,11 +11,11 @@ annotations:
 enabled: true
 ---
 
-Returns the events on one day, earliest first, with the time in the local timezone.
+Returns the events on one day, earliest first, with the times in the local timezone.
 
 ```
-[{"at": "09:30", "title": "standup", "where": "meeting room"},
- {"at": "14:00", "title": "dentist", "where": ""}]
+[{"at": "09:30", "ends": "10:00", "title": "standup", "where": "meeting room", "calendar": "Shaun"},
+ {"at": "14:00", "ends": null, "title": "dentist", "where": "", "calendar": "Kids"}]
 ```
 
 Reach for this when the question is about someone's day — what is on, whether an afternoon
@@ -28,6 +28,17 @@ looking at. Say "nothing on" only when you got an empty list.
 
 `at` is `"all day"` for an event with no time, and those come first. `where` is often empty;
 plenty of events have no location.
+
+`ends` is when it finishes, in the same `"HH:MM"` shape — it is what says whether 14:00 is a
+phone call or the rest of the afternoon. It is `null` when there is no end to give: an
+all-day entry, an event saved with a start and nothing else, or something that runs past
+midnight — a three-day conference comes back as `"at": "00:00", "ends": null`, because its
+end belongs to a different day than the one you asked about.
+
+`calendar` is which calendar the event came from — the name shown in the calendar app, or the
+label of a published link somebody shared. It is what tells your own meetings from the kids'
+school run when both are on the same day. A calendar that will not give its name reads as
+`"Calendar"`.
 
 Repeating events are shown as they fall on the day asked for, including ones that were moved
 to a different time. An instance that was cancelled is simply not there.

@@ -20,7 +20,8 @@ default, never more than 50.
    {"id": "vrt-2026-09-14-tessenderlo-ham-hakt-knoop-door",
     "title": "Tessenderlo-Ham hakt knoop door: vanaf 1 januari 2027 …",
     "source": "VRT NWS", "feed": "vrt", "date": "2026-09-14",
-    "summary": "Het OCMW van Tessenderlo-Ham zet de maaltijdbedeling …"}],
+    "summary": "Het OCMW van Tessenderlo-Ham zet de maaltijdbedeling …",
+    "image": "https://images.vrt.be/vrtnws_share/2026/09/14/c2dac003-….jpg"}],
  "unavailable": []}
 ```
 
@@ -44,6 +45,11 @@ so rather than reporting that there was little news.
 
 `summary` is the feed's own text, not Harry's. Nothing here is ranked, scored or
 summarised by Harry; the order is by time published and nothing else.
+
+`image` is the address of the picture the feed published, or `null` when it published none —
+De Tijd, for one, never does. **It is an address, not a picture:** nothing is fetched to
+answer this call. Whoever renders the page downloads it. Use it to tell which stories can
+lead a page with a photograph and which will be text.
 
 Not a search of the whole internet, and not an archive. It is what the configured feeds are
 carrying now — roughly the last day or two.

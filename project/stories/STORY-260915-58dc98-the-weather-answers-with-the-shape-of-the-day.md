@@ -2,7 +2,7 @@
 id: STORY-260915-58dc98
 title: The weather answers with the shape of the day
 feature: FEAT-260915-10c6e3
-status: Backlog
+status: Done
 created: 2026-09-15
 ---
 
@@ -22,13 +22,14 @@ day in one line, and widening it would make every caller carry the strip.
 
 ## Acceptance criteria
 
-- [ ] `forecast()` carries `hours`: a list of `{at, temperature}` for 06:00 to 22:00 local time, sixteen entries
-- [ ] `at` is an ISO timestamp in the connector's configured timezone, not UTC
-- [ ] `temperature` is a whole number of degrees
-- [ ] An answer with a daily block and no hourly block gives `hours: []`, keeps `available: true`, and sends nothing to Slack
-- [ ] `today()` returns `summary`, `high`, `low`, `rain_chance` and nothing else
-- [ ] The `weather_forecast` tool returns `hours`, and its `TOOL.md` says what it is
-- [ ] `docs/` describes `hours` beside the rest of the weather connector
+- [x] `forecast()` carries `hours`: seventeen `{at, temperature}` entries for 06:00 to 22:00 local time, inclusive of both ends
+- [x] `at` is `"HH:MM"` in the connector's configured timezone, not UTC
+- [x] `temperature` is a whole number of degrees
+- [x] An answer with a daily block and no hourly block gives `hours: []`, keeps `available: true`, and sends nothing to Slack
+- [x] `today()` returns `summary`, `high`, `low`, `rain_chance` and nothing else
+- [x] The `weather_forecast` tool returns `hours`, and its `TOOL.md` says what it is
+- [x] One Open-Meteo answer carrying an `hourly` block is recorded in `tests/fixtures/weather/` and noted in that folder's record — the three there today all lack one
+- [x] `docs/` describes `hours` beside the rest of the weather connector
 
 ## Subtasks
 

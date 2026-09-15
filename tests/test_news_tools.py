@@ -233,7 +233,7 @@ async def test_concise_is_the_default_and_costs_less(harry):
 
     trimmed = next(candidate for candidate in concise['candidates'] if candidate['summary'].endswith('…'))
     assert len(trimmed['summary']) == 201, '200 characters and the ellipsis'
-    assert set(trimmed) == {'id', 'title', 'source', 'feed', 'date', 'summary'}
+    assert set(trimmed) == {'id', 'title', 'source', 'feed', 'date', 'summary', 'image'}
 
     same = next(candidate for candidate in full['candidates'] if candidate['id'] == trimmed['id'])
     assert len(same['summary']) > len(trimmed['summary'])
@@ -399,3 +399,59 @@ async def test_one_search_and_three_reads_download_each_feed_once(harry):
     assert respx.get(VRT).call_count == 1
     assert respx.get(BBC).call_count == 1
     assert respx.get(url__startswith=TRAIN).call_count == 3, 'each article is still fetched'
+
+
+# ---------------------------------------------------------------------------
+# The picture and the summary, as Claude sees them
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_claude_is_told_which_stories_have_a_picture(harry):
+    """A field the connector returns and the tool drops is a field nobody can use."""
+    feeds_are_up()
+    server, _ = harry()
+
+    async with Client(server) as connected:
+        answer = (await found_through(connected, 'news_search', {'detail': 'full', 'limit': 50})).data
+
+    pictured = [c for c in answer['candidates'] if c['image']]
+    assert pictured, 'both recorded feeds publish pictures'
+    assert all(c['image'].startswith('https://') for c in pictured)
+    assert not any('/standard/240/' in c['image'] for c in pictured), 'ask for the readable size'
+
+
+@respx.mock
+async def test_an_article_reaches_claude_with_the_feeds_summary_and_picture(harry):
+    """So a story whose page will not load still has something to print."""
+    feeds_are_up()
+    respx.get(url__startswith=TRAIN).mock(return_value=httpx.Response(403))
+    server, _ = harry()
+
+    async with Client(server) as connected:
+        answer = (await found_through(connected, 'news_article', {'id': TRAIN_ID})).data
+
+    assert answer['available'] is False
+    assert answer['summary'].startswith('The former UK PM said')
+    assert answer['image'].startswith('https://ichef.bbci.co.uk/ace/standard/800/')
+
+
+def test_both_tool_bodies_say_what_the_new_fields_are():
+    """The body of a TOOL.md is the description Claude reads to choose. A field nobody is
+    told about is a field nobody asks for."""
+    search = (REPO / '.harry' / 'tools' / 'news_search' / 'TOOL.md').read_text(encoding='utf-8')
+    article = (REPO / '.harry' / 'tools' / 'news_article' / 'TOOL.md').read_text(encoding='utf-8')
+
+    assert 'image' in search and 'address, not a picture' in search
+    assert 'image' in article and 'summary' in article
+
+
+def test_the_docs_describe_the_picture_and_who_fetches_it():
+    """The greppable half of the docs criterion — including the part a later feature has to
+    act on, that fetching is the renderer's job and so are the awkward hosts."""
+    prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
+
+    assert 'the address of the picture the feed published' in prose
+    assert '/standard/240/` for `/standard/800/' in prose
+    assert 'Nothing is fetched to answer this' in prose
+    assert 'images.tijd.be' in prose, 'the host that needs a browser, named where it will be read'

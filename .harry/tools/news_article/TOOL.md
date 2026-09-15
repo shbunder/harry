@@ -20,6 +20,8 @@ navigation, the related links or the cookie banner.
  "title": "Russia hits Ukrainian train shortly after Boris Johnson …",
  "source": "BBC News", "published": "2026-09-14T03:38:13+00:00",
  "link": "https://www.bbc.co.uk/news/articles/cy5zg41dkqwo",
+ "summary": "The former UK PM said he was unharmed after the strike …",
+ "image": "https://ichef.bbci.co.uk/ace/standard/800/cpsprodpb/715d/….png",
  "text": "A Russian drone has hit a train near the Ukraine-Poland border …"}
 ```
 
@@ -34,8 +36,13 @@ since you searched gives an error telling you to search again. That is not a fau
 means the feed moved on.
 
 **When the page cannot be read it answers `{"available": false, "why": …}`** and keeps the
-headline, the source and the time. Some sites block scripted clients, and some ids point at
-a video or a live blog with no prose in it. Both are answers, not errors: there is nothing
-to retry. Say what you have — the headline is still true.
+headline, the source, the time, **the feed's own `summary` and the `image`**. Some sites
+block scripted clients, and some ids point at a video or a live blog with no prose in it.
+Both are answers, not errors: there is nothing to retry. Say what you have — the summary is
+real reporting and the headline is still true.
+
+`summary` is always the feed's own one-line description, whether or not the page loaded, so
+a story never comes back with nothing to print. `image` is the address of the feed's picture,
+or `null`; nothing is fetched to produce it.
 
 Not for a URL of your own. It reads the stories Harry's own feeds carry, by their id.
