@@ -1,8 +1,8 @@
 """`make deploy` and `make rollback`, driven for real against a stub `docker`.
 
-STORY-260915-36ccd2's description says this is "the only part of this feature whose failure
-is discovered on the morning you most need it not to be" — and it is sixty lines of shell
-with four refusals in it, none of which anything read.
+Going back to the previous version is the one command whose failure is discovered on the
+morning you most need it not to be — and it is sixty lines of shell with four refusals in
+it, none of which anything read before this file existed.
 
 **The targets are run, not read.** `make` resolves the same variables, the same `$(shell)`
 calls and the same recipes production uses; only `docker` is replaced, by a script on PATH
@@ -62,12 +62,16 @@ def deployable(tmp_path):
     stub.chmod(0o755)
     log = tmp_path / 'calls.log'
 
+    # `-c` on every call: a machine with commit.gpgsign or a global core.hooksPath would
+    # otherwise make these raise, and this file's whole point is that it runs the real
+    # tools — an error here would read as a broken Makefile.
+    git = ['git', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null']
     for command in (
-        ['git', 'init', '-q', '-b', 'main'],
-        ['git', 'config', 'user.email', 'test@example.com'],
-        ['git', 'config', 'user.name', 'Test'],
-        ['git', 'add', 'Makefile', 'docker-compose.yml', 'Dockerfile', '.gitignore'],
-        ['git', 'commit', '-qm', 'first'],
+        [*git, 'init', '-q', '-b', 'main'],
+        [*git, 'config', 'user.email', 'test@example.com'],
+        [*git, 'config', 'user.name', 'Test'],
+        [*git, 'add', 'Makefile', 'docker-compose.yml', 'Dockerfile', '.gitignore'],
+        [*git, 'commit', '-qm', 'first'],
     ):
         subprocess.run(command, cwd=tree, check=True, capture_output=True)
 
@@ -92,8 +96,8 @@ def deployable(tmp_path):
 
         def commit(self, name: str) -> str:
             (tree / name).write_text(name, encoding='utf-8')
-            subprocess.run(['git', 'add', name], cwd=tree, check=True, capture_output=True)
-            subprocess.run(['git', 'commit', '-qm', name], cwd=tree, check=True, capture_output=True)
+            subprocess.run([*git, 'add', name], cwd=tree, check=True, capture_output=True)
+            subprocess.run([*git, 'commit', '-qm', name], cwd=tree, check=True, capture_output=True)
             sha = subprocess.run(
                 ['git', 'rev-parse', '--short', 'HEAD'], cwd=tree, capture_output=True, text=True, check=True
             ).stdout.strip()
@@ -255,3 +259,42 @@ def test_make_up_falls_back_to_latest_on_a_machine_that_has_never_deployed(deplo
 
     assert deployable.make('up').returncode == 0
     assert deployable.started_on() == ['latest']
+
+
+def test_a_rollback_that_never_comes_up_is_not_recorded_and_does_not_report_success(deployable):
+    """The sibling of the deploy case, and it was still broken when that one was fixed.
+
+    The recipe joined its four commands with `;`, so a failed `docker compose up` was
+    followed by the record rewrite and by a green tick, and the target exited 0. That is
+    the command you reach for on the one morning it matters, telling you it worked.
+    """
+    first = deployable.commit('one.txt')
+    deployable.make('deploy')
+    second = deployable.commit('two.txt')
+    deployable.make('deploy')
+    deployable.fail_the_next_up()
+
+    result = deployable.make('rollback')
+
+    assert result.returncode != 0, 'a rollback that never came up reported success'
+    assert '✓' not in result.stdout
+    assert deployable.deployed() == [second, first], 'the record says it went back, and it did not'
+
+
+def test_every_start_waits_for_the_container_to_be_healthy(deployable):
+    """`--wait` is the only thing that makes `compose up` fail when the container never
+    becomes healthy. Without it `make deploy` records and announces a crash-looping image
+    and `make up` returns 0 with Harry down — and the tests above would still pass, because
+    a stub can be told to fail whatever flags it was given.
+
+    It is also the only evidence for "the healthcheck the image already declares is what
+    compose waits on", which nothing else asserts.
+    """
+    deployable.commit('one.txt')
+    deployable.make('deploy')
+    deployable.make('up')
+
+    starts = [line for line in deployable.calls() if line.startswith('compose up')]
+    assert starts, 'nothing started the stack'
+    for line in starts:
+        assert '--wait' in line, f'a start that does not wait for healthy: {line}'

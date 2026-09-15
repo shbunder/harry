@@ -7,6 +7,7 @@ tests make it happen rather than assert that it is configured.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -234,6 +235,40 @@ def test_an_export_prefix_is_stripped_and_does_not_change_what_a_key_resolves_to
     assert settings_from(exported).log_level == 'DEBUG'
 
 
+def test_no_key_make_worktree_overrides_is_exported():
+    """`export` beats `.env.local`, and `make worktree` writes straight into `.env.local`.
+
+    It gives every tree its own port and data directory so two stacks cannot collide.
+    Export the same keys in the committed file and sourcing it undoes that: measured, with
+    `.env.local` naming 7431, a sourced `.env` gives port 7430 and data `/data` — the
+    worktree published on one port, listening on another, writing where the real stack
+    writes. All three look healthy.
+
+    The list is read out of the Makefile rather than written down here, so a third key
+    added to `make worktree` is covered without anyone remembering this test exists.
+    """
+    repo = Path(__file__).parent.parent
+    makefile, env = repo / 'Makefile', repo / '.env'
+    if not (makefile.exists() and env.exists()):
+        pytest.skip('no Makefile or .env in this tree')
+
+    recipe = makefile.read_text(encoding='utf-8').partition('worktree:')[2].partition('\nworktree-prune:')[0]
+    overridden = set(re.findall(r'(HARRY_[A-Z_]+)=%s', recipe))
+    assert overridden, 'make worktree no longer writes any setting — this test is now checking nothing'
+
+    exported = {
+        line.split('=')[0].removeprefix('export ').strip()
+        for line in env.read_text(encoding='utf-8').splitlines()
+        if line.startswith('export ')
+    }
+
+    clashing = sorted(overridden & exported)
+    assert clashing == [], (
+        f'{clashing} are exported in .env and written by `make worktree` into .env.local. '
+        "Sourcing .env would silently put every worktree back on the real stack's port and data directory."
+    )
+
+
 def test_no_key_in_the_committed_env_is_exported_with_an_empty_value():
     """The failure the two-file split was designed around, and the only way `export` causes it.
 
@@ -250,13 +285,37 @@ def test_no_key_in_the_committed_env_is_exported_with_an_empty_value():
     if not (repo / '.env').exists():
         pytest.skip('no committed .env in this tree')
 
+    def is_empty(value: str) -> bool:
+        # `""` and `''` are the same empty export and shadow `.env.local` identically.
+        # pydantic strips the quotes, so the resolved value is indistinguishable and a
+        # guard that only looked for a bare `=` would pass on both.
+        return not value.strip().strip('\'"').strip()
+
     exported_empty = [
         line.split('=')[0].removeprefix('export ').strip()
         for line in (repo / '.env').read_text(encoding='utf-8').splitlines()
-        if line.startswith('export ') and not line.split('=', 1)[1].strip()
+        if line.startswith('export ') and is_empty(line.split('=', 1)[1])
     ]
 
     assert exported_empty == [], (
         f'{exported_empty} are exported with no value, so sourcing .env would shadow .env.local. '
         'Drop the `export` on those keys; keep it on the ones that carry a real default.'
+    )
+
+
+def test_the_committed_env_leaves_the_clock_on():
+    """One word in a committed file switches off the only thing that reports a morning
+    nobody watched.
+
+    `.env` outranks the field default and is read by any Harry started outside compose —
+    `make serve`, `python -m harry`, a fresh clone on the NUC. The dev stack turns the
+    clock off on its own service in `docker-compose.yml`; the committed file is not where
+    that belongs, and nothing else would notice if it moved there.
+    """
+    repo = Path(__file__).parent.parent
+    if not (repo / '.env').exists():
+        pytest.skip('no committed .env in this tree')
+
+    assert settings_from(repo / '.env').scheduler_enabled is True, (
+        'the committed .env turns the deadline watchdog off for every instance that reads it'
     )

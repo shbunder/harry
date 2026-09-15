@@ -369,7 +369,7 @@ See [ADR-260912-bd36c2](../project/decisions/ADR-260912-bd36c2-harry-never-calls
 ## When the tablet stops accepting writes
 
 The reMarkable protocol is reverse-engineered and it does break. All writes failed in
-August 2026 and needed a patched client. `rmapi` is pinned exactly in the `Dockerfile`;
+August 2026 and needed a patched client. `remarkapy` is pinned exactly in `pyproject.toml`;
 expect to move that pin a few times a year.
 
 If a push fails twice, Harry alerts. That alert is the feature — a fire-and-forget job on a

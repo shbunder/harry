@@ -10,8 +10,10 @@ what goes where, in which order, and what happens when a piece of it is missing.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -82,6 +84,19 @@ def pick(n: int, **rest) -> dict:
         'topic': 'belgium',
         **rest,
     }
+
+
+def today() -> str:
+    """What the page will be called, on the clock the tool actually reads.
+
+    `tool.py` takes `dt.datetime.now(zone).date()` in the digest's own timezone, so a
+    literal date here is an assertion that passes until midnight and then reports a bug
+    that is not there. It did: this test was written on the 15th and went red at 00:04 on
+    the 16th, on `['2026-09-16'] == ['2026-09-15']`.
+
+    The property is "named for today where the page is read", not "named 2026-09-15".
+    """
+    return dt.datetime.now(ZoneInfo('Europe/Brussels')).date().isoformat()
 
 
 def text_of(path: str) -> str:
@@ -650,7 +665,7 @@ def test_the_page_goes_to_the_folder_the_digest_names(digest):
 
     tablet = catalogue.get('connector', 'remarkable')
     assert tablet is not None and tablet.target is not None
-    assert [name for _, name, folder in tablet.target.pushed] == ['2026-09-15']
+    assert [name for _, name, folder in tablet.target.pushed] == [today()]
     assert [folder for _, _, folder in tablet.target.pushed] == ['🗞️ Daily']
     assert answer['delivered']['where'] == '🗞️ Daily'
 

@@ -206,7 +206,7 @@ logs:  ## Follow Harry's logs
 # host could reach Harry at all, because both followed the variable to the same wrong
 # place. `docker compose port` is compose's own answer, so nothing here owns the number.
 health:  ## What loaded, what did not, and why — asked from the host, the way a caller would
-	@ADDR=$$(docker compose port harry 7430 | head -1) || { echo -e "$(WARN) harry is not running."; exit 1; }; \
+	@ADDR=$$(docker compose port harry 7430 2>/dev/null | head -1); \
 	 test -n "$$ADDR" || { echo -e "$(WARN) harry is not running."; exit 1; }; \
 	 curl -fsS "http://localhost:$${ADDR##*:}/health" | $(PY) -m json.tool \
 	   || { echo -e "$(WARN) harry is up but nothing answered on the port it publishes ($$ADDR)."; exit 1; }
@@ -227,7 +227,7 @@ logs-dev:  ## Follow the dev stack's logs
 	docker compose --profile dev logs -f harry-dev
 
 health-dev:  ## What the dev stack loaded. `jobs.enabled` is false here, and true on the real one
-	@ADDR=$$(docker compose --profile dev port harry-dev 7431 | head -1) || { echo -e "$(WARN) harry-dev is not running."; exit 1; }; \
+	@ADDR=$$(docker compose --profile dev port harry-dev 7431 2>/dev/null | head -1); \
 	 test -n "$$ADDR" || { echo -e "$(WARN) harry-dev is not running."; exit 1; }; \
 	 curl -fsS "http://localhost:$${ADDR##*:}/health" | $(PY) -m json.tool \
 	   || { echo -e "$(WARN) harry-dev is up but nothing answered on the port it publishes ($$ADDR)."; exit 1; }
@@ -261,9 +261,9 @@ rollback:  ## Put the real stack back on the tag it was running before
 	   echo -e "$(WARN) harry:$$PREV was the previous version and is no longer on this machine."; \
 	   echo "   Rebuild it: git checkout $$PREV && make deploy"; exit 1; }
 	@PREV=$$(sed -n 2p $(DEPLOYED)); \
-	 HARRY_TAG=$$PREV docker compose up -d --wait --wait-timeout 120; \
-	 { sed -n 2p $(DEPLOYED); sed -n 1p $(DEPLOYED); sed -n '3,$$p' $(DEPLOYED); } > $(DEPLOYED).new; \
-	 mv $(DEPLOYED).new $(DEPLOYED); \
+	 HARRY_TAG=$$PREV docker compose up -d --wait --wait-timeout 120 && \
+	 { sed -n 2p $(DEPLOYED); sed -n 1p $(DEPLOYED); sed -n '3,$$p' $(DEPLOYED); } > $(DEPLOYED).new && \
+	 mv $(DEPLOYED).new $(DEPLOYED) && \
 	 echo -e "$(GREEN)✓ harry is back on harry:$$PREV$(OFF)   (make rollback again returns to the other one)"
 
 versions:  ## What is deployed here, newest first, and what is still on the machine

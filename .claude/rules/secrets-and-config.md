@@ -55,17 +55,30 @@ nothing about the order above. **A capability's generated `.env` carries none**,
 those are written by `make env-template` and never sourced; hand-adding one there makes
 `make lint` fail on drift, which is how it is caught.
 
-**The exception is the whole point.** `export` puts a value in the *process environment*,
-which outranks `.env.local`. A key exported **empty** in the committed file therefore
-shadows the real value on every machine, the moment anybody sources the file — silently,
-and resolving to whatever "unset" means for that key. For `HARRY_API_TOKEN` that is
-"nobody is authorised".
+**The exception is the whole point, and it is wider than it first looks.** `export` puts a
+value in the *process environment*, which outranks `.env.local`. So exporting a key in the
+committed file overrides whatever that machine set for it, the moment anybody sources the
+file — silently, and in the direction nobody expects. **A key is safe to export only while
+nothing overrides it locally**, which is a property of every machine rather than of the
+file, so it is checked for the two cases known to bite:
+
+- **An empty value.** `export HARRY_API_TOKEN=` sets the token to empty everywhere
+  downstream and the real one is never read. It resolves to "nobody is authorised".
+  Guarded by `test_no_key_in_the_committed_env_is_exported_with_an_empty_value`.
+- **A key `make worktree` writes.** It puts `HARRY_PORT` and `HARRY_DATA_DIR` into each
+  tree's `.env.local` so two stacks cannot collide. Measured: with `.env.local` naming
+  7431, a sourced `.env` gives port 7430 and data `/data` — published on one port,
+  listening on another, writing where the real stack writes, all three looking healthy.
+  Guarded by `test_no_key_make_worktree_overrides_is_exported`, which reads the list out
+  of the Makefile rather than restating it.
 
 This is not hypothetical. In the repo Harry was adapted from, `make` pulled both files in
 with `-include`, every key carried `export`, and a key exported empty in the committed file
 and set without `export` in the machine's file resolved to empty. It took a paragraph of
-documentation to be survivable. Here it is one assertion instead:
-`tests/test_config.py::test_no_key_in_the_committed_env_is_exported_with_an_empty_value`.
+documentation to be survivable.
+
+**If you start overriding one of the remaining exported keys per machine, take its
+`export` off in the same change.** No test can know that for you.
 
 Harry's Makefile loads neither file. `harry/config.py` is the only reader, so the order
 above is simply what it does. Two consequences worth knowing:
@@ -104,8 +117,9 @@ no sharing the storage state.
 - Put a real secret in `.env`. It is committed. Secrets go in `.env.local`
 - Copy `.env` to `.env.local`. A full copy means the next key added to `.env` is shadowed
   by a stale value on every machine that copied it
-- `export`-prefix a key that has **no value**. It shadows `.env.local` for anything that
-  sources the file. A key with a real default may carry one
+- `export`-prefix a key that has **no value**, or one that `make worktree` writes into a
+  tree's `.env.local`. Either shadows the machine's own setting for anything that sources
+  the file. A key nothing overrides locally may carry one
 - Hand-edit a capability's generated `.env`, including to add an `export`. Change `config:`
   and run `make env-template`
 - Load either file from the Makefile

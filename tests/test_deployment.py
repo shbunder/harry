@@ -21,6 +21,7 @@ import json
 import re
 import shutil
 import subprocess
+from fnmatch import fnmatch
 from pathlib import Path
 
 import pytest
@@ -156,6 +157,56 @@ def test_the_dev_stack_reads_its_own_credentials_and_never_the_real_one_s():
 
     assert real and dev, 'a stack with no machine-local env file has nowhere for a credential to come from'
     assert not (real & dev), f'both stacks read {real & dev}, so dev holds the real tablet token'
+
+
+def test_the_committed_defaults_are_read_before_the_machine_s_own_file():
+    """The order in `env_file:` is the whole of how a credential reaches the container.
+
+    Reversed, the committed `HARRY_API_TOKEN=` shadows the operator's real one and Harry
+    resolves to "nobody is authorised" — the 06:30 task gets a 401 and no page is built.
+    The comment above the block says the order matters, and a comment is not a control.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+
+    for name, service in compose['services'].items():
+        paths = [entry if isinstance(entry, str) else entry['path'] for entry in service['env_file']]
+        assert paths[0] == '.env', f'{name} reads {paths[0]} before the committed defaults'
+        assert len(paths) == 2, f'{name} reads {paths}, and only two files have a defined precedence'
+
+
+def test_a_new_dockerignore_pattern_actually_excludes_what_it_names():
+    """`.env.*.local` matches nothing on this machine, so the live image test cannot see it.
+
+    A glob that matches nothing looks exactly like a glob that matches everything it
+    should — this module's own docstring. These are the names a credential would arrive
+    under, checked against the patterns rather than against the filesystem.
+    """
+    patterns = [
+        line.strip()
+        for line in (REPO / '.dockerignore').read_text(encoding='utf-8').splitlines()
+        if line.strip() and not line.startswith('#')
+    ]
+
+    for name in (
+        '.env.local',
+        '.env.dev.local',
+        '.harry/connectors/icloud/.env.local',
+        '.harry/connectors/icloud/.env.dev.local',
+        'storage-state.json',
+        '.deployed-tags',
+    ):
+        assert any(fnmatch(name, pattern) or fnmatch(Path(name).name, pattern) for pattern in patterns), (
+            f'{name} matches no .dockerignore pattern, so it would be copied into the image'
+        )
+
+
+def test_the_image_installs_a_virtual_display():
+    """The live test proves it is in the built image; this one is in the gate.
+
+    A dependency nothing imports is easy to drop, and the guard against dropping it was
+    behind `live`, which nobody runs on a Tuesday.
+    """
+    assert 'xvfb' in (REPO / 'Dockerfile').read_text(encoding='utf-8')
 
 
 def test_each_stack_pins_its_own_port_and_data_directory_on_the_service():
