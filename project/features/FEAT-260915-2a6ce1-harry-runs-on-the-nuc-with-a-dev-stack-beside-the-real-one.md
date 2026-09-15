@@ -26,16 +26,16 @@ declare no required setting and load on a bare machine.
 
 - [x] `make up` starts Harry on a machine with no `.env.local` anywhere; weather and news load, and icloud, remarkable and slack are skipped, each naming the setting it is missing
 - [x] Nothing crashes on that first boot — a capability whose configuration is absent disables itself
-- [ ] Each credential put on the NUC turns its capability from skipped to loaded without a rebuild
-- [ ] No credential is in the repository, in the image, or in a committed compose file
+- [x] Each credential put on the NUC turns its capability from skipped to loaded without a rebuild
+- [x] No credential is in the repository, in the image, or in a committed compose file
 - [x] A dev stack runs beside the real one with its own port, data directory and credentials
 - [x] The dev stack's scheduler is off, so it can never report a deadline the real one met
 - [x] Stopping or rebuilding either stack leaves the other running
-- [ ] A page is built inside the container through `scripts/call_tool.py`, written under the data volume, with nothing pushed
+- [x] A page is built inside the container through `scripts/call_tool.py`, written under the data volume, with nothing pushed
 - [ ] Harry restarts with the machine and keeps its data across a reboot
 - [x] Every build is tagged with something that cannot be reused, the real service names a tag, and going back to the previous one is one command
 - [x] `xvfb` is in the image and nothing uses it yet, so the De Tijd feature does not have to rebuild it
-- [ ] `docs/operating.md` describes what is actually on the NUC, in the present tense
+- [x] `docs/operating.md` describes what is actually on the NUC, in the present tense
 
 ## Stories
 
@@ -48,6 +48,7 @@ declare no required setting and load on a bare machine.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-15** — Criterion 9 ('restarts with the machine and keeps its data across a reboot') is half proven and deliberately not ticked. Proven: restart: unless-stopped is live — killing the python process inside the container brought it back healthy on its own with RestartCount=1 — and the named volume survives make down followed by make up, and survives a deploy and a rollback. Not proven: an actual reboot of the NUC, which nobody has done since Harry was containerised. Tick it after the next reboot, or reboot deliberately and tick it then. Note that docker kill and docker stop count as manual intervention, so unless-stopped correctly does not restart after those — crash the process inside the container instead, or you will conclude the policy is dead when it is not.
 
 ## Links
 
