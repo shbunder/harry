@@ -34,7 +34,7 @@ OFF   := \033[0m
 
 .PHONY: help env-install check lint format typecheck test test-cov lock env-template \
         board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-candidates remarkable-pair \
-        image up down logs docs clean
+        image up down logs health docs clean
 
 help:  ## Show this help
 	@echo ""
@@ -169,14 +169,18 @@ digest-dry:  ## Build today's page from PICKS=a-file.json, to out/ and nowhere e
 image:  ## Build Harry's image
 	docker build -t harry:latest .
 
-up:  ## Start Harry with compose
-	docker compose up -d
+up:  ## Start Harry with compose, and wait until it is actually answering
+	docker compose up -d --wait --wait-timeout 120
 
-down:  ## Stop Harry
+down:  ## Stop Harry. The data volume is not touched — that needs `docker compose down -v`
 	docker compose down
 
 logs:  ## Follow Harry's logs
 	docker compose logs -f harry
+
+health:  ## What loaded, what did not, and why — from the running container
+	docker compose exec harry python -c "import urllib.request,os,json,sys; \
+	  print(json.dumps(json.load(urllib.request.urlopen(f'http://localhost:{os.environ[\"HARRY_PORT\"]}/health')), indent=2))"
 
 # ---------------------------------------------------------------------------
 # Housekeeping

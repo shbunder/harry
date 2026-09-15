@@ -3,11 +3,66 @@
 Harry runs on the NUC in Docker on port 7430. Marcel owns 7420 and 7421.
 
 ```bash
-make image        # build
-make up           # start
+make image        # build the image
+make up           # start, and wait until Harry is actually answering
+make health       # what loaded, what did not, and why
 make logs         # follow
 make down         # stop
 ```
+
+`make up` waits for the healthcheck the image declares, up to two minutes, so it returns
+when Harry is serving rather than when the container has been created. A start that never
+becomes healthy fails the command instead of leaving you to discover it from `make logs`.
+
+`make down` stops Harry and leaves the `harry-data` volume alone — the store, the rendered
+pages and the De Tijd session all survive it, and come back on the next `make up`. Only
+`docker compose down -v` deletes them, which is why no make target does that.
+
+Harry restarts itself. `restart: unless-stopped` brings the container back when the process
+crashes and when the machine reboots — but **not** after you stopped it on purpose, which is
+what "unless stopped" means. So `make down` keeps Harry down until you run `make up`, and a
+kill that you did not intend is back and healthy inside half a minute.
+
+## What the NUC needs installed
+
+Docker, and — **to run the gate on this machine** — three system libraries that WeasyPrint
+renders the page through:
+
+```bash
+sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libcairo2
+```
+
+**Without them `make check` fails 31 tests**, all of them on
+`OSError: cannot load library 'libpango-1.0-0'`, in `test_digest_build.py` and
+`test_remarkable_connector.py`. Nothing is wrong with the code when that happens; the
+renderer has no backend. The container is unaffected either way — the `Dockerfile` installs
+the same three, which is why Harry can serve a page on a host that cannot run its own tests.
+
+Worth knowing because there is no CI: `make check` before a push is the only thing between
+a change and `main`, so a NUC that cannot run it is a NUC you cannot finish work on.
+
+## A first boot with nothing configured
+
+**A bare Harry is not an empty Harry**, and this is the state every credential arrives into
+one at a time. Start it on a machine with no `.env.local` anywhere and `make health`
+answers:
+
+| | |
+|---|---|
+| **loaded** | `weather`, `news`, and the tools over them — `weather_forecast`, `news_search`, `news_article`, plus `digest_list_candidates` and `digest_build` |
+| **skipped** | `icloud` — *required settings app_password and username are not set* |
+| | `remarkable` — *required setting device_token is not set* |
+| | `slack` — *required settings bot_token and channel are not set* |
+| | `icloud_list_events`, `remarkable_push_document`, `remarkable_list_documents`, `slack_post` — each *needs <connector>, which did not load* |
+
+Weather and news declare no required setting, so both work with nothing configured at all.
+The first page you build on a fresh machine therefore has a weather panel and headlines and
+no agenda. Nothing crashes: a capability whose configuration is absent disables itself and
+says which setting is missing, which is the sentence that tells you where to go next.
+
+The two digest tools name all four connectors under `optional:` rather than `requires:`, so
+they load with none of them — a lapsed calendar password costs the agenda column, not the
+page.
 
 ## Configuration
 
