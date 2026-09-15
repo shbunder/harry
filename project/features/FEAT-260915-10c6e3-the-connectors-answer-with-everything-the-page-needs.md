@@ -22,16 +22,16 @@ one on through the tool Claude reads.
 
 ## Acceptance criteria
 
-- [ ] `weather.forecast()` carries `hours`: `{at, temperature}` from 06:00 to 22:00 local
+- [ ] `weather.forecast()` carries `hours`: seventeen `{at, temperature}` entries, 06:00 to 22:00 local, inclusive
 - [ ] An Open-Meteo answer with no hourly block gives `hours: []`, leaves the rest of the panel intact, and says nothing in Slack
 - [ ] `today()` is unchanged: `summary`, `high`, `low`, `rain_chance` and nothing else
-- [ ] A timed event carries `ends`; an all-day event carries `ends: null`
+- [ ] A timed event carries `ends` in the same `"HH:MM"` shape as `at`; an all-day event carries `ends: null`; `at` itself does not change
 - [ ] Every event carries `calendar` — a CalDAV calendar's display name, or a published link's label
-- [ ] A calendar with no readable name still returns its events, as `calendar: "Calendar"`, and logs the URL once
-- [ ] Every candidate carries `image`: the feed's URL or null, with a BBC thumbnail asked for at 800px rather than 240px
+- [ ] A CalDAV calendar with no readable name still returns its events, as `calendar: "Calendar"`, and logs that calendar once per read
+- [ ] Every candidate carries `image` in both `concise` and `full`: the feed's URL or null, with a BBC thumbnail asked for at 800px rather than 240px
 - [ ] A feed carrying no images gives `image: null` and raises no alert
 - [ ] `news.article(id)` carries `summary` and `image`, including when the page could not be read
-- [ ] `weather_forecast`, `icloud_list_events` and `news_search` return the new fields, and each `TOOL.md` says what they are
+- [ ] `weather_forecast`, `icloud_list_events`, `news_search` and `news_article` return the new fields, and each `TOOL.md` says what they are
 - [ ] `docs/` describes every new field beside the connector that answers it
 
 ## Stories

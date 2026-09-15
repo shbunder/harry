@@ -25,10 +25,11 @@ there is the same change to the same shape.
 
 - [ ] A VRT candidate carries `image`: the `rel="enclosure"` URL from its Atom entry
 - [ ] A BBC candidate carries `image`: its `media:thumbnail` URL with `/standard/240/` asked for as `/standard/800/`
-- [ ] A candidate from a feed with no image carries `image: null`, and nothing reaches Slack
+- [ ] A candidate from a feed with no image carries `image: null`, and nothing reaches Slack — `tests/fixtures/news/collision.xml` is three such entries
+- [ ] `image` is on a `concise` candidate as well as a `full` one
 - [ ] `news.article(id)` carries `summary` and `image` when the page was read
 - [ ] `news.article(id)` carries `summary` and `image` when the page answered 403, alongside `available: false` and `why`
-- [ ] The `news_search` tool returns `image` on a full candidate, and its `TOOL.md` says what it is
+- [ ] The `news_search` tool returns `image` on a candidate, and the `news_article` tool returns `summary` and `image`; both `TOOL.md` bodies say what they are
 - [ ] `docs/` describes `image` and `summary` beside the rest of the news connector
 
 ## Subtasks
