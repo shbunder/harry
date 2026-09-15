@@ -114,6 +114,7 @@ has been passing or failing on an untracked file. It has its own feature.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-15** — Reflection: pre-close verifier said REQUEST CHANGES on three Important findings, all fixed on the branch — four docs criteria with no test behind them, one assertion that matched prose predating the change, and a degradation row promising a weather alert that has never existed. Traceability 13/13 after adding the two behaviours nobody had written down. Degraded paths actually exercised: no hourly block, an unreadable hourly reading, mismatched hourly arrays, a calendar that raises on its own name, a calendar with an empty name, an event whose DTEND is nonsense, a feed with no pictures, an article page answering 403. Seventeen controls deleted one at a time; sixteen went red first time, the seventeenth found a real bug. Scope drift: two unplanned behaviours, both defects the plan did not anticipate, both now criteria.
 
 ## Links
 
