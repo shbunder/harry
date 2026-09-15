@@ -278,8 +278,8 @@ A folder is always made at the **top level**, so a caller naming one puts docume
 others and never inside one of yours. A push only ever replaces a document of the same name
 **in the folder it was pushed to**.
 
-Documents with no folder named go into one folder, `FOLDER` and **`Daily`** by default. It is created at
-the top level the first time something is pushed and found rather than re-made after that.
+A folder is created at the top level the first time something is pushed to it, and found
+rather than re-made after that.
 
 **The default was `Harry` until 15 September 2026.** If you have been running Harry since
 before that, the next push makes a new `Daily` folder and everything already in `Harry` stays
@@ -298,11 +298,15 @@ echo 'FOLDER=Harry' >> .harry/connectors/remarkable/.env.local
   at 509.34 × 679.13 points, the Paper Pro's exact page, because at any other size the tablet
   rescales it and the type goes soft. Exactly one of `path` and `markdown`; both or neither is
   an error.
-- `remarkable_list_documents()` — what is in that folder, newest first. An empty list means
-  the folder is empty or not made yet, and is not an error.
+- `remarkable_list_documents(folder=…)` — what is in one folder, newest first. An empty list
+  means that folder is empty or not made yet, and is not an error. **Pass the folder you mean:**
+  the morning page has one of its own, so a default listing will not show it.
 
-The morning page **will** use the connector directly, as `tablet.push(path, name)` — that
-page is not built yet.
+**The push takes no folder and the listing does.** Reading a folder cannot do harm; pushing
+carries the delete that replaces a document of the same name, and which folder that runs in is
+not a decision to hand a model. The morning page calls the connector directly as
+`tablet.push(path, name, folder)`, with the folder coming from its own configuration where a
+person chose it.
 
 ### When a push fails
 

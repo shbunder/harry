@@ -62,6 +62,7 @@ ENV
 | `NAME` | What the journal calls itself, on the masthead | `The Morning Page` |
 | `COLOURS` | Which ink each calendar is drawn in. One of yellow, green, pink, blue, red, purple, grey | empty, and every calendar is grey |
 | `FOLDER` | Which folder on the tablet the page goes into. Empty leaves it to the tablet connector | empty |
+| | **Name a folder of Harry's own.** A push replaces any document of the same name in it, so pointing this at a folder you keep by hand puts a document of yours called `2026-09-15` in the tablet's trash | |
 | `OUT_DIR` | Where the PDF is written. It stays there whether or not the tablet took it | `/data/digest` |
 | `TIMEZONE` | Which day "today" means, and the clock the timetable prints | `Europe/Brussels` |
 

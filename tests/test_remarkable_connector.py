@@ -1618,3 +1618,69 @@ def test_listing_takes_a_folder_too(tablet):
 
     assert [d['name'] for d in connector(built).documents(folder='🗞️ Weekly')] == ['Weekly page']
     assert [d['name'] for d in connector(built).documents()] == ['Daily page']
+
+
+def test_the_duplicate_line_names_the_folder_the_document_went_to(tablet, tmp_path):
+    """This alert's whole job is to send a person to the right folder to delete a duplicate.
+    Naming the configured one when the push named another sends them where there is nothing
+    to find."""
+    cloud = StandIn(
+        folders=[a_folder(), Item(id='folder-2', type='CollectionType', visibleName='🗞️ Weekly', parent='')],
+        documents=[Item(id='in-weekly', visibleName='2026-09-15', parent='folder-2')],
+    )
+
+    def refuse(item_ref: str, refresh: bool = False):
+        raise RemarkableAPIError('the tablet said no')
+
+    cloud.delete = refuse
+    built = tablet(cloud=cloud)
+
+    connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15', folder='🗞️ Weekly')
+
+    _, sink = built
+    said = next(one for one in sink.heard if 'more than one' in one)
+    assert '🗞️ Weekly' in said
+    assert "'Daily'" not in said, 'it points at the folder nobody pushed to'
+
+
+def test_markdown_goes_to_the_folder_it_was_given_too(tablet):
+    """The same argument on the other way in. It had no caller and no test, so dropping it
+    left every test green."""
+    cloud = StandIn(folders=[a_folder()])
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push_markdown('# Notes\n\nSomething to read.', 'Notes', folder='Reading')
+
+    assert answer['where'] == 'Reading'
+    made = next(f for f in cloud.folders if f.visibleName == 'Reading')
+    assert cloud.documents[0].parent == made.id
+
+
+async def test_claude_can_ask_what_is_in_a_named_folder(tablet, tmp_path):
+    """Follow this repo's own recommended setup and the page goes to a folder of the digest's
+    own. A listing that could only see the connector's default would answer "nothing there"
+    about a page that arrived — confidently, with nothing in the log."""
+    cloud = StandIn(
+        folders=[a_folder(), Item(id='folder-2', type='CollectionType', visibleName='🗞️ Daily', parent='')],
+        documents=[
+            Item(id='ad-hoc', visibleName='Some notes', parent='folder-1'),
+            Item(id='the-page', visibleName='2026-09-15', parent='folder-2'),
+        ],
+    )
+    built = tablet(cloud=cloud, tools=BOTH_TOOLS)
+
+    answer = await through_mcp(built, tmp_path, 'remarkable_list_documents', {'folder': '🗞️ Daily'})
+
+    assert [row['name'] for row in answer.data] == ['2026-09-15']
+
+
+def test_the_listing_takes_a_folder_and_the_push_does_not():
+    """Deliberate, and worth writing down: reading a folder cannot do harm, and pushing
+    carries the delete that replaces a document of the same name. Which folder that runs in is
+    not a decision to hand a model."""
+    listing = (REPO / '.harry' / 'tools' / 'remarkable_list_documents' / 'tool.py').read_text(encoding='utf-8')
+    push = (REPO / '.harry' / 'tools' / 'remarkable_push_document' / 'tool.py').read_text(encoding='utf-8')
+
+    assert 'folder: str | None = None' in listing
+    assert 'folder' not in push.split('def register')[1], 'the push tool grew a folder argument'
+    assert 'not a decision to hand a model' in listing, 'the reason is unwritten, so it will be removed'
