@@ -226,8 +226,22 @@ Where Harry's output goes. One folder, one write, and the most dangerous credent
 
 **The device token grants complete read and write access to every document on the tablet,
 with no scopes and no expiry.** There is no read-only variant to ask for. So this connector
-does one thing — add a document — and deleting, moving and renaming are not exposed even
-though the token permits all three.
+does two things — add a document, and remove the copy that document replaces — and moving,
+renaming and bulk deleting are not exposed even though the token permits all three.
+
+**Pushing a name that is already in the folder replaces it.** The page is built at 06:30 and
+again whenever something needed fixing, and two documents both called `2026-09-15` with no
+timestamp between them is a reader opening one of them and not knowing whether it has the
+correction in it.
+
+The new document goes up **first**; only then is the older copy of that name sent to the
+tablet's trash. A push that failed therefore leaves yesterday's page exactly where it was, and
+the worst that order can do is leave two copies — which is visible, and what this connector
+did before. The removal is bound three ways: inside Harry's own folder, matching the name just
+written exactly, and never the document just created. It is reMarkable's *soft* delete, so
+what it takes goes to the trash rather than away. A removal that fails does not fail the push
+— the page arrived — but it does put one line in Slack, under its own key, so it can never
+silence the push's own alert.
 
 ### Pairing, once per machine
 
@@ -253,16 +267,26 @@ To revoke it, remove the device at my.remarkable.com, then pair again.
 
 ### What it does
 
-Documents go into one folder, named in `FOLDER` and `Harry` by default. It is created at the
-top level the first time something is pushed and found rather than re-made after that.
+Documents go into one folder, named in `FOLDER` and **`Daily`** by default. It is created at
+the top level the first time something is pushed and found rather than re-made after that.
+
+**The default was `Harry` until 15 September 2026.** If you have been running Harry since
+before that, the next push makes a new `Daily` folder and everything already in `Harry` stays
+where it is — Harry will not look there again, and a push will never replace one of those
+documents. Either move them across on the tablet, or keep the old name:
+
+```bash
+echo 'FOLDER=Harry' >> .harry/connectors/remarkable/.env.local
+```
 
 **Claude reaches it with two tools**, both deferred, so a session finds them with
 `harry_find_tools("remarkable")` first:
 
 - `remarkable_push_document(name, path=…)` or `(name, markdown=…)` — puts one document
-  there. Markdown is rendered at 509.34 × 679.13 points, the Paper Pro's exact page, because
-  at any other size the tablet rescales it and the type goes soft. Exactly one of `path` and
-  `markdown`; both or neither is an error.
+  there, **replacing any document of that name already in the folder**. Markdown is rendered
+  at 509.34 × 679.13 points, the Paper Pro's exact page, because at any other size the tablet
+  rescales it and the type goes soft. Exactly one of `path` and `markdown`; both or neither is
+  an error.
 - `remarkable_list_documents()` — what is in that folder, newest first. An empty list means
   the folder is empty or not made yet, and is not an error.
 
