@@ -1,6 +1,13 @@
-# Harry on the NUC. One service, one volume, one port.
+# Harry on the NUC. Two stacks, two volumes, two ports.
 #
-# Marcel owns 7420 and 7421. Harry owns 7430.
+# Marcel owns 7420 and 7421. Harry owns 7430, and its dev stack 7431.
+
+# Pinned, because compose otherwise names the project after the directory it is run from —
+# and that name prefixes the volumes. From a worktree the store would be
+# `2a6ce1_harry-data` instead of `harry_harry-data`: `make up` would come up healthy on an
+# empty volume, with yesterday's page and the watchdog's memory still sitting in the other
+# one, and nothing would say so.
+name: harry
 
 services:
   harry:

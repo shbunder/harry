@@ -6,7 +6,7 @@ Harry runs on the NUC in Docker on port 7430. Marcel owns 7420 and 7421.
 make image        # build the image, tagged with this commit
 make deploy       # build, tag, and put the real stack on it
 make up           # start, and wait until Harry is actually answering
-make health       # what loaded, what did not, and why
+make health       # what loaded, what did not, and why — asked from the host
 make logs         # follow
 make down         # stop
 ```
@@ -20,9 +20,17 @@ pages and the De Tijd session all survive it, and come back on the next `make up
 `docker compose down -v` deletes them, which is why no make target does that.
 
 Harry restarts itself. `restart: unless-stopped` brings the container back when the process
-crashes and when the machine reboots — but **not** after you stopped it on purpose, which is
-what "unless stopped" means. So `make down` keeps Harry down until you run `make up`, and a
-kill that you did not intend is back and healthy inside half a minute.
+crashes — measured here: killing it inside the container had it healthy again in under half
+a minute — but **not** after you stopped it on purpose, which is what "unless stopped"
+means. So `make down` keeps Harry down until you run `make up`.
+
+The same policy is what should bring Harry back after a reboot, and **that has not been
+observed on this machine yet** — nothing has rebooted it since Harry was containerised. It
+also needs the daemon to start at boot, which is worth checking once:
+
+```bash
+systemctl is-enabled docker     # want: enabled
+```
 
 ## What the NUC needs installed
 
@@ -46,11 +54,12 @@ a change and `main`, so a NUC that cannot run it is a NUC you cannot finish work
 
 **A bare Harry is not an empty Harry**, and this is the state every credential arrives into
 one at a time. Start it on a machine with no `.env.local` anywhere and `make health`
-answers:
+answers **8 loaded, 7 skipped**:
 
 | | |
 |---|---|
 | **loaded** | `weather`, `news`, and the tools over them — `weather_forecast`, `news_search`, `news_article`, plus `digest_list_candidates` and `digest_build` |
+| | `morning-page` — the job, and with it the watchdog. **It loads on a bare machine**, so a missed 07:00 is noticed from the first boot, before any source is configured |
 | **skipped** | `icloud` — *required settings app_password and username are not set* |
 | | `remarkable` — *required setting device_token is not set* |
 | | `slack` — *required settings bot_token and channel are not set* |
@@ -88,6 +97,12 @@ make health    make health-dev    # what loaded, and whether the clock is on
 **How to tell them apart from outside**, with no access to either one's settings: ask
 `/health` and read `jobs.enabled`. The real stack answers `true` and lists what it is
 watching; dev answers `false` with empty lists.
+
+`make health` asks over the published port from the host rather than from inside the
+container, and that is deliberate: reading `/health` by exec-ing in follows `$HARRY_PORT`,
+which is exactly what the image's healthcheck does — and there is a misconfiguration where
+both follow it to the same wrong place and report healthy while nothing outside can reach
+Harry. A check that shares the broken assumption cannot find it.
 
 **The clock is the one real asymmetry, and it is the reason there are two stacks rather
 than two ports.** Both would otherwise watch the morning page's 07:00 deadline, and dev
@@ -193,9 +208,10 @@ make versions    # what has been deployed here, and what images are still around
 outlive every deploy and every rollback, because the only thing either changes is which
 image the container is made from.
 
-A build is named after the short commit — `harry:a1b2c3d` — because that is the one name
-that cannot mean two different things, and a date can mean two within an afternoon. A dirty
-tree builds as `harry:a1b2c3d-dirty` and **`make deploy` refuses it**: there is no CI here,
+A build is named after the short commit — `harry:8d49dc2` — because that is the one name
+that cannot mean two different things, and a date can mean two within an afternoon. A tree that is not
+clean builds as `harry:8d49dc2-dirty` and **`make deploy` refuses it**, naming what is in
+the way — including an untracked file, which the `Dockerfile` would copy into the image: there is no CI here,
 so the tag is the only record of what shipped, and a tag that cannot be rebuilt from git
 records nothing.
 
@@ -207,15 +223,15 @@ A worked example. Something is wrong with the page this morning:
 ```
 $ make versions
 deployed on this machine, newest first:
-  9f2a1c4
-  a1b2c3d
+  8d49dc2
+  2f05e4e
 images still present:
-  harry:9f2a1c4  2 hours ago
-  harry:a1b2c3d  6 days ago
-  harry:latest   2 hours ago
+  harry:8d49dc2  10 seconds ago
+  harry:latest   10 seconds ago
+  harry:2f05e4e  About a minute ago
 
 $ make rollback
-✓ harry is back on harry:a1b2c3d   (make rollback again returns to the other one)
+✓ harry is back on harry:2f05e4e   (make rollback again returns to the other one)
 ```
 
 `make rollback` swaps the top two, so running it twice returns you to where you started —
@@ -237,9 +253,14 @@ Two files, and `.env.local` wins:
 | `.env` | Yes — it arrives with the checkout | Every key with its working default, secrets empty |
 | `.env.local` | No | The three credentials, and anything that differs on this machine |
 
-A capability's own settings live in its own folder, not here: `.harry/connectors/slack/.env.local`
-holds the Slack bot token, beside a committed `.env` that `make env-template` generates.
-See [alerting.md](alerting.md) and [capabilities.md](capabilities.md).
+A capability's own settings live in its own folder, beside a committed `.env` that
+`make env-template` generates — `.harry/connectors/slack/.env.local` holds the Slack bot
+token. **That is the route on a laptop.** In the container it does not exist:
+`.dockerignore` keeps every `.env.local` out of the image and nothing mounts one, so on the
+NUC the same setting arrives as `HARRY_SLACK_BOT_TOKEN` in the root `.env.local`, which
+compose injects as a real environment variable. Same setting, same precedence order, two
+spellings — see [Putting a credential on the NUC](#putting-a-credential-on-the-nuc) above.
+See also [alerting.md](alerting.md) and [capabilities.md](capabilities.md).
 
 You never copy `.env`. You create `.env.local` beside it with only what differs, so a key
 added to `.env` later reaches this machine without anyone editing it twice.

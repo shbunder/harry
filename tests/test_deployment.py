@@ -54,22 +54,108 @@ def test_the_committed_compose_file_carries_no_credential():
     assert found == [], f'{COMPOSE.name} contains something shaped like a credential: {found}'
 
 
-def test_neither_stack_reaches_a_credential_file_from_inside_the_image():
-    """Secrets arrive as injected variables; nothing mounts a file that holds one.
+def sources(service: dict) -> set[str]:
+    """The named volumes a service mounts. Empty is a finding, not a pass."""
+    return {
+        (volume.split(':')[0] if isinstance(volume, str) else volume.get('source', ''))
+        for volume in service.get('volumes') or []
+    }
 
-    A bind mount of a `.env.local` would put a credential inside the container at a path,
-    which is the one route the `Dockerfile` is written to avoid. Only the data volumes are
-    mounted, and each stack has its own.
+
+def test_each_stack_keeps_its_data_on_a_named_volume_of_its_own():
+    """Secrets arrive as injected variables; nothing mounts a file that holds one. And the
+    data lives on a volume, which is what makes it outlive the container.
+
+    **Every assertion here is positive first.** An earlier version compared the two
+    services' mount lists for inequality, which passes when one of them mounts nothing at
+    all — deleting the real stack's whole `volumes:` block left the suite green, and the
+    store, every rendered page and the De Tijd session would have died with the container.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    mounted = {name: sources(service) for name, service in compose['services'].items()}
+
+    for name, found in mounted.items():
+        assert found, f'{name} mounts nothing, so everything it writes dies with the container'
+        assert found <= set(compose['volumes']), f'{name} mounts {found - set(compose["volumes"])}, not a named volume'
+
+    assert not (mounted['harry'] & mounted['harry-dev']), (
+        f'both stacks mount {mounted["harry"] & mounted["harry-dev"]} — `down -v` on dev would take the real store'
+    )
+
+
+def test_the_two_stacks_cannot_collide_on_a_port_a_name_or_a_volume():
+    """The promise this module's docstring makes, asserted rather than described.
+
+    Each of these was checked only against itself before: every service agreed with its own
+    published port, and nothing noticed when both services published 7430 under the same
+    container name.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    services = compose['services']
+
+    for field, got in (
+        ('container_name', [s['container_name'] for s in services.values()]),
+        ('published port', [str(s['ports'][0]) for s in services.values()]),
+        ('HARRY_PORT', [str(s['environment']['HARRY_PORT']) for s in services.values()]),
+    ):
+        assert len(set(got)) == len(services), f'two services share a {field}: {got}'
+
+
+def test_neither_stack_is_handed_a_provider_credential():
+    """`no-model-calls.md` is scoped to this file, and the comment beside `environment:`
+    claims the point. A comment is not a control.
+
+    This is the block a credential would be added to — it is where every other variable
+    the container gets is written down, and adding one line here is the easiest way for
+    Harry to acquire a route to a model.
     """
     compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
 
-    mounted = {name: service.get('volumes') or [] for name, service in compose['services'].items()}
-    for name, volumes in mounted.items():
-        for volume in volumes:
-            source = volume.split(':')[0] if isinstance(volume, str) else volume.get('source', '')
-            assert source in compose['volumes'], f'{name} mounts {source!r}, which is not one of the named volumes'
+    # Matched against the parsed document rather than the file's text: the comment beside
+    # `environment:` cites `.claude/rules/no-model-calls.md`, and a raw scan flags the
+    # rule's own path. The keys and the mounts are what actually reach the container.
+    forbidden = ('ANTHROPIC', 'OPENAI', 'CLAUDE', 'GEMINI', 'MISTRAL', 'COHERE', 'HUGGINGFACE')
 
-    assert mounted['harry'] != mounted['harry-dev'], 'both stacks mount the same volume, so neither is separate'
+    def offends(text: str) -> bool:
+        return any(word in text.upper() for word in forbidden)
+
+    for name, service in compose['services'].items():
+        for key in service.get('environment') or {}:
+            assert not offends(key), f'{name} is handed {key}, which is a route to a model'
+        for entry in service.get('env_file') or []:
+            path = entry if isinstance(entry, str) else entry['path']
+            assert not offends(path), f"{name} reads {path}, which is somebody's model credentials"
+        assert not any(offends(source) for source in sources(service)), f'{name} mounts a model credential'
+
+
+def test_both_stacks_come_back_by_themselves():
+    """`restart: unless-stopped` is what puts Harry back after a crash and after a reboot.
+
+    Nothing read these two lines before, and they are the whole of the criterion about
+    surviving a restart of the machine.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+
+    for name, service in compose['services'].items():
+        assert service.get('restart') == 'unless-stopped', f'{name} does not come back on its own'
+
+
+def test_the_dev_stack_reads_its_own_credentials_and_never_the_real_one_s():
+    """The reMarkable token has no scopes and no read-only mode, so a dev stack reading the
+    real `.env.local` is a dev stack that can rewrite every document on the tablet.
+
+    Pointing dev at `.env.local` used to leave the suite green, which made the comment
+    beside it the only thing standing between a test run and the real device.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+
+    def local_files(service: dict) -> set[str]:
+        return {(entry if isinstance(entry, str) else entry['path']) for entry in service['env_file']} - {'.env'}
+
+    real, dev = local_files(compose['services']['harry']), local_files(compose['services']['harry-dev'])
+
+    assert real and dev, 'a stack with no machine-local env file has nowhere for a credential to come from'
+    assert not (real & dev), f'both stacks read {real & dev}, so dev holds the real tablet token'
 
 
 def test_each_stack_pins_its_own_port_and_data_directory_on_the_service():
@@ -110,6 +196,15 @@ def test_the_dev_stack_is_behind_a_profile_so_make_up_cannot_start_it():
     assert 'profiles' not in compose['services']['harry'], (
         'the real stack is behind a profile, so `make up` starts nothing'
     )
+
+
+def test_the_project_is_named_so_the_volume_does_not_depend_on_the_directory():
+    """Without this, compose names the project after the working directory and prefixes
+    every volume with it. The same `make up` from a worktree and from the real checkout
+    would then be two different stores, both healthy, neither saying so."""
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+
+    assert compose.get('name') == 'harry'
 
 
 def test_the_real_stack_names_a_version_and_dev_tracks_latest():

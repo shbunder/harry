@@ -167,10 +167,16 @@ digest-dry:  ## Build today's page from PICKS=a-file.json, to out/ and nowhere e
 # ---------------------------------------------------------------------------
 
 # What a build is called. The short commit, because it is the one name that cannot be
-# reused for different code — a date can be, twice in an afternoon. A dirty tree gets
-# `-dirty` appended so it is visibly not a version anybody can go back to, and `deploy`
-# refuses one outright.
-TAG      = $(shell git rev-parse --short HEAD)$(shell git diff --quiet HEAD 2>/dev/null || echo -dirty)
+# reused for different code — a date can be, twice in an afternoon. A tree that is not
+# clean gets `-dirty` appended so it is visibly not a version anybody can go back to, and
+# `deploy` refuses one outright.
+#
+# `git status --porcelain` rather than `git diff HEAD`, which reports clean when the only
+# change is an UNTRACKED file. The Dockerfile does `COPY .harry/` and `COPY src/`, so an
+# untracked connector or module goes into the image — and would have been tagged with a
+# commit it is not in.
+DIRTY    = $(shell git status --porcelain 2>/dev/null | head -1)
+TAG      = $(shell git rev-parse --short HEAD)$(if $(DIRTY),-dirty,)
 DEPLOYED = .deployed-tags
 # The tag the real stack runs, newest first. `latest` when nothing has been deployed here,
 # which is what makes `make up` work on a machine straight out of a clone.
@@ -194,9 +200,16 @@ down:  ## Stop Harry. The data volume is not touched — that needs `docker comp
 logs:  ## Follow Harry's logs
 	docker compose logs -f harry
 
-health:  ## What loaded, what did not, and why — from the running container
-	docker compose exec harry python -c "import urllib.request,os,json,sys; \
-	  print(json.dumps(json.load(urllib.request.urlopen(f'http://localhost:{os.environ[\"HARRY_PORT\"]}/health')), indent=2))"
+# Asked from OUTSIDE the container, at the address compose says it published. Reading
+# /health by exec-ing in and following $HARRY_PORT would answer the same question the
+# image's healthcheck does — and that question was reported healthy while nothing on the
+# host could reach Harry at all, because both followed the variable to the same wrong
+# place. `docker compose port` is compose's own answer, so nothing here owns the number.
+health:  ## What loaded, what did not, and why — asked from the host, the way a caller would
+	@ADDR=$$(docker compose port harry 7430 | head -1) || { echo -e "$(WARN) harry is not running."; exit 1; }; \
+	 test -n "$$ADDR" || { echo -e "$(WARN) harry is not running."; exit 1; }; \
+	 curl -fsS "http://localhost:$${ADDR##*:}/health" | $(PY) -m json.tool \
+	   || { echo -e "$(WARN) harry is up but nothing answered on the port it publishes ($$ADDR)."; exit 1; }
 
 # The dev stack. Separate targets rather than a flag, so nothing that starts, stops or
 # rebuilds the real one can reach dev by accident, or the other way round. The `dev`
@@ -214,8 +227,10 @@ logs-dev:  ## Follow the dev stack's logs
 	docker compose --profile dev logs -f harry-dev
 
 health-dev:  ## What the dev stack loaded. `jobs.enabled` is false here, and true on the real one
-	docker compose exec harry-dev python -c "import urllib.request,os,json,sys; \
-	  print(json.dumps(json.load(urllib.request.urlopen(f'http://localhost:{os.environ[\"HARRY_PORT\"]}/health')), indent=2))"
+	@ADDR=$$(docker compose --profile dev port harry-dev 7431 | head -1) || { echo -e "$(WARN) harry-dev is not running."; exit 1; }; \
+	 test -n "$$ADDR" || { echo -e "$(WARN) harry-dev is not running."; exit 1; }; \
+	 curl -fsS "http://localhost:$${ADDR##*:}/health" | $(PY) -m json.tool \
+	   || { echo -e "$(WARN) harry-dev is up but nothing answered on the port it publishes ($$ADDR)."; exit 1; }
 
 # ---------------------------------------------------------------------------
 # Moving versions
@@ -225,14 +240,15 @@ health-dev:  ## What the dev stack loaded. `jobs.enabled` is false here, and tru
 # because the only thing either one changes is which image the container is made from.
 
 deploy:  ## Build this commit, tag it, and put the real stack on it
-	@git diff --quiet HEAD || { \
-	  echo -e "$(WARN) The tree is dirty, so this build could not be rebuilt from git."; \
-	  echo "   Commit first. There is no CI here: the tag IS the record of what shipped."; exit 1; }
+	@test -z "$(DIRTY)" || { \
+	  echo -e "$(WARN) The tree is not clean, so this build could not be rebuilt from git."; \
+	  echo "   Commit first. There is no CI here: the tag IS the record of what shipped."; \
+	  echo "   Uncommitted or untracked:"; git status --porcelain | sed 's/^/     /'; exit 1; }
 	@$(MAKE) --no-print-directory image
+	HARRY_TAG=$(TAG) docker compose up -d --wait --wait-timeout 120
 	@printf '%s\n' "$(TAG)" > $(DEPLOYED).new
 	@grep -vxF "$(TAG)" $(DEPLOYED) 2>/dev/null >> $(DEPLOYED).new || true
 	@mv $(DEPLOYED).new $(DEPLOYED)
-	HARRY_TAG=$(TAG) docker compose up -d --wait --wait-timeout 120
 	@echo -e "$(GREEN)✓ harry is on harry:$(TAG)$(OFF)   (go back with: make rollback)"
 
 rollback:  ## Put the real stack back on the tag it was running before
@@ -245,9 +261,9 @@ rollback:  ## Put the real stack back on the tag it was running before
 	   echo -e "$(WARN) harry:$$PREV was the previous version and is no longer on this machine."; \
 	   echo "   Rebuild it: git checkout $$PREV && make deploy"; exit 1; }
 	@PREV=$$(sed -n 2p $(DEPLOYED)); \
+	 HARRY_TAG=$$PREV docker compose up -d --wait --wait-timeout 120; \
 	 { sed -n 2p $(DEPLOYED); sed -n 1p $(DEPLOYED); sed -n '3,$$p' $(DEPLOYED); } > $(DEPLOYED).new; \
 	 mv $(DEPLOYED).new $(DEPLOYED); \
-	 HARRY_TAG=$$PREV docker compose up -d --wait --wait-timeout 120; \
 	 echo -e "$(GREEN)✓ harry is back on harry:$$PREV$(OFF)   (make rollback again returns to the other one)"
 
 versions:  ## What is deployed here, newest first, and what is still on the machine
