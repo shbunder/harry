@@ -110,6 +110,77 @@ to the right place while the outside world knocks on the wrong one. It was measu
 being fixed: `/data` empty, the store written to a path that dies with the container, and
 `Container harry Healthy` on the console.
 
+## Putting a credential on the NUC
+
+Harry's secrets arrive as **environment variables**, one file per stack, and never as a file
+inside the image. The names are `HARRY_<CAPABILITY>_<SETTING>` — the prefixed spelling of a
+capability's own setting, which exists for exactly this: a container has no folders.
+
+```bash
+install -m 600 /dev/null .env.local        # if it does not exist yet. 600, before anything goes in it
+$EDITOR .env.local
+```
+
+```ini
+# .env.local — the real stack. Gitignored, mode 600, never leaves this machine.
+HARRY_ICLOUD_USERNAME=you@example.com
+HARRY_ICLOUD_APP_PASSWORD=abcd-efgh-ijkl-mnop
+HARRY_REMARKABLE_DEVICE_TOKEN=<the long token from pairing>
+HARRY_SLACK_BOT_TOKEN=xoxb-…
+HARRY_SLACK_CHANNEL=#harry
+```
+
+Then `make up`. **No rebuild** — the image carries no configuration, so a credential added
+here reaches Harry on the next start. Watch it land:
+
+```bash
+make health | grep -A1 icloud     # skipped → loaded
+```
+
+**Use an editor, not `echo >>`.** A secret typed on a command line is in `~/.bash_history`
+and in the process list while it runs, and neither is somewhere you can take it back from.
+
+**One at a time, weather first.** Weather and news need nothing, so they are already working
+— start there, then iCloud, then the tablet, checking `make health` after each. A credential
+that does not work is much easier to find when it is the only one that changed.
+
+The dev stack reads `.env.dev.local` instead, with the same names. Give it its own
+throwaway values where you can: the reMarkable token especially, because there is no
+read-only variant and the dev stack pushing to the real tablet is a thing that happens once.
+
+| Setting | Where to get it | Expires |
+|---|---|---|
+| `HARRY_ICLOUD_USERNAME` | The Apple ID itself | no |
+| `HARRY_ICLOUD_APP_PASSWORD` | account.apple.com → Sign-In and Security → App-Specific Passwords. Shown once | when the Apple ID password changes |
+| `HARRY_REMARKABLE_DEVICE_TOKEN` | `make remarkable-pair CODE=…`, code from my.remarkable.com/device/desktop/connect | no — but revoking the device kills it |
+| `HARRY_SLACK_BOT_TOKEN` | api.slack.com/apps → OAuth & Permissions. Needs `chat:write`, and the bot invited to the channel | no |
+| `HARRY_SLACK_CHANNEL` | A channel id like `C0123456789`, or `#harry` | — |
+
+The De Tijd browser session is the exception: it is a file, not a string, and it lives in
+the data volume at mode 600. See the renewal steps further down.
+
+### Building a page by hand, before anything is scheduled
+
+The whole product, minus the clock. **`make` is not in the image** — the `Dockerfile` copies
+`scripts/` but no `Makefile` — so this goes through `scripts/call_tool.py`, which is what
+the make targets shell out to anyway:
+
+```bash
+docker compose exec harry uv run python scripts/call_tool.py digest_list_candidates
+# choose from what it returns, write the picks, then:
+docker compose exec -T harry sh -c 'cat > /data/picks.json' < picks.json
+docker compose exec harry uv run python scripts/call_tool.py digest_build --args @/data/picks.json
+```
+
+Put `"deliver": false` in the picks and nothing is pushed — the PDF is written to
+`/data/digest/<date>.pdf` and stays there. `OUT_DIR` already defaults to `/data/digest`, so
+the page lands on the volume without being told to; `out/` is in `.dockerignore` and would
+not have survived the container.
+
+**Measured on this NUC:** forty headlines back in under a second, and a 53-page paper with
+twenty articles built in **21 seconds**. Worth knowing because a silent MCP call is aborted
+after 300s of no progress, and on a laptop this took about ninety.
+
 ## Deploying a version, and going back
 
 ```bash
