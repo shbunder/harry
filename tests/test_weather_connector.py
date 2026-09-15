@@ -91,6 +91,7 @@ def test_the_call_asks_for_exactly_the_four_fields_it_reads(weather):
         'temperature_2m_min',
         'precipitation_probability_max',
     ]
+    assert asked['hourly'] == 'temperature_2m', 'the shape of the day rides on the same request'
 
 
 @respx.mock
@@ -284,6 +285,7 @@ async def test_claude_can_ask_for_the_forecast(weather, tmp_path):
         'high': 22,
         'low': 18,
         'rain_chance': 59,
+        'hours': [],
     }
 
 
@@ -307,3 +309,133 @@ def test_the_tool_imports_the_sdk_and_nothing_else():
 
     assert forbidden_imports(REPO / '.harry' / 'tools' / 'weather_forecast') == []
     assert forbidden_imports(REPO / '.harry' / 'connectors' / 'weather') == []
+
+
+# ---------------------------------------------------------------------------
+# The shape of the day
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_the_forecast_carries_the_day_hour_by_hour(weather):
+    """The high alone cannot say whether the warm part is the morning or the evening.
+
+    Against a real answer recorded on 15 September 2026: twenty-four readings, of which the
+    seventeen between 06:00 and 22:00 are the ones a person glances at.
+    """
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-hourly.json')))
+
+    hours = connector(weather()).forecast()['hours']
+
+    assert [entry['at'] for entry in hours] == [f'{hour:02d}:00' for hour in range(6, 23)]
+    assert hours[0] == {'at': '06:00', 'temperature': 17}
+    assert hours[-1] == {'at': '22:00', 'temperature': 21}
+    assert all(isinstance(entry['temperature'], int) for entry in hours), 'decimals are noise on paper'
+
+
+@respx.mock
+def test_the_night_is_left_off_the_strip(weather):
+    """Twenty-four numbers is a table. The recorded answer carries all of them, so this goes
+    red if the window goes."""
+    assert len(recorded('leuven-hourly.json')['hourly']['time']) == 24
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-hourly.json')))
+
+    hours = connector(weather()).forecast()['hours']
+
+    assert len(hours) == 17
+    assert '05:00' not in [entry['at'] for entry in hours]
+    assert '23:00' not in [entry['at'] for entry in hours]
+
+
+@respx.mock
+def test_an_answer_with_no_hourly_block_costs_the_strip_and_nothing_else(weather, caplog):
+    """The degraded path, and the reason `_hours` may not raise: the day arrived in the same
+    response. `leuven-today.json` is a real answer from before the hourly block was asked
+    for, so this is the shape a changed endpoint would produce."""
+    assert 'hourly' not in recorded('leuven-today.json')
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-today.json')))
+
+    with caplog.at_level(logging.WARNING, logger='harry.capability.weather'):
+        answer = connector(weather()).forecast()
+
+    assert answer['available'] is True
+    assert (answer['summary'], answer['high'], answer['low'], answer['rain_chance']) == ('overcast', 22, 18, 59)
+    assert answer['hours'] == []
+    assert caplog.text == '', 'a missing strip is not a fault — nothing to warn about, nothing for Slack'
+
+
+@respx.mock
+def test_an_hour_that_cannot_be_read_drops_out_rather_than_taking_the_panel(weather):
+    """A free endpoint changing shape is a thing that happens. One unusable reading must cost
+    that reading."""
+    broken = recorded('leuven-hourly.json')
+    broken['hourly']['temperature_2m'][7] = None
+    broken['hourly']['time'][8] = 'not-a-timestamp'
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=broken))
+
+    hours = connector(weather()).forecast()['hours']
+
+    assert [entry['at'] for entry in hours] == [
+        '06:00',
+        '09:00',
+        '10:00',
+        '11:00',
+        '12:00',
+        '13:00',
+        '14:00',
+        '15:00',
+        '16:00',
+        '17:00',
+        '18:00',
+        '19:00',
+        '20:00',
+        '21:00',
+        '22:00',
+    ]
+    assert connector(weather()).forecast()['available'] is True
+
+
+@respx.mock
+def test_two_arrays_of_different_lengths_give_the_part_that_lines_up(weather):
+    """Honest beats empty: the readings that have a time keep it."""
+    short = recorded('leuven-hourly.json')
+    short['hourly']['temperature_2m'] = short['hourly']['temperature_2m'][:10]
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=short))
+
+    hours = connector(weather()).forecast()['hours']
+
+    assert [entry['at'] for entry in hours] == ['06:00', '07:00', '08:00', '09:00']
+
+
+@respx.mock
+def test_today_stays_four_facts_now_that_the_forecast_has_five(weather):
+    """`today()` is the narrow answer on purpose. A caller wanting one line should not have to
+    carry seventeen temperatures past it."""
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-hourly.json')))
+    client = connector(weather())
+
+    assert set(client.today()) == {'summary', 'high', 'low', 'rain_chance'}
+    assert len(client.forecast()['hours']) == 17
+
+
+@respx.mock
+async def test_the_shape_of_the_day_reaches_claude(weather, tmp_path):
+    """A field the connector returns and the tool drops is a field nobody can use."""
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-hourly.json')))
+    server = build_server(weather(with_tool=True), Store(tmp_path / 'jobs.json'))
+
+    async with Client(server) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'weather'})
+        answer = (await connected.call_tool('weather_forecast', {})).data
+
+    assert answer['hours'][0] == {'at': '06:00', 'temperature': 17}
+    assert len(answer['hours']) == 17
+
+
+def test_the_tool_body_tells_claude_the_hours_are_there():
+    """The body of a TOOL.md is the description Claude reads to choose. A field nobody is
+    told about is a field nobody asks for."""
+    body = (REPO / '.harry' / 'tools' / 'weather_forecast' / 'TOOL.md').read_text(encoding='utf-8')
+
+    assert 'hours' in body
+    assert '06:00' in body and '22:00' in body

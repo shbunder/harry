@@ -21,6 +21,7 @@ invented when the page finally calls it:
 
 ```
 weather.today()          → {summary, high, low, rain_chance}, or None
+weather.forecast()       → the same four, plus available, place and hours
 calendar.today()         → [{at, title, where}], empty list on a free day
 news.candidates(limit)   → [{id, title, source, feed, published, date, summary, link}], newest first
 news.article(id)         → {available, id, title, source, published, link, text}
@@ -49,6 +50,20 @@ Open-Meteo. No account, no key, one call.
 ```
 18–22°, overcast, 59% rain
 ```
+
+`today()` is those four facts and nothing else — it is what a caller wanting one line asks
+for. `forecast()` is the same lookup for a caller that wants to be told why it failed, and it
+carries one thing more: **`hours`, the shape of the day.** Seventeen readings, 06:00 to 22:00
+in local time, one an hour:
+
+```
+{"hours": [{"at": "06:00", "temperature": 19}, {"at": "07:00", "temperature": 19}, …]}
+```
+
+That is what the page's hourly strip is drawn from, and it is the part the day's high cannot
+tell you: whether the warm part is the morning or the evening. **An answer that carries the
+day but not the hours gives `hours: []`** — the panel keeps its word, its high, its low and
+its rain chance, and loses only the strip. Nothing is said in Slack, because the day arrived.
 
 Ships pointed at Leuven and works from a fresh clone. To point it somewhere else, put only
 what differs in `.env.local` beside the declaration — never in `.env`, which is generated:

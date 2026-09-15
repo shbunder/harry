@@ -13,6 +13,8 @@ that raises tells the model it did something wrong, and it did not.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 import httpx
 
@@ -28,6 +30,14 @@ DAILY = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probab
 """`precipitation_probability_max`, not `_mean`. They are different numbers for the same day
 and the page answers "will I need a coat" — the chance it rains at all, not the average
 across the hours."""
+
+HOURLY = 'temperature_2m'
+"""The shape of the day, on the same request as the summary of it. One endpoint answers both,
+so asking twice would be a second call for something the first could have carried."""
+
+FIRST_HOUR, LAST_HOUR = 6, 22
+"""The hours worth printing. Before six nobody is reading and after ten nobody is going out,
+and a strip of twenty-four numbers is a table rather than a glance."""
 
 WORDS = {
     0: 'clear',
@@ -96,7 +106,7 @@ class Weather:
             response = httpx.get(
                 FORECAST,
                 timeout=TIMEOUT,
-                params={**self._where, 'daily': DAILY, 'forecast_days': 1},
+                params={**self._where, 'daily': DAILY, 'hourly': HOURLY, 'forecast_days': 1},
             )
             response.raise_for_status()
             return {'available': True, 'place': self.place, **self._read(response.json())}
@@ -120,7 +130,34 @@ class Weather:
             'high': round(daily['temperature_2m_max'][0]),
             'low': round(daily['temperature_2m_min'][0]),
             'rain_chance': round(daily['precipitation_probability_max'][0]),
+            'hours': self._hours(answered.get('hourly') or {}),
         }
+
+    def _hours(self, hourly: Mapping[str, Any]) -> list[dict]:
+        """The day's temperatures between `FIRST_HOUR` and `LAST_HOUR`, or an empty list.
+
+        Never raises, which is the point of it. The day itself arrived in the same response,
+        and a strip that could not be read must cost the strip rather than the whole panel —
+        so a missing block, a short array or an unparseable entry each drop out quietly and
+        leave `available` true.
+        """
+        times = hourly.get('time') or []
+        degrees = hourly.get('temperature_2m') or []
+        if not times or not degrees:
+            self._log.info('no hourly temperatures for %s; the page carries the day without its strip', self.place)
+            return []
+        found = []
+        # `strict=False`: arrays of different lengths are a malformed answer, and the honest
+        # response is the part that lines up rather than no strip at all.
+        for stamp, degree in zip(times, degrees, strict=False):
+            at = str(stamp)[11:16]
+            try:
+                hour, reading = int(at[:2]), round(float(degree))
+            except (TypeError, ValueError):
+                continue
+            if FIRST_HOUR <= hour <= LAST_HOUR:
+                found.append({'at': at, 'temperature': reading})
+        return found
 
 
 def _why(error: Exception) -> str:
