@@ -267,16 +267,26 @@ To revoke it, remove the device at my.remarkable.com, then pair again.
 
 ### What it does
 
-Documents go into one folder, named in `FOLDER` and `Harry` by default. It is created at the
-top level the first time something is pushed and found rather than re-made after that.
+Documents go into one folder, named in `FOLDER` and **`Daily`** by default. It is created at
+the top level the first time something is pushed and found rather than re-made after that.
+
+**The default was `Harry` until 15 September 2026.** If you have been running Harry since
+before that, the next push makes a new `Daily` folder and everything already in `Harry` stays
+where it is — Harry will not look there again, and a push will never replace one of those
+documents. Either move them across on the tablet, or keep the old name:
+
+```bash
+echo 'FOLDER=Harry' >> .harry/connectors/remarkable/.env.local
+```
 
 **Claude reaches it with two tools**, both deferred, so a session finds them with
 `harry_find_tools("remarkable")` first:
 
 - `remarkable_push_document(name, path=…)` or `(name, markdown=…)` — puts one document
-  there. Markdown is rendered at 509.34 × 679.13 points, the Paper Pro's exact page, because
-  at any other size the tablet rescales it and the type goes soft. Exactly one of `path` and
-  `markdown`; both or neither is an error.
+  there, **replacing any document of that name already in the folder**. Markdown is rendered
+  at 509.34 × 679.13 points, the Paper Pro's exact page, because at any other size the tablet
+  rescales it and the type goes soft. Exactly one of `path` and `markdown`; both or neither is
+  an error.
 - `remarkable_list_documents()` — what is in that folder, newest first. An empty list means
   the folder is empty or not made yet, and is not an error.
 

@@ -46,6 +46,11 @@ revoked token, and neither gets better on a third attempt inside the same minute
 
 PDF = '.pdf'
 
+REPAIR = 'the tablet refused the token — pair this machine again with make remarkable-pair'
+"""What to tell somebody whose token has lapsed. Said from two places — a call that failed
+outright, and a replacement that could not be made after the page itself went up — and a
+sentence written twice is a sentence that will disagree with itself."""
+
 MOST = 50
 """Documents in one listing. The folder holds a page a day and the free tier drops untouched
 ones after fifty, so this is a ceiling rather than a limit anybody meets — and a listing that
@@ -140,10 +145,11 @@ class Tablet:
         it is; the worst this order can do is leave two copies, which is exactly what this
         connector did before and is a thing a person can see.
 
-        Bounded three ways, because the device token has no scopes and this is the only call
-        Harry makes that removes anything: inside this connector's own folder, matching the
-        name just written **exactly**, and never the document just created. `delete` is
-        reMarkable's soft delete — what it takes goes to the tablet's trash rather than away.
+        Bounded four ways, because the device token has no scopes and this is the only call
+        Harry makes that removes anything: inside this connector's own folder, a document
+        rather than a folder, matching the name just written **exactly**, and never the
+        document just created. `delete` is reMarkable's soft delete — what it takes goes to
+        the tablet's trash rather than away.
         """
         older: list[str] = []
         try:
@@ -158,10 +164,23 @@ class Tablet:
             ]
             for one in older:
                 client.delete(one)
+        except ExpiredToken:
+            # `ExpiredToken` is a `RemarkableAPIError`, so the catch below would swallow it and
+            # send somebody to tidy a folder when the answer is to pair again. The page itself
+            # went up before the token lapsed, so this still does not raise.
+            self._client = self._folder_id = None
+            self._log.warning('could not retire the older %r: the tablet refused the token', name)
+            self._alert(f'reMarkable: {REPAIR}', key='refused')
+            return 0
         except (RemarkableAPIError, httpx.HTTPError, OSError) as error:
             # The page arrived, which is the thing that mattered, so this does not raise.
             # But it does not go quiet either: two copies is visible, a folder quietly
             # filling up over weeks is what nobody notices.
+            #
+            # The client goes too. `_trying` drops a dead one so the next call builds fresh;
+            # this path reaches the client directly, so it has to do that job itself or the
+            # next push inherits the corpse and burns both attempts on it.
+            self._client = self._folder_id = None
             self._log.warning('could not retire the older %r: %s', name, _why(error))
             self._alert(
                 f'reMarkable: there is more than one {name!r} in {self.folder!r} — the older copy could not be removed',
@@ -223,10 +242,8 @@ class Tablet:
             try:
                 return call(self._reach())
             except ExpiredToken as error:
-                self._give_up('the tablet refused the token — pair this machine again with make remarkable-pair', key)
-                raise Refused(
-                    'the tablet refused the token — pair this machine again with make remarkable-pair'
-                ) from error
+                self._give_up(REPAIR, key)
+                raise Refused(REPAIR) from error
             except (RemarkableAPIError, httpx.HTTPError, OSError) as error:
                 last = error
                 self._client = self._folder_id = None

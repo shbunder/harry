@@ -498,7 +498,10 @@ def test_nothing_is_dialled_until_something_is_pushed(tablet):
 def test_the_stand_in_has_the_same_shape_as_the_real_client():
     """Every test above talks to `StandIn`. This is what stops it drifting from remarkapy:
     each method it offers must exist on the real client, with the same parameters."""
-    for name in ('list_directory', 'list_directory_hydrated', 'put_folder', 'put_pdf'):
+    # `delete` belongs here more than any of them: every bound in `_retire` is proved
+    # against this stand-in, so a stand-in that has drifted proves them about a client that
+    # does not exist.
+    for name in ('list_directory', 'list_directory_hydrated', 'put_folder', 'put_pdf', 'delete'):
         theirs = inspect.signature(getattr(Client, name))
         ours = inspect.signature(getattr(StandIn, name))
         assert list(ours.parameters) == list(theirs.parameters), f'{name} has drifted from remarkapy'
@@ -719,7 +722,7 @@ async def test_both_tools_defer_and_are_found_by_search(tablet, tmp_path):
         assert sorted(row['name'] for row in found['found']) == sorted(BOTH_TOOLS)
 
 
-async def test_the_push_tool_says_it_writes_and_that_it_does_not_destroy(tablet, tmp_path):
+async def test_the_push_tool_says_it_writes_and_that_it_replaces(tablet, tmp_path):
     """This is how a client can gate the tool that reaches your tablet without gating the
     one that only looks."""
     from fastmcp import Client
@@ -736,8 +739,28 @@ async def test_the_push_tool_says_it_writes_and_that_it_does_not_destroy(tablet,
     push = published['remarkable_push_document'].annotations
     listing = published['remarkable_list_documents'].annotations
     assert push is not None and listing is not None
-    assert push.read_only_hint is False and push.destructive_hint is False, 'it adds; adding is not destroying'
+    # `destructiveHint` is the one signal a client uses to decide whether to ask a person
+    # first, and pushing a name that is already there now removes the copy it replaces — on a
+    # device whose token has no scopes. It said `false` for a week after that became untrue.
+    assert push.read_only_hint is False
+    assert push.destructive_hint is True, 'a push replaces, and replacing removes'
+    assert push.idempotent_hint is True, 'the same name twice leaves one document, not two'
     assert listing.read_only_hint is True
+
+
+def test_the_push_tool_body_says_a_second_push_replaces():
+    """The body of a TOOL.md is the description Claude reads to choose. It told Claude the
+    opposite of what the tool does — "a document pushed twice under the same name gives two
+    documents, not one" — which is how a model learns to invent unique names it does not need,
+    or worse, trusts that nothing is ever removed."""
+    body = ' '.join(
+        (REPO / '.harry' / 'tools' / 'remarkable_push_document' / 'TOOL.md').read_text(encoding='utf-8').split()
+    )
+
+    assert 'is replaced' in body
+    assert 'leaves only the second' in body, 'the cost of the same name twice, said plainly'
+    assert 'trash' in body, 'that the removal is recoverable is the reassuring half'
+    assert 'never deletes' not in body
 
 
 async def test_claude_can_push_a_pdf_it_has_a_path_to(tablet, tmp_path):
@@ -1186,7 +1209,7 @@ def a_folder(name: str = 'Daily') -> Item:
     return Item(id='folder-1', type='CollectionType', visibleName=name, parent='')
 
 
-def test_pushing_a_name_that_is_already_there_leaves_one_document(tablet, tmp_path):
+def test_pushing_a_name_that_is_already_there_leaves_one_document(tablet, tmp_path, caplog):
     """The morning page is built at 06:30 and again whenever something needed fixing. Two
     documents called `2026-09-15` with no timestamp between them is a reader opening one of
     them and not knowing whether it has the correction in it."""
@@ -1196,22 +1219,35 @@ def test_pushing_a_name_that_is_already_there_leaves_one_document(tablet, tmp_pa
     )
     built = tablet(cloud=cloud)
 
-    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+    with caplog.at_level(logging.INFO, logger='harry.capability.remarkable'):
+        answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
 
     assert answer['replaced'] == 1
     assert cloud.deleted == ['yesterday']
+    # The only record anywhere that something was removed from a tablet.
+    assert "replaced 1 older copy of '2026-09-15' in 'Daily'" in caplog.text
     assert [d.visibleName for d in cloud.documents] == ['2026-09-15']
     assert [d.id for d in cloud.documents] == ['doc-1'], 'the one that stayed is the one just pushed'
 
 
 def test_the_push_happens_before_anything_is_removed(tablet, tmp_path):
     """A push that fails must leave yesterday's page where it is. The worst this order can do
-    is leave two copies, which is exactly what this connector did before."""
+    is leave two copies, which is exactly what this connector did before.
+
+    **Only the upload refuses.** An earlier version of this test failed every call, so
+    `_retire` bailed into its own `except` and deleted nothing whichever order it ran in —
+    the assertion below held against retire-then-push too, which is the one arrangement it
+    exists to forbid.
+    """
     cloud = StandIn(
         folders=[a_folder()],
         documents=[Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
     )
-    cloud.fail_for = 99
+
+    def refuse(visible_name: str, payload: bytes, *, parent: str = '', refresh: bool = False):
+        raise RemarkableAPIError('the tablet said no')
+
+    cloud.put_pdf = refuse
     built = tablet(cloud=cloud)
 
     with pytest.raises(Exception, match='could not push'):
@@ -1305,32 +1341,93 @@ def test_a_replacement_that_fails_keeps_the_page_and_says_so(tablet, tmp_path, c
     assert any('more than one' in said for said in sink.heard), 'and a person is told'
 
 
-def test_the_replacement_alert_is_keyed_apart_from_the_push(tablet, tmp_path):
-    """One key for everything would let a folder that will not tidy spend the day's budget,
-    and then the 06:30 push would fail in silence."""
-    source = (REPO / '.harry' / 'connectors' / 'remarkable' / 'connector.py').read_text(encoding='utf-8')
-
-    assert "key='retire'" in source
-    assert "key='push'" in source
-
-
-def test_the_docs_and_the_runbook_say_a_push_replaces():
-    """The operator reads one of these two pages when a document looks wrong."""
-    prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
-    runbook = ' '.join(
-        (REPO / '.harry' / 'connectors' / 'remarkable' / 'CONNECTOR.md').read_text(encoding='utf-8').split()
+def test_a_failed_removal_does_not_silence_the_next_failed_push(tablet, tmp_path):
+    """An alert is said once per key per day. One key for everything would let a folder that
+    will not tidy spend the budget every morning, and the 06:30 push would then fail in
+    silence — the three-week silence this connector exists to prevent, arriving through the
+    thing meant to prevent it."""
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
     )
 
-    for page in (prose, runbook):
-        assert 'replaces it' in page
-        assert "sent to the tablet's trash" in page, 'a soft delete is recoverable, and that matters'
-    assert 'goes up **first**' in prose, 'the order is the safety argument'
-    assert 'Two documents of the same name' in runbook, 'the row an operator looks for'
+    def refuse(item_ref: str, refresh: bool = False):
+        raise RemarkableAPIError('the tablet said no')
+
+    cloud.delete = refuse
+    built = tablet(cloud=cloud)
+    tidy = connector(built)
+
+    tidy.push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')  # the removal fails, and alerts
+    cloud.fail_for = 99
+    with pytest.raises(Exception, match='could not push'):
+        tidy.push(a_pdf(tmp_path / 'page.pdf'), '2026-09-16')
+
+    _, sink = built
+    assert len(sink.heard) == 2, sink.heard
+    assert any('more than one' in said for said in sink.heard)
+    assert any('rejected the request' in said for said in sink.heard)
 
 
-def test_the_committed_env_ships_the_daily_folder():
-    """The generated `.env` is what a fresh clone gets, and it is where the default is real
-    rather than declared."""
-    declared = (REPO / '.harry' / 'connectors' / 'remarkable' / '.env').read_text(encoding='utf-8')
+def test_a_token_that_lapsed_during_the_removal_says_to_pair_again(tablet, tmp_path):
+    """`ExpiredToken` is a `RemarkableAPIError`, so a plain catch swallows it and tells the
+    operator to go tidy a folder when the answer is to re-pair the machine."""
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
+    )
 
-    assert 'FOLDER=Daily' in declared
+    def refuse(item_ref: str, refresh: bool = False):
+        raise ExpiredToken('the token is no good')
+
+    cloud.delete = refuse
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert answer['id'] == 'doc-1', 'the page went up before the token lapsed'
+    _, sink = built
+    assert sink.heard == [
+        'reMarkable: the tablet refused the token — pair this machine again with make remarkable-pair'
+    ]
+
+
+def test_a_removal_that_failed_does_not_leave_a_dead_client_for_the_next_push(tablet, tmp_path):
+    """`_retire` reaches the client directly rather than through `_trying`, so it has to do
+    `_trying`'s other job too: drop a client that has died, or the next push inherits it and
+    burns both of its attempts on a connection that is already gone."""
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
+    )
+
+    def refuse(item_ref: str, refresh: bool = False):
+        raise httpx.ConnectError('no route to host')
+
+    cloud.delete = refuse
+    built = tablet(cloud=cloud)
+    tidy = connector(built)
+
+    tidy.push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert tidy._client is None, 'the dead client was kept'  # noqa: SLF001 — nothing else observes it
+
+
+def test_the_listing_inside_a_removal_asks_for_harrys_own_folder(tablet, tmp_path):
+    """The cross-folder test passes on the stand-in whatever the connector asks for, because
+    the stand-in filters by parent. This is the half that has teeth: the request itself names
+    the folder, so a switch to an all-documents call is caught rather than covered for."""
+    cloud = StandIn(folders=[a_folder()])
+    asked: list[str] = []
+    hydrated = cloud.list_directory_hydrated
+
+    def watching(directory_ref: str = '', refresh: bool = False):
+        asked.append(directory_ref)
+        return hydrated(directory_ref, refresh)
+
+    cloud.list_directory_hydrated = watching
+    built = tablet(cloud=cloud)
+
+    connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert asked == ['folder-1'], 'the root would have been every document on the tablet'

@@ -81,5 +81,7 @@ disk where it was, and whoever asked is told it did not arrive.
 | The token has been revoked | `the tablet refused the token — pair this machine again`; one Slack line | `make remarkable-pair CODE=…` with a fresh code |
 | A push succeeds but nothing appears on the device | — | The tablet syncs when it has wifi and the screen is on. Give it a minute, then open the folder |
 | Two documents of the same name in the folder | One Slack line saying there is more than one | The older copy could not be removed. Delete it on the tablet; the newer one is the one that was pushed last |
+| Duplicates from before this connector replaced on push | — | A name Harry will push again is cleared by the next push. A name it will not — an older date, a one-off document — has to be deleted on the tablet; nothing here goes looking for them |
+| Everything is in a folder called `Harry` and nothing new arrives there | — | The default folder became `Daily` on 15 September 2026. Move them across on the tablet, or put `FOLDER=Harry` in `.env.local` |
 | Every write started failing and nothing here changed | Two failures, one Slack line | reMarkable changed the protocol. It happened in August 2026. Bump the exact `remarkapy` pin in `pyproject.toml` and run `make test-live ARGS=tests/test_remarkable_connector.py` |
 | A document you never touched disappeared | — | The free tier removes documents nobody opens after 50 days. Irrelevant for a page replaced every morning |

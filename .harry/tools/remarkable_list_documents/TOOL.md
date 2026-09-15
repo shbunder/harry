@@ -1,7 +1,7 @@
 ---
 name: remarkable_list_documents
 namespace: remarkable
-description: What is already in the tablet's Harry folder
+description: What is already in Harry's folder on the tablet
 requires: [remarkable]
 always_load: false
 annotations:
