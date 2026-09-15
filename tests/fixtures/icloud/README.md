@@ -1,6 +1,6 @@
 # iCloud fixtures
 
-Seven iCalendar documents, and **all of them are written by hand.**
+Thirteen iCalendar documents, and **all of them are written by hand.**
 
 That is worth saying plainly, because every other fixture directory here holds recordings.
 Nothing could be recorded from a real account: the app-specific password had not been
@@ -25,6 +25,10 @@ test re-checks.
 | `published-outlook.ics` | What a published `.ics` link serves — the kind work hands you. Shaped after a real one, see below |
 | `not-a-calendar.html` | The sign-in page an expired published link answers with, instead of a 404 |
 | `two-line-title.ics` | A `SUMMARY` and a `LOCATION` carrying a newline. Copied from a real entry — somebody typed it that way, and iCalendar carries it faithfully |
+| `no-end.ics` | A `DTSTART` with no `DTEND` and no `DURATION`. RFC 5545 allows it, Apple's Reminders-shaped entries use it, and it must read as a point in time rather than vanish |
+| `a-duration.ics` | `DURATION:PT45M` instead of a `DTEND`. The other half of RFC 5545's way of saying when something finishes, and what Google Calendar exports |
+| `bad-end.ics` | A `DTEND` that is not a timestamp. `recurring_ical_events` drops the whole event for this, inside the library, saying nothing — the meeting must survive as a point in time |
+| `conference.ics` | A multi-day block, Exchange-shaped: `DTSTART;VALUE=DATE` with a `DTEND` two days later carrying a time. The expander turns it into a timed event at 00:00, and its end belongs to Wednesday |
 
 The dates are all around **Monday 14 September 2026**, which is a Monday, so the weekly
 series lands on it.

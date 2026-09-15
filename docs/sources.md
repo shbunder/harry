@@ -22,7 +22,7 @@ invented when the page finally calls it:
 ```
 weather.today()          → {summary, high, low, rain_chance}, or None
 weather.forecast()       → the same four, plus available, place and hours
-calendar.today()         → [{at, title, where}], empty list on a free day
+calendar.today()         → [{at, ends, title, where, calendar}], empty list on a free day
 news.candidates(limit)   → [{id, title, source, feed, published, date, summary, link}], newest first
 news.article(id)         → {available, id, title, source, published, link, text}
 tablet.push(path, name)  → {where}
@@ -267,6 +267,25 @@ test attached.
 ## The calendar
 
 Your whole calendar, one day at a time. `09:30 standup · 14:00 dentist`.
+
+Each event carries five things:
+
+```
+{"at": "09:30", "ends": "10:00", "title": "standup",
+ "where": "meeting room", "calendar": "Shaun"}
+```
+
+`at` and `ends` are both `"HH:MM"` in your timezone, and `ends` is what lets the page draw a
+block as tall as the time it takes rather than a line of text. **`ends` is `null` whenever
+there is no block to draw** — an all-day entry, an event saved with a start and nothing else,
+or something that runs past midnight, whose end belongs to tomorrow rather than to this
+morning's timetable.
+
+`calendar` is the name of the calendar it came from: what the calendar app shows, or the
+label you gave a published link. It is what tells your meetings from the kids' school run,
+and it is the only thing the page has to colour them by. **A calendar that will not give its
+name reads as `"Calendar"`** and its events still appear — a nameless calendar is a cosmetic
+problem, a missing afternoon is not.
 
 **Not only Apple's part of it.** iCloud over CalDAV, plus any number of published `.ics`
 links — the kind work hands you — merged into one day. The folder is called `icloud` because

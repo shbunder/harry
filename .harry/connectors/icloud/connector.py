@@ -76,6 +76,11 @@ ALL_DAY = 'all day'
 """What `at` says for an event with a date and no time. Not an empty string, which reads as
 a missing value, and not "00:00", which is a time nobody set."""
 
+UNNAMED = 'Calendar'
+"""What a calendar that will not give its name is filed under. Its events still reach the
+page — in the uncoloured grey, because colour is keyed on the name — since a nameless
+calendar is a cosmetic problem and a missing afternoon is not."""
+
 
 @dataclass(frozen=True)
 class Link:
@@ -146,7 +151,7 @@ class Agenda:
         return self.on(dt.datetime.now(self._zone).date())
 
     def on(self, day: dt.date | str) -> list[dict]:
-        """One day, as `[{at, title, where}]`.
+        """One day, as `[{at, ends, title, where, calendar}]`.
 
         An empty list is a free day. A calendar that cannot be read raises, so the page can
         tell "nothing on" from "nobody knows".
@@ -159,12 +164,22 @@ class Agenda:
     # -- the work -------------------------------------------------------------
 
     def _read(self, start: dt.datetime, end: dt.datetime) -> list[dict]:
+        """Every source, read and expanded on its own.
+
+        One document per calendar rather than one merged document, because the page colours
+        by calendar and the merge is exactly where that fact is lost. It costs one expansion
+        per source instead of one for everything; a personal account has a handful.
+        """
+        sources: list[tuple[str, icalendar.Calendar]] = []
         try:
-            merged = icalendar.Calendar()
             for calendar in self._calendars():
+                merged = icalendar.Calendar()
                 self._collect(calendar, start, end, merged)
+                sources.append((self._name_of(calendar), merged))
             for link in self._links:
+                merged = icalendar.Calendar()
                 self._collect_link(link, merged)
+                sources.append((link.label, merged))
         except AuthorizationError as error:
             raise self._give_up(
                 'the password was refused — make a new app-specific password at account.apple.com', key='refused'
@@ -184,8 +199,11 @@ class Agenda:
                 'iCloud answered something this connector does not understand', key='unreadable'
             ) from error
 
-        occurrences = recurring_ical_events.of(merged, skip_bad_series=True).between(start, end)
-        return [shaped for occurrence in occurrences if (shaped := self._shape(occurrence)) is not None]
+        found: list[dict] = []
+        for name, document in sources:
+            occurrences = recurring_ical_events.of(document, skip_bad_series=True).between(start, end)
+            found += [shaped for one in occurrences if (shaped := self._shape(one, name)) is not None]
+        return found
 
     def _collect(self, calendar: Any, start: dt.datetime, end: dt.datetime, merged: icalendar.Calendar) -> None:
         """Every event object touching the window, into one calendar.
@@ -256,12 +274,18 @@ class Agenda:
         return document
 
     def _readable(self, event: Any) -> bool:
-        """Whether this event's start can be read at all.
+        """Whether this event can be expanded, repairing what can be repaired.
 
         `recurring_ical_events` is asked to skip a series it cannot expand, and it does —
         silently, inside the library. Silently is the problem: a recurring meeting vanishing
         from the page with no trace is the failure the whole connector is arranged against.
-        So the start is touched here, where a skip can be said out loud.
+        So both times are touched here, where a skip can be said out loud.
+
+        The two are not equally serious. **An unreadable start is fatal to the event** —
+        there is nowhere to put it. **An unreadable end is not**: the meeting is still at
+        two o'clock, and the honest answer is to drop the end and draw a point in time. So
+        the end is removed and the event goes through, rather than the whole thing being
+        dropped inside the library for a field the page can live without.
         """
         try:
             starts = event.get('DTSTART')
@@ -274,6 +298,17 @@ class Agenda:
                 type(error).__name__,
             )
             return False
+        try:
+            finishes = event.get('DTEND')
+            if finishes is not None:
+                _ = finishes.dt
+        except Exception as error:  # noqa: BLE001 — same library, same handful of types
+            self._log.warning(
+                'keeping %r as a point in time: its end cannot be read (%s)',
+                str(event.get('SUMMARY') or 'an event with no title'),
+                type(error).__name__,
+            )
+            del event['DTEND']
         return True
 
     def _calendars(self) -> list[Any]:
@@ -293,8 +328,34 @@ class Agenda:
                 self._log.warning('no calendar called %r on this account; skipping it', name)
         return [by_name[name] for name in self._wanted if name in by_name]
 
-    def _shape(self, occurrence: Any) -> dict | None:
-        """One occurrence into the three fields the page needs, or None if it has no start."""
+    def _name_of(self, calendar: Any) -> str:
+        """What to file this calendar's events under.
+
+        A name is what makes colour possible — the page draws Shaun's meetings and the kids'
+        school run in different inks, and it has nothing else to tell them apart by. A
+        calendar that will not give one still puts its events on the page, in the uncoloured
+        grey, because a nameless calendar is a cosmetic problem and a missing afternoon is
+        not.
+        """
+        try:
+            name = str(calendar.get_display_name() or '').strip()
+        except Exception as error:  # noqa: BLE001 — caldav raises several types here
+            self._log.info('a calendar would not give its name (%s)', type(error).__name__)
+            name = ''
+        if not name:
+            # The URL of a calendar *inside the account*, which needs the app password to
+            # use. A published link's URL is the credential itself and is never logged —
+            # and never reaches here, because `read_links` refuses a link with no label.
+            self._log.info(
+                'the calendar at %s has no name; its events are filed under %r',
+                getattr(calendar, 'url', 'an unknown address'),
+                UNNAMED,
+            )
+            return UNNAMED
+        return name
+
+    def _shape(self, occurrence: Any, calendar: str) -> dict | None:
+        """One occurrence into the fields the page needs, or None if it has no start."""
         starts = occurrence.get('DTSTART')
         if starts is None:
             return None
@@ -307,9 +368,37 @@ class Agenda:
             at = ALL_DAY
         return {
             'at': at,
+            'ends': self._ends(occurrence, when),
             'title': _one_line(occurrence.get('SUMMARY')),
             'where': _one_line(occurrence.get('LOCATION')),
+            'calendar': calendar,
         }
+
+    def _ends(self, occurrence: Any, starts: dt.date | dt.datetime) -> str | None:
+        """When a timed event finishes **today**, as `"HH:MM"`, or None.
+
+        This is what lets the page draw a block as tall as the time it takes. None means
+        there is no block to draw, and three ordinary things mean it:
+
+        * an all-day entry, which has no times at all
+        * an event saved with a start and nothing else, which is how a reminder-shaped entry
+          arrives — the expander gives those an end equal to their start
+        * something that runs past midnight, whose end belongs to a different day. Left in,
+          a three-day conference draws a block from 00:00 to 09:00 across this morning
+
+        All three are normal, so none of them says anything.
+
+        A `DURATION` instead of a `DTEND` needs nothing here: `recurring_ical_events` resolves
+        one into the other while expanding, and `a-duration.ics` is the test that says so
+        rather than a branch that would never run.
+        """
+        finishes = getattr(occurrence.get('DTEND'), 'dt', None)
+        if not isinstance(starts, dt.datetime) or not isinstance(finishes, dt.datetime):
+            return None
+        here, began = finishes.astimezone(self._zone), starts.astimezone(self._zone)
+        if here <= began or here.date() != began.date():
+            return None
+        return here.strftime('%H:%M')
 
     def _give_up(self, why: str, key: str) -> Unreachable:
         """One line, once a day **per fault**. Never the password, the URL or the response.

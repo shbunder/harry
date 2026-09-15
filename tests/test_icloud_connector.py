@@ -63,9 +63,15 @@ class StandInCalendar:
     """One calendar on the account. Only `get_display_name` and `search`, which is all the
     connector uses."""
 
-    def __init__(self, name: str, documents: list[icalendar.Calendar]) -> None:
+    def __init__(
+        self,
+        name: str,
+        documents: list[icalendar.Calendar],
+        url: str = 'https://p42-caldav.icloud.com/1234567/calendars/home/',
+    ) -> None:
         self._name = name
         self._documents = documents
+        self.url = url
         self.searched: list[tuple] = []
         self.fails_with: Exception | None = None
 
@@ -159,7 +165,9 @@ def connector(built):
 def test_a_day_comes_back_as_time_title_and_place(icloud):
     day = connector(icloud(documents=('afternoon.ics',))).on(MONDAY)
 
-    assert day == [{'at': '14:00', 'title': 'design review', 'where': 'Kortrijksesteenweg 1'}]
+    assert day == [
+        {'at': '14:00', 'ends': '15:00', 'title': 'design review', 'where': 'Kortrijksesteenweg 1', 'calendar': 'Home'}
+    ]
 
 
 def test_events_are_earliest_first(icloud):
@@ -191,7 +199,7 @@ def test_a_weekly_event_shows_todays_instance_not_the_series_start(icloud):
     Monday — or drops the meeting, which looks exactly like a cancellation."""
     day = connector(icloud(documents=('weekly-standup.ics',))).on(MONDAY)
 
-    assert day == [{'at': '09:30', 'title': 'standup', 'where': 'meeting room'}]
+    assert day == [{'at': '09:30', 'ends': '09:45', 'title': 'standup', 'where': 'meeting room', 'calendar': 'Home'}]
 
 
 def test_the_same_series_is_there_on_every_monday_and_no_other_day(icloud):
@@ -206,7 +214,7 @@ def test_an_instance_moved_to_a_new_time_comes_back_once_at_the_new_time(icloud)
     the expander sees both together — expand each object alone and you get the standup twice."""
     day = connector(icloud(documents=('weekly-standup.ics', 'moved-instance.ics'))).on(MONDAY)
 
-    assert day == [{'at': '11:00', 'title': 'standup', 'where': 'meeting room'}]
+    assert day == [{'at': '11:00', 'ends': '11:15', 'title': 'standup', 'where': 'meeting room', 'calendar': 'Home'}]
 
 
 def test_a_cancelled_instance_is_not_on_the_page(icloud):
@@ -236,14 +244,14 @@ def test_an_all_day_event_says_all_day_and_sorts_first(icloud):
     nobody set."""
     day = connector(icloud(documents=('all-day.ics', 'afternoon.ics'))).on(MONDAY)
 
-    assert day[0] == {'at': 'all day', 'title': 'Shaun on leave', 'where': ''}
+    assert day[0] == {'at': 'all day', 'ends': None, 'title': 'Shaun on leave', 'where': '', 'calendar': 'Home'}
     assert day[1]['at'] == '14:00'
 
 
 def test_a_time_stored_in_utc_reads_as_the_time_in_the_room(icloud):
     day = connector(icloud(documents=('stored-in-utc.ics',))).on(MONDAY)
 
-    assert day == [{'at': '09:30', 'title': 'dentist', 'where': ''}]
+    assert day == [{'at': '09:30', 'ends': '10:00', 'title': 'dentist', 'where': '', 'calendar': 'Home'}]
 
 
 def test_a_different_timezone_is_a_setting(icloud):
@@ -590,8 +598,8 @@ async def test_claude_can_ask_about_a_named_day(icloud, tmp_path):
     answer = await through_mcp(built, tmp_path, {'day': '2026-09-14'})
 
     assert answer.data == [
-        {'at': '09:30', 'title': 'standup', 'where': 'meeting room'},
-        {'at': '14:00', 'title': 'design review', 'where': 'Kortrijksesteenweg 1'},
+        {'at': '09:30', 'ends': '09:45', 'title': 'standup', 'where': 'meeting room', 'calendar': 'Home'},
+        {'at': '14:00', 'ends': '15:00', 'title': 'design review', 'where': 'Kortrijksesteenweg 1', 'calendar': 'Home'},
     ]
 
 
@@ -604,7 +612,17 @@ async def test_claude_asking_with_no_day_gets_today(icloud, tmp_path):
 
     today = dt.datetime.now(ZoneInfo('Europe/Brussels')).date()
     assert answer.data == (
-        [{'at': '14:00', 'title': 'design review', 'where': 'Kortrijksesteenweg 1'}] if today == MONDAY else []
+        [
+            {
+                'at': '14:00',
+                'ends': '15:00',
+                'title': 'design review',
+                'where': 'Kortrijksesteenweg 1',
+                'calendar': 'Home',
+            }
+        ]
+        if today == MONDAY
+        else []
     )
 
 
@@ -788,7 +806,7 @@ def test_an_event_with_no_start_is_skipped_rather_than_crashing(icloud):
     through building one is worse than a shorter agenda."""
     calendar = connector(icloud(documents=()))
 
-    assert calendar._shape(icalendar.Event()) is None  # noqa: SLF001 — the guard has no other caller
+    assert calendar._shape(icalendar.Event(), 'Home') is None  # noqa: SLF001 — the guard has no other caller
 
 
 def test_the_standup_keeps_its_time_across_the_clocks_going_back(icloud):
@@ -840,15 +858,21 @@ def serving(name: str = 'published-outlook.ics', status: int = 200):
 
 @respx.mock
 def test_a_published_links_events_are_in_the_same_day(icloud):
-    """One agenda. Nothing says which calendar an event came from, because the page has one
-    line and the person has one day."""
+    """One agenda, one day — and every event still says which calendar it came from, because
+    the page draws each one in its own colour."""
     serving()
     built = icloud(documents=('afternoon.ics',), settings=subscribed())
 
     day = connector(built).on(MONDAY)
 
     assert [event['title'] for event in day] == ['Out of office', 'Sprint planning', 'design review']
-    assert day[1] == {'at': '09:00', 'title': 'Sprint planning', 'where': 'Teams'}
+    assert day[1] == {
+        'at': '09:00',
+        'ends': '10:00',
+        'title': 'Sprint planning',
+        'where': 'Teams',
+        'calendar': 'KBC Agenda',
+    }
 
 
 @respx.mock
@@ -871,7 +895,9 @@ def test_an_overridden_instance_from_a_link_appears_once_at_its_new_time(icloud)
 
     syncs = [e for e in connector(built).on(dt.date(2026, 9, 15)) if e['title'] == 'Weekly sync']
 
-    assert syncs == [{'at': '16:00', 'title': 'Weekly sync', 'where': 'Room 3.14'}]
+    assert syncs == [
+        {'at': '16:00', 'ends': '16:30', 'title': 'Weekly sync', 'where': 'Room 3.14', 'calendar': 'KBC Agenda'}
+    ]
 
 
 @respx.mock
@@ -1290,7 +1316,15 @@ def test_a_title_with_a_newline_in_it_comes_back_as_one_line(icloud):
     breaks the row it sits in."""
     day = connector(icloud(documents=('two-line-title.ics',))).on(MONDAY)
 
-    assert day == [{'at': '15:00', 'title': '👨‍👧‍👦 Kids 🏫 School [15:15 - 15:30]', 'where': 'Schoolstraat 1 Leuven'}]
+    assert day == [
+        {
+            'at': '15:00',
+            'ends': '15:30',
+            'title': '👨‍👧‍👦 Kids 🏫 School [15:15 - 15:30]',
+            'where': 'Schoolstraat 1 Leuven',
+            'calendar': 'Home',
+        }
+    ]
     assert '\n' not in day[0]['title'] and '\n' not in day[0]['where']
 
 
@@ -1321,3 +1355,164 @@ def test_folding_drops_no_word(icloud):
     given = 'Quarterly planning\nwith the whole team\nand two guests'
 
     assert one_line(given).split() == given.split()
+
+
+# ---------------------------------------------------------------------------
+# When it ends, and whose calendar it is
+# ---------------------------------------------------------------------------
+
+
+def test_a_timed_event_says_when_it_finishes(icloud):
+    """What lets the page draw a block as tall as the time it takes. Without it every
+    meeting is a line of text and a two-hour workshop looks like a phone call."""
+    day = connector(icloud(documents=('afternoon.ics',))).on(MONDAY)
+
+    assert day[0]['at'] == '14:00'
+    assert day[0]['ends'] == '15:00'
+
+
+def test_an_all_day_event_has_no_end_to_draw(icloud):
+    """ "All day" is not a time, so neither is its end. None rather than "23:59", which is a
+    time nobody set and would draw a block down the whole column."""
+    day = connector(icloud(documents=('all-day.ics', 'afternoon.ics'))).on(MONDAY)
+
+    assert day[0] == {'at': 'all day', 'ends': None, 'title': 'Shaun on leave', 'where': '', 'calendar': 'Home'}
+
+
+def test_an_event_with_no_end_is_a_point_in_time_not_a_missing_event(icloud):
+    """RFC 5545 allows a `DTSTART` alone, and Apple's reminder-shaped entries use it. The
+    failure to avoid is the event disappearing from the page."""
+    day = connector(icloud(documents=('no-end.ics',))).on(MONDAY)
+
+    assert day == [{'at': '11:30', 'ends': None, 'title': 'call the plumber', 'where': '', 'calendar': 'Home'}]
+
+
+def test_a_duration_says_when_something_finishes_just_as_an_end_does(icloud):
+    """The other half of RFC 5545, and what Google Calendar exports. 17:00 plus PT45M."""
+    day = connector(icloud(documents=('a-duration.ics',))).on(MONDAY)
+
+    assert day == [{'at': '17:00', 'ends': '17:45', 'title': 'swimming', 'where': '', 'calendar': 'Home'}]
+
+
+def test_an_end_that_cannot_be_read_costs_the_block_rather_than_the_event(icloud, caplog):
+    """`recurring_ical_events` drops this event entirely, inside the library, saying nothing —
+    which is the silence this connector exists to break. The meeting is still at two
+    o'clock, so it goes on the page as a point in time and the log says why."""
+    built = icloud(documents=('bad-end.ics',))
+
+    with caplog.at_level(logging.WARNING, logger='harry.capability.icloud'):
+        day = connector(built).on(MONDAY)
+
+    assert day == [{'at': '14:00', 'ends': None, 'title': 'nonsense end', 'where': '', 'calendar': 'Home'}]
+    assert 'as a point in time' in caplog.text
+    assert 'nonsense end' in caplog.text
+
+
+def test_something_that_runs_past_midnight_has_no_end_to_draw_today(icloud):
+    """An Exchange-shaped multi-day block starts on a date and ends on a timestamp two days
+    later, and the expander turns the pair into a timed event at 00:00. Its end is 09:00 —
+    on Wednesday. Printed as this morning's end it draws a block across the school run."""
+    day = connector(icloud(documents=('conference.ics',))).on(MONDAY)
+
+    assert day == [{'at': '00:00', 'ends': None, 'title': 'conference', 'where': '', 'calendar': 'Home'}]
+
+
+def test_every_event_says_which_calendar_it_came_from(icloud):
+    """Colour is keyed on this and has nothing else to go on. Two calendars, two names, and
+    the merge that used to lose them is gone."""
+    built = icloud(
+        calendars=[
+            StandInCalendar('Shaun', recorded('afternoon.ics')),
+            StandInCalendar('Kids', recorded('all-day.ics')),
+        ]
+    )
+
+    day = connector(built).on(MONDAY)
+
+    assert {event['title']: event['calendar'] for event in day} == {
+        'Shaun on leave': 'Kids',
+        'design review': 'Shaun',
+    }
+
+
+@respx.mock
+def test_a_published_link_files_its_events_under_its_own_label(icloud):
+    """The label is what a person reads and the only name that link has — its URL is the
+    credential and never leaves the connector."""
+    serving()
+    built = icloud(documents=('afternoon.ics',), settings=subscribed())
+
+    day = connector(built).on(MONDAY)
+
+    assert {event['calendar'] for event in day} == {'Home', 'KBC Agenda'}
+
+
+def test_a_calendar_with_no_name_still_puts_its_events_on_the_page(icloud, caplog):
+    """A nameless calendar is a cosmetic problem. A missing afternoon is not."""
+    built = icloud(calendars=[StandInCalendar('', recorded('afternoon.ics'))])
+
+    with caplog.at_level(logging.INFO, logger='harry.capability.icloud'):
+        day = connector(built).on(MONDAY)
+
+    assert [event['calendar'] for event in day] == ['Calendar']
+    assert 'has no name' in caplog.text
+    assert 'p42-caldav.icloud.com/1234567/calendars/home/' in caplog.text, 'say which one, so it can be named'
+
+
+def test_the_nameless_line_names_the_calendar_once_per_read(icloud, caplog):
+    """Once per read, not once per event. A calendar of forty meetings is one line."""
+    built = icloud(calendars=[StandInCalendar('', recorded('afternoon.ics', 'all-day.ics'))])
+
+    with caplog.at_level(logging.INFO, logger='harry.capability.icloud'):
+        assert len(connector(built).on(MONDAY)) == 2
+
+    assert len([line for line in caplog.text.splitlines() if 'has no name' in line]) == 1
+
+
+def test_a_calendar_that_raises_on_its_own_name_is_filed_not_dropped(icloud, caplog):
+    """caldav reaches the network for a display name, so this is a request that can fail."""
+
+    class Mute(StandInCalendar):
+        def get_display_name(self):
+            raise DAVError('the server said no')
+
+    built = icloud(calendars=[Mute('Home', recorded('afternoon.ics'))])
+
+    with caplog.at_level(logging.INFO, logger='harry.capability.icloud'):
+        day = connector(built).on(MONDAY)
+
+    assert [event['calendar'] for event in day] == ['Calendar']
+    assert 'would not give its name' in caplog.text
+
+
+@respx.mock
+def test_a_published_links_url_is_never_logged_even_when_a_calendar_is_nameless(icloud, caplog):
+    """The one URL in this connector that *is* a credential. `read_links` refuses a link
+    with no label, so a link can never reach the nameless path — this is the test that says
+    so out loud."""
+    serving()
+    built = icloud(calendars=[StandInCalendar('', recorded('afternoon.ics'))], settings=subscribed())
+
+    with caplog.at_level(logging.DEBUG, logger='harry.capability.icloud'):
+        connector(built).on(MONDAY)
+
+    assert 'outlook.office365.com' not in caplog.text
+    assert LINK not in caplog.text
+
+
+async def test_the_end_and_the_calendar_reach_claude(icloud, tmp_path):
+    """A field the connector returns and the tool drops is a field nobody can use."""
+    built = icloud(documents=('afternoon.ics',), tools=(TOOL,))
+
+    answer = await through_mcp(built, tmp_path, {'day': '2026-09-14'})
+
+    assert answer.data[0]['ends'] == '15:00'
+    assert answer.data[0]['calendar'] == 'Home'
+
+
+def test_the_tool_body_tells_claude_about_the_end_and_the_calendar():
+    """The body of a TOOL.md is what Claude reads to choose."""
+    body = (REPO / '.harry' / 'tools' / 'icloud_list_events' / 'TOOL.md').read_text(encoding='utf-8')
+
+    assert 'ends' in body
+    assert 'calendar' in body
