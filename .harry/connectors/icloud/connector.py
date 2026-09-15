@@ -223,7 +223,7 @@ class Agenda:
                 self._log.warning('skipping an event that would not parse: %s', type(error).__name__)
 
     def _collect_link(self, link: Link, merged: icalendar.Calendar) -> None:
-        """One published calendar, into the same document as everything else.
+        """One published calendar, into a document of its own, so its label survives the read.
 
         **A link that cannot be read fails the whole agenda**, rather than quietly leaving
         its meetings out. Everywhere else in Harry a dead source costs its own section; here

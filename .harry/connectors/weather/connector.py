@@ -150,6 +150,9 @@ class Weather:
         # `strict=False`: arrays of different lengths are a malformed answer, and the honest
         # response is the part that lines up rather than no strip at all.
         for stamp, degree in zip(times, degrees, strict=False):
+            # Open-Meteo's default `timeformat` is iso8601, so a stamp is `2026-09-15T06:00`
+            # and characters 11 to 16 are the time. Asking for `unixtime` instead would empty
+            # the strip silently, which is why the request never does.
             at = str(stamp)[11:16]
             try:
                 hour, reading = int(at[:2]), round(float(degree))

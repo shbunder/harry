@@ -444,3 +444,14 @@ def test_both_tool_bodies_say_what_the_new_fields_are():
 
     assert 'image' in search and 'address, not a picture' in search
     assert 'image' in article and 'summary' in article
+
+
+def test_the_docs_describe_the_picture_and_who_fetches_it():
+    """The greppable half of the docs criterion — including the part a later feature has to
+    act on, that fetching is the renderer's job and so are the awkward hosts."""
+    prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
+
+    assert 'the address of the picture the feed published' in prose
+    assert '/standard/240/` for `/standard/800/' in prose
+    assert 'Nothing is fetched to answer this' in prose
+    assert 'images.tijd.be' in prose, 'the host that needs a browser, named where it will be read'

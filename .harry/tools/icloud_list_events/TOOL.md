@@ -31,7 +31,9 @@ plenty of events have no location.
 
 `ends` is when it finishes, in the same `"HH:MM"` shape — it is what says whether 14:00 is a
 phone call or the rest of the afternoon. It is `null` when there is no end to give: an
-all-day entry, or an event saved with a start and nothing else.
+all-day entry, an event saved with a start and nothing else, or something that runs past
+midnight — a three-day conference comes back as `"at": "00:00", "ends": null`, because its
+end belongs to a different day than the one you asked about.
 
 `calendar` is which calendar the event came from — the name shown in the calendar app, or the
 label of a published link somebody shared. It is what tells your own meetings from the kids'

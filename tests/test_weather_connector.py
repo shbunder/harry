@@ -355,13 +355,16 @@ def test_an_answer_with_no_hourly_block_costs_the_strip_and_nothing_else(weather
     assert 'hourly' not in recorded('leuven-today.json')
     respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-today.json')))
 
-    with caplog.at_level(logging.WARNING, logger='harry.capability.weather'):
+    with caplog.at_level(logging.INFO, logger='harry.capability.weather'):
         answer = connector(weather()).forecast()
 
     assert answer['available'] is True
     assert (answer['summary'], answer['high'], answer['low'], answer['rain_chance']) == ('overcast', 22, 18, 59)
     assert answer['hours'] == []
-    assert caplog.text == '', 'a missing strip is not a fault — nothing to warn about, nothing for Slack'
+    # The only trace a person gets of a strip that quietly stopped arriving, so it is the
+    # part a test has to hold. Nothing above INFO: it is not a fault and Slack hears nothing.
+    assert 'without its strip' in caplog.text
+    assert [record for record in caplog.records if record.levelno > logging.INFO] == []
 
 
 @respx.mock
@@ -430,6 +433,23 @@ async def test_the_shape_of_the_day_reaches_claude(weather, tmp_path):
 
     assert answer['hours'][0] == {'at': '06:00', 'temperature': 17}
     assert len(answer['hours']) == 17
+
+
+def test_the_docs_describe_the_shape_of_the_day():
+    """The greppable half of the docs criterion."""
+    prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
+
+    assert 'Seventeen readings, 06:00 to 22:00' in prose
+    assert '"at": "06:00", "temperature": 19' in prose
+    assert 'loses only the strip' in prose, 'what a missing hourly block costs'
+
+
+def test_the_fixture_record_lists_the_hourly_answer():
+    """A recorded response nobody wrote down is one the next person re-records."""
+    record = (REPO / 'tests' / 'fixtures' / 'weather' / 'README.md').read_text(encoding='utf-8')
+
+    assert 'leuven-hourly.json' in record
+    assert 'leuven-today.json' in record and 'no `hourly` block' in record
 
 
 def test_the_tool_body_tells_claude_the_hours_are_there():

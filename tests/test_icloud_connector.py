@@ -490,6 +490,10 @@ def test_the_stand_in_has_the_same_shape_as_the_real_client():
     assert 'server_expand' in theirs, 'caldav renamed the expand argument'
     assert hasattr(caldav.Calendar, 'get_display_name'), 'caldav renamed the display-name call'
     assert hasattr(StandInCalendar, 'get_display_name'), 'the stand-in does not offer it'
+    # The nameless-calendar line prints this so the calendar can be found and named. If
+    # caldav renames it the line still prints, saying "an unknown address" — which is
+    # exactly the information it exists to carry, and the stand-in would not notice.
+    assert hasattr(caldav.Calendar, 'url'), 'caldav renamed the attribute the log line names'
     assert set(ours) <= set(theirs) | {'searchargs'}, 'the stand-in takes something caldav does not'
     for name in ('xml', 'server_expand'):
         assert theirs[name].default == ours[name].default, f'{name} default has drifted'
@@ -1511,8 +1515,25 @@ async def test_the_end_and_the_calendar_reach_claude(icloud, tmp_path):
 
 
 def test_the_tool_body_tells_claude_about_the_end_and_the_calendar():
-    """The body of a TOOL.md is what Claude reads to choose."""
-    body = (REPO / '.harry' / 'tools' / 'icloud_list_events' / 'TOOL.md').read_text(encoding='utf-8')
+    """The body of a TOOL.md is what Claude reads to choose.
 
-    assert 'ends' in body
-    assert 'calendar' in body
+    Phrases only the new paragraphs carry. The bare word "calendar" was already in this file
+    three times, in prose about the calendar app, so asserting on it proved nothing.
+    """
+    prose = ' '.join((REPO / '.harry' / 'tools' / 'icloud_list_events' / 'TOOL.md').read_text(encoding='utf-8').split())
+
+    assert 'whether 14:00 is a phone call or the rest of the afternoon' in prose
+    assert 'something that runs past midnight' in prose, 'the third reason `ends` is null'
+    assert 'A calendar that will not give its name reads as' in prose
+    assert 'the label of a published link' in prose
+
+
+def test_the_docs_describe_the_end_and_the_calendar():
+    """The greppable half of the docs criterion. Whether it reads clearly over coffee is
+    inspection, and stays inspection."""
+    prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
+
+    assert '"ends": "10:00"' in prose, 'the shape a caller gets'
+    assert '"calendar": "Shaun"' in prose
+    assert 'something that runs past midnight' in prose, 'the reason `ends` is null most often'
+    assert 'a nameless calendar is a cosmetic problem' in prose
