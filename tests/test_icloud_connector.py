@@ -15,7 +15,6 @@ import datetime as dt
 import inspect
 import logging
 import re
-import shutil
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -29,6 +28,8 @@ from niquests.exceptions import ConnectionError as NiquestsConnectionError, Time
 
 from harry.alerts import Alerts
 from harry.loader import load
+
+from .capability_copy import copy_capability
 
 REPO = Path(__file__).parent.parent
 FIXTURES = Path(__file__).parent / 'fixtures' / 'icloud'
@@ -118,7 +119,7 @@ def icloud(tmp_path, monkeypatch):
         root = tmp_path / 'root'
         for where in ('connectors/icloud', *(f'tools/{tool}' for tool in tools)):
             (root / where).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(REPO / '.harry' / where, root / where, dirs_exist_ok=True)
+            copy_capability(REPO / '.harry' / where, root / where)
         configured = settings or f'USERNAME=you@icloud.com\nAPP_PASSWORD={PASSWORD}\n'
         (root / 'connectors' / 'icloud' / '.env.local').write_text(configured, encoding='utf-8')
 
@@ -1252,11 +1253,10 @@ def test_the_link_setting_is_declared_secret_with_no_default():
 
 def _connector_globals() -> dict:
     """The connector module's namespace, reached through an object the loader built."""
-    import shutil
 
     root = Path(__import__('tempfile').mkdtemp()) / 'root'
     (root / 'connectors').mkdir(parents=True)
-    shutil.copytree(REPO / '.harry' / 'connectors' / 'icloud', root / 'connectors' / 'icloud')
+    copy_capability(REPO / '.harry' / 'connectors' / 'icloud', root / 'connectors' / 'icloud')
     (root / 'connectors' / 'icloud' / '.env.local').write_text(
         f'USERNAME=u\nAPP_PASSWORD={PASSWORD}\n', encoding='utf-8'
     )

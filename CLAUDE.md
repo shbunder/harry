@@ -162,6 +162,14 @@ fixtures in `tests/fixtures/`, never a live URL** — a suite that reaches the n
 a suite that fails on a train. The tests that do reach out are marked `live` and are
 never part of the gate: `make test-live` runs them deliberately.
 
+**A capability test copies the real folder out of `.harry/` and loads it from there**, so
+the declaration, the generated `.env`, the config resolution and the registration are under
+test together. Copy it with `copy_capability` from `tests/capability_copy.py` and never with
+`shutil.copytree` — it leaves `.env.local` and `__pycache__` behind. A capability folder can
+hold a gitignored `.env.local`, `harry/config.py` reads it ahead of the committed `.env`, and
+a copy that carries one makes the suite answer differently on every machine: one naming a
+third news feed took thirty-one tests from green to reaching the network.
+
 ## Writing
 
 Harry's output is read by a person with coffee, and its board is read by someone who was
