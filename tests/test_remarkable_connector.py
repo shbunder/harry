@@ -875,6 +875,46 @@ def test_a_real_page_reaches_a_real_tablet():
     assert any(item['id'] == answer['id'] for item in found.target.documents()), 'it is not in the folder'
 
 
+@pytest.mark.live
+def test_a_real_push_clears_more_than_one_older_copy():
+    """Replace, against the tablet, with more than one copy to clear.
+
+    **What this proves:** that the protocol still allows it and that the loop does not stop
+    after the first delete. Every other test here talks to a stand-in.
+
+    **What it cannot prove is the retry beside it.** The retry exists because a real morning
+    hit `the tablet rejected the request` on a removal and a fresh client deleted the same
+    document a moment later without complaint. That failure has not reproduced since, so this
+    test passes with one attempt and with two. `test_a_removal_that_fails_once_is_tried_once_more`
+    is what holds the retry; this holds the protocol.
+
+    Run it deliberately: `make test-live ARGS=tests/test_remarkable_connector.py`.
+    """
+    found = load().get('connector', 'remarkable')
+    assert found is not None and found.target is not None, 'not configured'
+    tablet = found.target
+    name = 'Harry pushes three times — from make test-live'
+
+    page = Path('out/live-replace.pdf')
+    page.parent.mkdir(parents=True, exist_ok=True)
+    _render_a_page(page)
+
+    # Two copies to start with, uploaded underneath `push` — going through it would retire
+    # each one as it went, and the pair is the whole point. This is the state a morning that
+    # failed to tidy leaves behind for the next one.
+    client = tablet._reach()  # noqa: SLF001 — a live test builds the state it is about
+    where = tablet._where(client)  # noqa: SLF001
+    for _ in range(2):
+        client.put_pdf(name, page.read_bytes(), parent=where)
+    assert len([d for d in tablet.documents() if d['name'] == name]) >= 2
+
+    third = tablet.push(page, name)
+
+    assert third['replaced'] >= 2, 'the loop stopped after the first delete'
+    left = [item for item in tablet.documents() if item['name'] == name]
+    assert [item['id'] for item in left] == [third['id']], f'{len(left)} copies of {name!r} remain'
+
+
 def _render_a_page(where: Path) -> None:
     """A real PDF at the Paper Pro's geometry, so the live test pushes the thing the morning
     page will be rather than a placeholder."""
@@ -1431,3 +1471,60 @@ def test_the_listing_inside_a_removal_asks_for_harrys_own_folder(tablet, tmp_pat
     connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
 
     assert asked == ['folder-1'], 'the root would have been every document on the tablet'
+
+
+def test_a_removal_that_fails_once_is_tried_once_more(tablet, tmp_path):
+    """A push gets two attempts because reMarkable answers a transient error often enough to
+    make one attempt too few. The removal got one — and a single blip then leaves a duplicate
+    **forever**, because nothing revisits yesterday's name: tomorrow's is different.
+
+    This is the defect a real morning found. Replace shipped, the page went up beside
+    yesterday's copy, and the log said the tablet had rejected the request. A fresh client
+    deleted the same document a moment later without complaint.
+    """
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
+    )
+    really, refused = cloud.delete, {'left': 1}
+
+    def flaky(item_ref: str, refresh: bool = False):
+        if refused['left']:
+            refused['left'] -= 1
+            raise RemarkableAPIError('the tablet rejected the request')
+        return really(item_ref)
+
+    cloud.delete = flaky
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert answer['replaced'] == 1
+    assert cloud.deleted == ['yesterday']
+    _, sink = built
+    assert sink.heard == [], 'a retry that worked is not a fault'
+
+
+def test_a_removal_that_fails_twice_gives_up_and_says_so(tablet, tmp_path):
+    """Two attempts, not three — the same ceiling the push has. Past that it is not a blip,
+    and the page is already on the tablet, so this must not raise."""
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
+    )
+    tried = {'n': 0}
+
+    def always(item_ref: str, refresh: bool = False):
+        tried['n'] += 1
+        raise RemarkableAPIError('the tablet rejected the request')
+
+    cloud.delete = always
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert tried['n'] == 2, f'{tried["n"]} attempts, not two'
+    assert answer['id'] == 'doc-1', 'the page is still on the tablet'
+    assert answer['replaced'] == 0
+    _, sink = built
+    assert any('more than one' in said for said in sink.heard)

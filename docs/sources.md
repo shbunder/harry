@@ -239,9 +239,11 @@ tablet's trash. A push that failed therefore leaves yesterday's page exactly whe
 the worst that order can do is leave two copies — which is visible, and what this connector
 did before. The removal is bound three ways: inside Harry's own folder, matching the name just
 written exactly, and never the document just created. It is reMarkable's *soft* delete, so
-what it takes goes to the trash rather than away. A removal that fails does not fail the push
-— the page arrived — but it does put one line in Slack, under its own key, so it can never
-silence the push's own alert.
+what it takes goes to the trash rather than away. A removal is tried twice, the same ceiling the push has: reMarkable answers a transient error
+often enough that one attempt is too few, and a single blip would leave a duplicate for good
+— nothing revisits yesterday's name, because tomorrow's is different. A removal that fails
+both times does not fail the push — the page arrived — but it does put one line in Slack,
+under its own key, so it can never silence the push's own alert.
 
 ### Pairing, once per machine
 
