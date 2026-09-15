@@ -78,6 +78,7 @@ is in the tool's own docstring and a test asserts the sentence is still there.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-15** — Reflection: pre-close verifier said REQUEST CHANGES on four Importants, all fixed. The sharpest was one this change created: giving the digest its own folder made remarkable_list_documents blind to where the page goes, while its body still told Claude it sees the folder Harry pushes into — so 'did the page arrive?' would answer with an empty list from the wrong folder. It takes a folder now; the push still does not, because reading a folder cannot do harm and pushing carries the delete, and that reason is written in the tool with a test asserting the sentence survives. Two controls could not fail: the Slack line naming the folder, and push_markdown's folder argument which had no caller and no test. Traceability 7/7 and 8/8. Eight controls probed by deletion; live tests pass against the tablet.
 
 ## Links
 
