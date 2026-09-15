@@ -138,7 +138,12 @@ def register(registry: Registry, context: Context) -> None:
     }
 
     @registry.tool
-    def digest_build(intro: str, picks: list[dict], more: list[dict] | None = None) -> dict:
+    def digest_build(
+        intro: str,
+        picks: list[dict],
+        more: list[dict] | None = None,
+        deliver: bool = True,
+    ) -> dict:
         rest = list(more or [])
         if not picks:
             raise Unknown('picks is empty — the front page needs at least one story')
@@ -154,7 +159,9 @@ def register(registry: Registry, context: Context) -> None:
 
         tablet = sources['remarkable']
         delivered: dict[str, Any] = {'pushed': False, 'why': 'no tablet connector is configured'}
-        if tablet is not None:
+        if not deliver:
+            delivered = {'pushed': False, 'why': 'deliver=false — the page is on disk only'}
+        elif tablet is not None:
             delivered = {'pushed': True, **tablet.push(where, data['today'].isoformat())}
 
         return {

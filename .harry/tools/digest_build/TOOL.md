@@ -71,3 +71,7 @@ how many pages, whether either sheet ran over, and what the tablet said.
 **A second build for the same day replaces the first on the tablet** rather than sitting
 beside it, so calling this twice leaves one document. The page is also on disk either way, at
 the path in the answer.
+
+`deliver=false` writes the page and stops there. **There is one reason to pass it** — seeing
+whether the page looks right, which is what `make digest-dry` does — and no reason at all in
+the morning.

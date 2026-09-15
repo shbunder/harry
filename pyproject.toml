@@ -57,6 +57,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "coverage[toml]>=7.6",
     "respx>=0.22",           # httpx mocking, so feed tests never touch a live URL
+    "pypdf>=5.1",            # reads the rendered page back, so a test asserts what a reader sees
 ]
 
 # ============================================================================

@@ -63,7 +63,7 @@ def test_one_call_answers_the_weather_the_agenda_and_the_headlines(digest):
     assert answer['weather']['available'] is True and answer['weather']['place'] == 'Leuven'
     assert answer['agenda']['available'] is True
     assert [e['title'] for e in answer['agenda']['events']] == ['standup']
-    assert [h['id'] for h in answer['headlines']] == [f'vrt-2026-09-15-story-{n}' for n in range(3)]
+    assert [h['id'] for h in answer['headlines']] == [f'vrt-2026-09-15-story-{n}-and-what-came-of-it' for n in range(3)]
     assert answer['unavailable'] == []
 
 
