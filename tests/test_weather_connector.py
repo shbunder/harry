@@ -92,7 +92,7 @@ def test_the_call_asks_for_exactly_the_four_fields_it_reads(weather):
         'temperature_2m_min',
         'precipitation_probability_max',
     ]
-    assert asked['hourly'] == 'temperature_2m', 'the shape of the day rides on the same request'
+    assert asked['hourly'] == 'temperature_2m,weather_code', 'the shape of the day rides on the same request'
 
 
 @respx.mock
@@ -329,8 +329,8 @@ def test_the_forecast_carries_the_day_hour_by_hour(weather):
     hours = connector(weather()).forecast()['hours']
 
     assert [entry['at'] for entry in hours] == [f'{hour:02d}:00' for hour in range(6, 23)]
-    assert hours[0] == {'at': '06:00', 'temperature': 17}
-    assert hours[-1] == {'at': '22:00', 'temperature': 21}
+    assert hours[0] == {'at': '06:00', 'temperature': 17, 'summary': 'clear'}
+    assert hours[-1] == {'at': '22:00', 'temperature': 20, 'summary': 'overcast'}
     assert all(isinstance(entry['temperature'], int) for entry in hours), 'decimals are noise on paper'
 
 
@@ -432,7 +432,7 @@ async def test_the_shape_of_the_day_reaches_claude(weather, tmp_path):
         await connected.call_tool(FIND_TOOLS, {'query': 'weather'})
         answer = (await connected.call_tool('weather_forecast', {})).data
 
-    assert answer['hours'][0] == {'at': '06:00', 'temperature': 17}
+    assert answer['hours'][0] == {'at': '06:00', 'temperature': 17, 'summary': 'clear'}
     assert len(answer['hours']) == 17
 
 
@@ -441,7 +441,7 @@ def test_the_docs_describe_the_shape_of_the_day():
     prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
 
     assert 'Seventeen readings, 06:00 to 22:00' in prose
-    assert '"at": "06:00", "temperature": 19' in prose
+    assert '"at": "06:00", "temperature": 17' in prose
     assert 'loses only the strip' in prose, 'what a missing hourly block costs'
 
 
@@ -460,3 +460,105 @@ def test_the_tool_body_tells_claude_the_hours_are_there():
 
     assert 'hours' in body
     assert '06:00' in body and '22:00' in body
+
+
+@respx.mock
+def test_the_day_and_its_hours_read_the_same_table(weather):
+    """A 3 must mean "overcast" in both places. Two tables that have to agree is one table
+    and a bug, so the hourly word comes from the same `WORDS` the day's does."""
+    body = recorded('leuven-hourly.json')
+    assert body['daily']['weather_code'] == [3] and 3 in body['hourly']['weather_code']
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
+
+    answer = connector(weather()).forecast()
+
+    assert answer['summary'] == 'overcast'
+    assert {entry['summary'] for entry in answer['hours']} == {'clear', 'overcast'}
+
+
+@respx.mock
+def test_an_hourly_block_with_no_codes_still_draws_the_numbers(weather):
+    """The readings are the part that cannot be guessed from the day's own summary, so losing
+    the words must not lose them."""
+    body = recorded('leuven-hourly.json')
+    del body['hourly']['weather_code']
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
+
+    hours = connector(weather()).forecast()['hours']
+
+    assert len(hours) == 17
+    assert [entry['summary'] for entry in hours] == [None] * 17
+    assert hours[0]['temperature'] == 17
+
+
+@respx.mock
+def test_a_code_the_table_does_not_carry_keeps_the_number(weather, caplog):
+    """Same rule as the day: the number is still true, and a word invented for a condition
+    this table does not know would not be."""
+    body = recorded('leuven-hourly.json')
+    body['hourly']['weather_code'][6] = 42
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
+
+    with caplog.at_level(logging.WARNING, logger='harry.capability.weather'):
+        hours = connector(weather()).forecast()['hours']
+
+    assert hours[0] == {'at': '06:00', 'temperature': 17, 'summary': None}
+    assert '42' in caplog.text
+
+
+@respx.mock
+def test_a_day_of_one_unknown_code_says_so_once_not_seventeen_times(weather, caplog):
+    """`_read` warns once because it reads one code. Seventeen hours of the same code is how
+    a useful line becomes noise nobody reads."""
+    body = recorded('leuven-hourly.json')
+    body['hourly']['weather_code'] = [42] * 24
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
+
+    with caplog.at_level(logging.WARNING, logger='harry.capability.weather'):
+        hours = connector(weather()).forecast()['hours']
+
+    assert [entry['summary'] for entry in hours] == [None] * 17
+    hourly_lines = [line for line in caplog.text.splitlines() if 'hourly forecast' in line]
+    assert len(hourly_lines) == 1
+    assert '42' in hourly_lines[0]
+
+
+@respx.mock
+def test_two_unknown_codes_are_both_named_in_the_one_line(weather, caplog):
+    """So the line is worth reading: it says which codes to add, not merely that some were
+    missing."""
+    body = recorded('leuven-hourly.json')
+    body['hourly']['weather_code'][6], body['hourly']['weather_code'][7] = 42, 17
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
+
+    with caplog.at_level(logging.WARNING, logger='harry.capability.weather'):
+        connector(weather()).forecast()
+
+    line = next(line for line in caplog.text.splitlines() if 'hourly forecast' in line)
+    assert '17, 42' in line
+
+
+@respx.mock
+def test_a_codes_array_shorter_than_the_hours_costs_the_words_not_the_readings(weather):
+    """A malformed answer where one array was truncated. The honest response keeps every
+    reading that has a time."""
+    body = recorded('leuven-hourly.json')
+    body['hourly']['weather_code'] = body['hourly']['weather_code'][:8]
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
+
+    hours = connector(weather()).forecast()['hours']
+
+    assert len(hours) == 17
+    assert [entry['summary'] for entry in hours[:2]] == ['clear', 'clear']
+    assert [entry['summary'] for entry in hours[2:]] == [None] * 15
+
+
+def test_the_docs_and_the_tool_body_describe_the_hourly_sky():
+    """A field nobody is told about is a field nobody asks for."""
+    prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
+    body = ' '.join((REPO / '.harry' / 'tools' / 'weather_forecast' / 'TOOL.md').read_text(encoding='utf-8').split())
+
+    assert '"summary": "clear"' in prose and '"summary": "clear"' in body
+    assert "the same WMO table the day's word comes from" in prose
+    assert 'once per answer naming every code it could not read' in prose
+    assert 'the rain is at the school run or after supper' in body

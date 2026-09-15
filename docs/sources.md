@@ -58,13 +58,23 @@ carries one thing more: **`hours`, the shape of the day.** Seventeen readings, 0
 in local time, one an hour:
 
 ```
-{"hours": [{"at": "06:00", "temperature": 19}, {"at": "07:00", "temperature": 19}, …]}
+{"hours": [{"at": "06:00", "temperature": 17, "summary": "clear"},
+           {"at": "07:00", "temperature": 17, "summary": "clear"}, …]}
 ```
 
 That is what the page's hourly strip is drawn from, and it is the part the day's high cannot
-tell you: whether the warm part is the morning or the evening. **An answer that carries the
-day but not the hours gives `hours: []`** — the panel keeps its word, its high, its low and
-its rain chance, and loses only the strip. Nothing is said in Slack, because the day arrived.
+tell you: whether the warm part is the morning or the evening, and whether the rain lands on
+the school run or after supper. Each hour's `summary` is read from **the same WMO table the
+day's word comes from**, so an hour and the day it belongs to can never disagree about what a
+code means — and it is `null` for a code the table does not carry, exactly as the day's is.
+An unrecognised code is logged **once per answer naming every code it could not read**, not
+once per hour.
+
+**An answer that carries the day but not the hours gives `hours: []`** — the panel keeps its
+word, its high, its low and its rain chance, and loses only the strip. **An answer with the
+hours but no codes keeps all seventeen readings**, each with `summary: null`: the numbers are
+the part that cannot be guessed from the day's own word. Nothing is said in Slack for either,
+because the day arrived.
 
 Ships pointed at Leuven and works from a fresh clone. To point it somewhere else, put only
 what differs in `.env.local` beside the declaration — never in `.env`, which is generated:
