@@ -4,7 +4,7 @@ title: Harry runs on the NUC, with a dev stack beside the real one
 track: full
 created: 2026-09-15
 touches: [Dockerfile, compose, core, docs, scripts]
-stories: [STORY-260915-e0628f, STORY-260915-1b871c, STORY-260915-843c7d]
+stories: [STORY-260915-e0628f, STORY-260915-1b871c, STORY-260915-843c7d, STORY-260915-36ccd2]
 decisions: [ADR-260915-8882ef]
 ---
 
@@ -23,16 +23,17 @@ test that needs no credentials.
 
 ## Acceptance criteria
 
-- [ ] `make up` starts Harry on a machine with no `.env.local` anywhere, and `/health` lists every capability as skipped with the setting it is missing
+- [ ] `make up` starts Harry on a machine with no `.env.local` anywhere; weather and news load, and icloud, remarkable and slack are skipped, each naming the setting it is missing
 - [ ] Nothing crashes on that first boot — a capability whose configuration is absent disables itself
 - [ ] Each credential put on the NUC turns its capability from skipped to loaded without a rebuild
 - [ ] No credential is in the repository, in the image, or in a committed compose file
 - [ ] A dev stack runs beside the real one with its own port, data directory and credentials
 - [ ] The dev stack's scheduler is off, so it can never report a deadline the real one met
 - [ ] Stopping or rebuilding either stack leaves the other running
-- [ ] `make digest-candidates` and `make digest-dry` work inside the container, and the dry one pushes nothing
+- [ ] A page is built inside the container through `scripts/call_tool.py`, written under the data volume, with nothing pushed
 - [ ] Harry restarts with the machine and keeps its data across a reboot
-- [ ] Deploying a new version is one command and going back to the previous image is another
+- [ ] Every build is tagged with something that cannot be reused, the real service names a tag, and going back to the previous one is one command
+- [ ] `xvfb` is in the image and nothing uses it yet, so the De Tijd feature does not have to rebuild it
 - [ ] `docs/operating.md` describes what is actually on the NUC, in the present tense
 
 ## Stories
@@ -41,6 +42,7 @@ test that needs no credentials.
 - [ ] [[STORY-260915-e0628f]] — A compose file, and Harry starts with nothing configured
 - [ ] [[STORY-260915-1b871c]] — A dev stack beside the real one, with its scheduler off
 - [ ] [[STORY-260915-843c7d]] — The credentials reach the NUC, one capability at a time
+- [ ] [[STORY-260915-36ccd2]] — Deploying a version, and going back to the last one
 
 ## Notes
 

@@ -27,6 +27,7 @@ the real one delivered — that is how a channel gets muted.
 - [ ] A `harry-dev` service runs from the same image on a different port
 - [ ] It has its own data directory and its own `.env.local` files, and shares neither
 - [ ] Its scheduler does not run — no jobs are registered and no deadline is watched
+- [ ] The setting that turns it off is declared in `src/harry/config.py`, typed and commented, and carried in the committed `.env` with its default — not invented in the compose file
 - [ ] A test proves the scheduler is off rather than asserting the setting that turns it off
 - [ ] Stopping, restarting or rebuilding either service leaves the other running
 - [ ] `make up` starts the real one only; starting dev is a separate, explicit command

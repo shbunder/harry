@@ -1,0 +1,35 @@
+---
+id: STORY-260915-36ccd2
+title: Deploying a version, and going back to the last one
+feature: FEAT-260915-2a6ce1
+status: Backlog
+created: 2026-09-15
+---
+
+# STORY-260915-36ccd2 — Deploying a version, and going back to the last one
+
+Part of [[FEAT-260915-2a6ce1]].
+
+## Description
+
+The compose file pins `image: harry:latest`. That is the thing the ADR's own Consequences
+section warns about: prod has to name a tag per deploy and dev can track `latest`, and nothing
+enforces it but a person following the runbook — so the runbook has to have it.
+
+Small, and the reason it is its own story is that it is the only part of this feature whose
+failure is discovered on the morning you most need it not to be.
+
+## Acceptance criteria
+
+- [ ] Every build is tagged with something that cannot be reused — the date, or the short commit
+- [ ] The real service names a tag; the dev one may track `latest`
+- [ ] Deploying is one command, and the data volume is untouched by it
+- [ ] Going back to the previous tag is one command, and the data volume is untouched by that too
+- [ ] `docs/operating.md` carries both commands, written out, with a real tag in them
+
+## Subtasks
+
+<!-- Maintained by `board.py add-subtask`. Only when the story has a natural order. -->
+
+## Notes
+

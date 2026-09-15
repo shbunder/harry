@@ -12,24 +12,27 @@ Part of [[FEAT-260915-2a6ce1]].
 
 ## Description
 
-**Do this first. Nothing else can be tested until it exists.**
+**Do this first, and start by reading `docker-compose.yml` — it exists.** One service,
+`build: .`, `restart: unless-stopped`, the `harry-data` volume, `7430:7430`, and both env
+files in the right order. `make up` works today.
 
-`make up`, `make down` and `make logs` all shell out to `docker compose` and there is no
-compose file in the repository. The `Dockerfile` is current and thoughtful — it copies neither
-`.env` nor `.env.local`, on purpose, so configuration arrives as environment variables.
+**Extend it rather than renaming it.** Two rules are path-scoped to `docker-compose.yml` —
+`.claude/rules/secrets-and-config.md` and `.claude/rules/no-model-calls.md` — and a rename to
+`compose.yaml` drops both guards silently, including the one that stops a model credential
+being mounted in. Rename it only with the `paths:` in both rules changed in the same commit.
 
-The acceptance test needs no credentials: a machine with nothing configured must start, answer
-`/health`, and name what each skipped capability is missing. That is not a stub state, it is
-the state every credential arrives into one at a time.
+The acceptance test needs no credentials, and it is not "everything is skipped": weather and
+news declare no required setting and load on a bare machine. That asymmetry is the point —
+the first page built on the NUC has a weather panel and headlines and no agenda.
 
 ## Acceptance criteria
 
-- [ ] `compose.yaml` builds from the `Dockerfile` and runs one service on `HARRY_PORT`
+- [ ] The existing `docker-compose.yml` is extended rather than replaced, or the `paths:` in both rules that name it are changed in the same commit
 - [ ] The data volume is named and survives `make down` followed by `make up`
 - [ ] `restart: unless-stopped`, so Harry comes back with the machine
 - [ ] The healthcheck the image already declares is what compose waits on
 - [ ] `make up` on a tree with no `.env.local` anywhere starts Harry and answers `/health`
-- [ ] `/health` lists every capability as skipped, each naming the setting it is missing
+- [ ] weather and news are loaded; icloud, remarkable and slack are skipped, each naming the setting it is missing
 - [ ] No credential and no secret is in the committed compose file
 - [ ] `docs/operating.md` says how to start, stop and follow it, in the present tense
 
