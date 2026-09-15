@@ -2,7 +2,7 @@
 id: STORY-260915-e0628f
 title: A compose file, and Harry starts with nothing configured
 feature: FEAT-260915-2a6ce1
-status: Backlog
+status: Done
 created: 2026-09-15
 ---
 
