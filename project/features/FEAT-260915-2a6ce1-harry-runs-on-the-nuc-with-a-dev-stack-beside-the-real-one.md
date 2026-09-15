@@ -28,9 +28,9 @@ declare no required setting and load on a bare machine.
 - [x] Nothing crashes on that first boot — a capability whose configuration is absent disables itself
 - [ ] Each credential put on the NUC turns its capability from skipped to loaded without a rebuild
 - [ ] No credential is in the repository, in the image, or in a committed compose file
-- [ ] A dev stack runs beside the real one with its own port, data directory and credentials
-- [ ] The dev stack's scheduler is off, so it can never report a deadline the real one met
-- [ ] Stopping or rebuilding either stack leaves the other running
+- [x] A dev stack runs beside the real one with its own port, data directory and credentials
+- [x] The dev stack's scheduler is off, so it can never report a deadline the real one met
+- [x] Stopping or rebuilding either stack leaves the other running
 - [ ] A page is built inside the container through `scripts/call_tool.py`, written under the data volume, with nothing pushed
 - [ ] Harry restarts with the machine and keeps its data across a reboot
 - [ ] Every build is tagged with something that cannot be reused, the real service names a tag, and going back to the previous one is one command

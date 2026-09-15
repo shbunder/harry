@@ -2,7 +2,7 @@
 id: STORY-260915-1b871c
 title: A dev stack beside the real one, with its scheduler off
 feature: FEAT-260915-2a6ce1
-status: Backlog
+status: Done
 created: 2026-09-15
 ---
 
@@ -24,14 +24,14 @@ the real one delivered — that is how a channel gets muted.
 
 ## Acceptance criteria
 
-- [ ] A `harry-dev` service runs from the same image on a different port
-- [ ] It has its own data directory and its own `.env.local` files, and shares neither
-- [ ] Its scheduler does not run — no jobs are registered and no deadline is watched
-- [ ] The setting that turns it off is declared in `src/harry/config.py`, typed and commented, and carried in the committed `.env` with its default — not invented in the compose file
-- [ ] A test proves the scheduler is off rather than asserting the setting that turns it off
-- [ ] Stopping, restarting or rebuilding either service leaves the other running
-- [ ] `make up` starts the real one only; starting dev is a separate, explicit command
-- [ ] `docs/operating.md` says which is which and how to tell them apart from the outside
+- [x] A `harry-dev` service runs from the same image on a different port
+- [x] It has its own data directory and its own `.env.local` files, and shares neither
+- [x] Its scheduler does not run — no jobs are registered and no deadline is watched
+- [x] The setting that turns it off is declared in `src/harry/config.py`, typed and commented, and carried in the committed `.env` with its default — not invented in the compose file
+- [x] A test proves the scheduler is off rather than asserting the setting that turns it off
+- [x] Stopping, restarting or rebuilding either service leaves the other running
+- [x] `make up` starts the real one only; starting dev is a separate, explicit command
+- [x] `docs/operating.md` says which is which and how to tell them apart from the outside
 
 ## Subtasks
 
