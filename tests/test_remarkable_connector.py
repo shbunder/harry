@@ -544,7 +544,7 @@ def test_retiring_a_copy_is_bounded_by_folder_name_and_id():
     source = (REPO / '.harry' / 'connectors' / 'remarkable' / 'connector.py').read_text(encoding='utf-8')
     body = source[source.index('def _retire') : source.index('def documents')]
 
-    assert 'self._find_folder(client)' in body, "inside this connector's own folder"
+    assert 'self._find_folder(client, folder)' in body, 'inside the folder this document was pushed to'
     assert 'entry.visibleName == name' in body, 'exactly the name just written'
     assert 'entry.id != keeping' in body, 'never the document just created'
     assert "entry.type == 'DocumentType'" in body, 'a document, never a folder'
@@ -903,7 +903,7 @@ def test_a_real_push_clears_more_than_one_older_copy():
     # each one as it went, and the pair is the whole point. This is the state a morning that
     # failed to tidy leaves behind for the next one.
     client = tablet._reach()  # noqa: SLF001 — a live test builds the state it is about
-    where = tablet._where(client)  # noqa: SLF001
+    where = tablet._where(client, tablet.folder)  # noqa: SLF001
     for _ in range(2):
         client.put_pdf(name, page.read_bytes(), parent=where)
     assert len([d for d in tablet.documents() if d['name'] == name]) >= 2
@@ -1528,3 +1528,93 @@ def test_a_removal_that_fails_twice_gives_up_and_says_so(tablet, tmp_path):
     assert answer['replaced'] == 0
     _, sink = built
     assert any('more than one' in said for said in sink.heard)
+
+
+# ---------------------------------------------------------------------------
+# The folder belongs to whoever is pushing
+# ---------------------------------------------------------------------------
+
+
+def test_a_caller_that_names_a_folder_gets_that_folder(tablet, tmp_path):
+    """The connector owns the tablet; where a document belongs is the caller's. A weekly
+    digest goes beside the daily one rather than into it."""
+    cloud = StandIn(folders=[a_folder()])
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), 'Week 38', folder='🗞️ Weekly')
+
+    assert answer['where'] == '🗞️ Weekly'
+    made = next(f for f in cloud.folders if f.visibleName == '🗞️ Weekly')
+    assert cloud.documents[0].parent == made.id
+
+
+def test_a_caller_that_names_nothing_gets_the_configured_folder(tablet, tmp_path):
+    """The setting is a default, not a rule — an ad-hoc push should not have to choose."""
+    cloud = StandIn(folders=[a_folder()])
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), 'A page')
+
+    assert answer['where'] == 'Daily'
+    assert cloud.documents[0].parent == 'folder-1'
+
+
+def test_two_callers_naming_two_folders_do_not_share_one(tablet, tmp_path):
+    """The folder id is remembered per folder. One slot handed the second caller the first
+    one's id, which is a document in somebody else's folder."""
+    cloud = StandIn(folders=[a_folder()])
+    built = tablet(cloud=cloud)
+    tidy = connector(built)
+
+    first = tidy.push(a_pdf(tmp_path / 'a.pdf'), 'Daily page', folder='🗞️ Daily')
+    second = tidy.push(a_pdf(tmp_path / 'b.pdf'), 'Weekly page', folder='🗞️ Weekly')
+
+    assert (first['where'], second['where']) == ('🗞️ Daily', '🗞️ Weekly')
+    parents = {d.visibleName: d.parent for d in cloud.documents}
+    assert parents['Daily page'] != parents['Weekly page']
+
+
+def test_a_folder_that_is_named_is_made_at_the_top_level(tablet, tmp_path):
+    """`put_folder` with no parent. A caller naming a folder puts documents beside the others
+    and never inside one of yours."""
+    cloud = StandIn()
+    built = tablet(cloud=cloud)
+
+    connector(built).push(a_pdf(tmp_path / 'page.pdf'), 'A page', folder='🗞️ Weekly')
+
+    made = next(f for f in cloud.folders if f.visibleName == '🗞️ Weekly')
+    assert made.parent == '', 'it was made inside something'
+
+
+def test_the_replacement_looks_only_in_the_folder_just_pushed_to(tablet, tmp_path):
+    """The bound moves with the folder. Otherwise a second caller's push retires a document of
+    the same name in somebody else's folder — and the token has no scopes."""
+    cloud = StandIn(
+        folders=[a_folder(), Item(id='folder-2', type='CollectionType', visibleName='🗞️ Weekly', parent='')],
+        documents=[
+            Item(id='in-daily', visibleName='2026-09-15', parent='folder-1'),
+            Item(id='in-weekly', visibleName='2026-09-15', parent='folder-2'),
+        ],
+    )
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15', folder='🗞️ Weekly')
+
+    assert answer['replaced'] == 1
+    assert cloud.deleted == ['in-weekly']
+    assert 'in-daily' in {d.id for d in cloud.documents}, 'a document in another folder was touched'
+
+
+def test_listing_takes_a_folder_too(tablet):
+    """Otherwise a caller with its own folder can push to it and never see what is in it."""
+    cloud = StandIn(
+        folders=[a_folder(), Item(id='folder-2', type='CollectionType', visibleName='🗞️ Weekly', parent='')],
+        documents=[
+            Item(id='a', visibleName='Daily page', parent='folder-1'),
+            Item(id='b', visibleName='Weekly page', parent='folder-2'),
+        ],
+    )
+    built = tablet(cloud=cloud)
+
+    assert [d['name'] for d in connector(built).documents(folder='🗞️ Weekly')] == ['Weekly page']
+    assert [d['name'] for d in connector(built).documents()] == ['Daily page']

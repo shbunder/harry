@@ -108,12 +108,21 @@ class Tablet:
         self._alert = alert
         self._connect = connect or _reach_remarkable
         self._client: Any | None = None
-        self._folder_id: str | None = None
+        # Per folder, not one. Two callers in one process now ask for two — the daily page
+        # and whatever else Harry is asked to deliver — and a single slot would hand the
+        # second one the first one's id.
+        self._folder_ids: dict[str, str] = {}
 
     # -- what the digest calls ------------------------------------------------
 
-    def push(self, path: str | Path, name: str) -> dict:
-        """Put a PDF on the tablet under `name`. The signature the morning page was built for.
+    def push(self, path: str | Path, name: str, folder: str | None = None) -> dict:
+        """Put a PDF on the tablet under `name`, in `folder`.
+
+        **The folder is the caller's, and the setting is only a default.** The connector owns
+        the tablet — the credential, the client, the two attempts, the rule that a push
+        replaces what it supersedes. Where a given document belongs is something only the
+        thing producing it knows: a weekly digest goes beside the daily one rather than into
+        it, and a book Claude was asked to deliver belongs somewhere else again.
 
         Raises rather than returning a failure shape: a page that did not arrive is not
         information the caller can use, it is a thing that did not happen.
@@ -123,9 +132,9 @@ class Tablet:
             raise Refused(f'{document.name} is not a PDF, and the tablet only takes PDFs from here')
         if not document.is_file():
             raise Refused(f'there is no file at {document}')
-        return self.push_bytes(document.read_bytes(), name)
+        return self.push_bytes(document.read_bytes(), name, folder)
 
-    def push_bytes(self, payload: bytes, name: str) -> dict:
+    def push_bytes(self, payload: bytes, name: str, folder: str | None = None) -> dict:
         """The same push, for something that was rendered rather than read off disk.
 
         Pushing a name that is already there **replaces** it. The morning page is built at
@@ -133,12 +142,15 @@ class Tablet:
         `2026-09-15` with no timestamp between them is a reader opening one of them and not
         knowing whether it has the correction in it.
         """
+        where = folder or self.folder
         entry = self._trying(
-            f'push {name!r}', lambda client: client.put_pdf(name, payload, parent=self._where(client)), key='push'
+            f'push {name!r}',
+            lambda client: client.put_pdf(name, payload, parent=self._where(client, where)),
+            key='push',
         )
-        return {'where': self.folder, 'id': entry.id, 'name': name, 'replaced': self._retire(name, entry.id)}
+        return {'where': where, 'id': entry.id, 'name': name, 'replaced': self._retire(name, entry.id, where)}
 
-    def _retire(self, name: str, keeping: str) -> int:
+    def _retire(self, name: str, keeping: str, folder: str) -> int:
         """Send the copies this push replaces to the tablet's trash. Returns how many.
 
         **After the push, never before.** A push that fails must leave yesterday's page where
@@ -146,15 +158,16 @@ class Tablet:
         connector did before and is a thing a person can see.
 
         Bounded four ways, because the device token has no scopes and this is the only call
-        Harry makes that removes anything: inside this connector's own folder, a document
-        rather than a folder, matching the name just written **exactly**, and never the
-        document just created. `delete` is reMarkable's soft delete — what it takes goes to
+        Harry makes that removes anything: inside **the folder this document was pushed to**,
+        a document rather than a folder, matching the name just written **exactly**, and never
+        the document just created. The folder is the one the caller named, not the configured
+        one — otherwise a second caller's push could retire a document in somebody else's. `delete` is reMarkable's soft delete — what it takes goes to
         the tablet's trash rather than away.
         """
         older: list[str] = []
         try:
             client = self._reach()
-            where = self._find_folder(client)
+            where = self._find_folder(client, folder)
             if where is None:
                 return 0
             older = [
@@ -168,7 +181,7 @@ class Tablet:
             # `ExpiredToken` is a `RemarkableAPIError`, so the catch below would swallow it and
             # send somebody to tidy a folder when the answer is to pair again. The page itself
             # went up before the token lapsed, so this still does not raise.
-            self._client = self._folder_id = None
+            self._client, self._folder_ids = None, {}
             self._log.warning('could not retire the older %r: the tablet refused the token', name)
             self._alert(f'reMarkable: {REPAIR}', key='refused')
             return 0
@@ -180,10 +193,10 @@ class Tablet:
             # The client goes too. `_trying` drops a dead one so the next call builds fresh;
             # this path reaches the client directly, so it has to do that job itself or the
             # next push inherits the corpse and burns both attempts on it.
-            self._client = self._folder_id = None
+            self._client, self._folder_ids = None, {}
             self._log.warning('could not retire the older %r: %s', name, _why(error))
             self._alert(
-                f'reMarkable: there is more than one {name!r} in {self.folder!r} — the older copy could not be removed',
+                f'reMarkable: there is more than one {name!r} in {folder!r} — the older copy could not be removed',
                 key='retire',
             )
             return 0
@@ -193,28 +206,28 @@ class Tablet:
                 len(older),
                 'y' if len(older) == 1 else 'ies',
                 name,
-                self.folder,
+                folder,
             )
         return len(older)
 
     # -- what the tools call --------------------------------------------------
 
-    def push_markdown(self, markdown: str, name: str) -> dict:
+    def push_markdown(self, markdown: str, name: str, folder: str | None = None) -> dict:
         """Render markdown to a page the tablet will not rescale, then push it."""
-        return self.push_bytes(render_markdown(markdown, name), name)
+        return self.push_bytes(render_markdown(markdown, name), name, folder)
 
-    def documents(self, limit: int = MOST) -> list[dict]:
+    def documents(self, limit: int = MOST, folder: str | None = None) -> list[dict]:
         """What is already in the folder, newest first, capped.
 
         A folder nobody has created yet is empty rather than an error: it is the true answer,
         and the first push will make it.
         """
-        found = self._trying('list the folder', self._read_folder, key='list')
+        found = self._trying('list the folder', lambda c: self._read_folder(c, folder or self.folder), key='list')
         newest = sorted(found, key=lambda item: item['modified'] or '', reverse=True)
         return newest[: max(1, min(limit, MOST))]
 
-    def _read_folder(self, client: Any) -> list[dict]:
-        where = self._find_folder(client)
+    def _read_folder(self, client: Any, folder: str) -> list[dict]:
+        where = self._find_folder(client, folder)
         if where is None:
             return []
         return [
@@ -266,7 +279,7 @@ class Tablet:
                 raise Refused(REPAIR) from error
             except (RemarkableAPIError, httpx.HTTPError, OSError) as error:
                 last = error
-                self._client = self._folder_id = None
+                self._client, self._folder_ids = None, {}
                 self._log.warning('could not %s (attempt %d of %d)', what, attempt, ATTEMPTS)
 
         why = _why(last)
@@ -284,19 +297,24 @@ class Tablet:
             self._client = self._connect(self._token)
         return self._client
 
-    def _where(self, client: Any) -> str:
-        """The folder's id, making it the first time and remembering it after."""
-        if self._folder_id is None:
-            found = self._find_folder(client)
-            self._folder_id = found if found is not None else client.put_folder(self.folder).id
-            self._log.info('documents go into %r on the tablet', self.folder)
-        return self._folder_id
+    def _where(self, client: Any, folder: str) -> str:
+        """One folder's id, making it the first time and remembering it after.
 
-    def _find_folder(self, client: Any) -> str | None:
+        **Top level, always.** `put_folder` is called with no parent, so a caller naming a
+        folder can put documents in a new folder beside the others and never inside one of
+        yours.
+        """
+        if folder not in self._folder_ids:
+            found = self._find_folder(client, folder)
+            self._folder_ids[folder] = found if found is not None else client.put_folder(folder).id
+            self._log.info('documents go into %r on the tablet', folder)
+        return self._folder_ids[folder]
+
+    def _find_folder(self, client: Any, folder: str) -> str | None:
         """The top-level folder by name, or None. Name rather than id, because a person
         configured it and a person reads it off the tablet."""
         for item in client.list_directory(''):
-            if item.type == 'CollectionType' and item.visibleName == self.folder:
+            if item.type == 'CollectionType' and item.visibleName == folder:
                 return item.id
         return None
 

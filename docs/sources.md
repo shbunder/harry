@@ -269,7 +269,16 @@ To revoke it, remove the device at my.remarkable.com, then pair again.
 
 ### What it does
 
-Documents go into one folder, named in `FOLDER` and **`Daily`** by default. It is created at
+**Whoever is pushing says which folder.** `FOLDER` is the default for a caller that does not
+name one, and it is **`Daily`**. The morning page names its own, because where a document
+belongs is something only the thing producing it knows — a weekly digest would want a folder
+beside the daily one rather than inside it.
+
+A folder is always made at the **top level**, so a caller naming one puts documents beside the
+others and never inside one of yours. A push only ever replaces a document of the same name
+**in the folder it was pushed to**.
+
+Documents with no folder named go into one folder, `FOLDER` and **`Daily`** by default. It is created at
 the top level the first time something is pushed and found rather than re-made after that.
 
 **The default was `Harry` until 15 September 2026.** If you have been running Harry since

@@ -11,12 +11,12 @@ from harry.sdk import Context, Registry  # noqa: E402
 
 class Tablet:
     def __init__(self) -> None:
-        self.pushed: list[tuple[str, str]] = []
+        self.pushed: list[tuple[str, str, str | None]] = []
 
-    def push(self, path, name: str) -> dict:
+    def push(self, path, name: str, folder: str | None = None) -> dict:
         refuse(plan('remarkable'))
-        self.pushed.append((str(path), name))
-        return {'where': 'Daily', 'id': 'doc-1', 'name': name, 'replaced': 0}
+        self.pushed.append((str(path), name, folder))
+        return {'where': folder or 'Daily', 'id': 'doc-1', 'name': name, 'replaced': 0}
 
 
 def register(registry: Registry, context: Context) -> None:
