@@ -24,7 +24,7 @@ What all of it is for. At 06:30 a Claude scheduled task asks Harry for candidate
 - [ ] digest_list_candidates calls weather.today(), calendar.today() and news.candidates(limit) and returns their answers, and returns the same shape with no sources loaded at all
 - [ ] Candidates come back newest first, capped at limit, and a capped answer says how many were dropped; summary is the source's own text, truncated at 280 characters under concise
 - [ ] A source that raises, and a source that returns None, both leave that section reading "unavailable" rather than blank, with the others intact
-- [ ] digest_build takes an intro and picks of id, note, also and topic, and the front page carries the intro verbatim
+- [ ] digest_build takes an intro, picks of id/note/also/topic for the front page, and a `more` list of id/also/topic for the second; the front page carries the intro verbatim
 - [ ] Each picked article appears with the note Claude wrote above its text, unedited
 - [ ] An article whose text could not be fetched still appears with its headline and note, saying the text was unavailable
 - [ ] digest_build resolves each pick with news.article(id), so nothing is held between the two calls, and an id the source does not know is an error naming it
@@ -40,6 +40,12 @@ What all of it is for. At 06:30 a Claude scheduled task asks Harry for candidate
 - [ ] Every headline, thumbnail, companion and way out is a link annotation in the PDF
 - [ ] A picture is fetched with a browser User-Agent on a 403, and a picture that cannot be fetched costs the picture and nothing else
 - [ ] The reader sets the journal name and the calendar colours; Claude sets the intro, the picks, the notes, the grouping and the topics, on the call
+- [ ] The second page is one sheet of ten to twelve more stories, three across, in sections ordered home, abroad, technology, culture, sport, oddity — and a section with nothing in it is not drawn
+- [ ] Article pages run in that same order, front-page stories and second-page ones together
+- [ ] Every card on the second page is a link to its own article page
+- [ ] An id where exactly one candidate's id begins it, or which begins exactly one candidate's id, resolves to that candidate; the answer lists every id it had to resolve and what it became; no match or two matches is an error naming the id and the candidates it could have meant
+- [ ] `digest_list_candidates` never returns two candidates whose ids begin one another, so the rule above can never be ambiguous
+- [ ] The morning-page brief produces a valid answer on Haiku and on Sonnet against a real morning's candidates — six picks, ten to twelve more, valid topics, no sport on a day with no basketball
 - [ ] With no tablet the page is written to out_dir/<date>.pdf and the answer quotes the path; with one, tablet.push is called and the answer quotes what it returned, and the page stays on disk
 - [ ] The morning-page job is one markdown file whose brief is served as a prompt and tells Claude the three calls to make
 - [ ] `make digest-dry` renders to out/digest.pdf through scripts/call_tool.py with no server, credential or tablet, and prints what it could not put on the page
