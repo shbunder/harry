@@ -55,6 +55,20 @@ def digest(tmp_path, monkeypatch):
     return build
 
 
+def inside(catalogue, name: str):
+    """One function out of the loaded tool, rather than out of an import.
+
+    `pyproject.toml` keeps `.harry` off the path on purpose: a test that imports a capability
+    directly can pass while the loader is broken. So the few unit-level things here are dug
+    out of the module the loader actually built — `digest_build`'s own globals, and the page
+    module it imported.
+    """
+    tool = built(catalogue).__globals__
+    page = tool['fit'].__globals__
+    drawing = page['timetable'].__globals__
+    return {**drawing, **page, **tool}[name]
+
+
 def built(catalogue):
     found = catalogue.get('tool', 'digest_build')
     assert found is not None and found.target is not None, [f'{c.name}: {c.reason}' for c in catalogue.skipped]
@@ -372,3 +386,224 @@ def test_the_docs_say_what_a_reader_sets_and_what_breaks_quietly():
     assert 'morning-page has not run today' in prose, 'the one failure with no other trace'
     assert 'the columns are local' in prose
     assert 'silent correction is how the wrong story gets printed' in prose
+
+
+def test_a_push_that_fails_leaves_the_page_and_says_where_it_is(digest, caplog):
+    """A push that failed must not take the answer down with it. The page is rendered and on
+    disk by now; raising loses the path — and the brief tells Claude to call `digest_build`
+    once more on an error, which would re-fetch every article and re-render the whole PDF at
+    06:30 for a tablet that is merely offline."""
+    import logging
+
+    catalogue = digest(
+        sources=('weather', 'icloud', 'news', 'remarkable'),
+        news={'many': 4},
+        remarkable={'raises': 'the tablet could not be reached'},
+    )
+    with caplog.at_level(logging.WARNING, logger='harry.capability.digest_build'):
+        answer = built(catalogue)(intro='Offline.', picks=[pick(0)])
+
+    assert answer['delivered']['pushed'] is False
+    assert 'the tablet could not be reached' in answer['delivered']['why']
+    assert answer['delivered']['path'] == answer['page']['path'], 'the caller needs the path'
+    assert Path(answer['page']['path']).is_file()
+    assert 'on disk but not on the tablet' in caplog.text
+
+
+def test_a_weather_source_that_says_it_failed_leaves_a_trace(digest, caplog):
+    """The one place a weather failure left no trace anywhere — and it is the place that
+    builds the page. Its sibling three lines below logs; this now does too."""
+    import logging
+
+    catalogue = digest(news={'many': 4}, weather={'answer': {'available': False, 'why': 'open-meteo answered 503'}})
+    with caplog.at_level(logging.WARNING, logger='harry.capability.digest_build'):
+        answer = built(catalogue)(intro='No sky.', picks=[pick(0)])
+
+    assert 'no weather on the page' in caplog.text
+    assert 'open-meteo answered 503' in caplog.text
+    assert answer['page']['crowded'] == [], 'and the page is still a page'
+
+
+def test_a_front_sheet_that_will_not_fit_says_so(digest):
+    """`crowded` is the only thing that reports the day column falling off the front sheet.
+    A flex box does not split, so it lands wholly on page two the moment it is a point too
+    tall — and nothing about the answer would otherwise show it."""
+    answer = built(digest(news={'many': 20}))(
+        intro='An intro so long that it pushes the day column off the front sheet. ' * 24,
+        picks=[pick(n) for n in range(6)],
+    )
+
+    assert any('did not fit on the front sheet' in one for one in answer['page']['crowded']), answer['page']['crowded']
+
+
+@respx.mock
+def test_a_second_sheet_that_runs_over_says_so(digest):
+    """The other half. A reader who has turned past the front page wants everything else at a
+    glance, not a second and third helping of it.
+
+    With pictures, because a card without one is half the height and twenty of those fit
+    comfortably — the sheet this is about is the one a real morning produces.
+    """
+    respx.get('https://pictures.test/0.jpg').mock(
+        return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
+    )
+    answer = built(digest(news={'many': 30, 'image': 'https://pictures.test/0.jpg'}))(
+        intro='Too much.',
+        picks=[pick(0)],
+        # Spread across the subjects: each section costs a heading, and it is the headings
+        # that make six groups not fit where twenty cards in one group would have.
+        more=[
+            {
+                'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it',
+                'topic': ('belgium', 'world', 'tech', 'culture', 'sport', 'oddity')[n % 6],
+            }
+            for n in range(1, 21)
+        ],
+    )
+
+    assert any('also today' in one for one in answer['page']['crowded']), answer['page']['crowded']
+
+
+@respx.mock
+def test_a_picture_is_fetched_once_per_build_and_not_once_forever(digest):
+    """Harry runs for weeks on a NUC and yesterday's addresses are never asked for again, so a
+    cache that outlives a build only ever grows — twenty base64 images a day, none of it
+    reachable.
+
+    Tested against `picture` and `forget` rather than through two `digest_build` calls: the
+    tool renders the sheet twice on purpose, so a build's own second fetch is the thing the
+    cache exists to stop, and a second *build* through the loaded tool could not be made to
+    tell the two apart.
+    """
+    catalogue = digest(news={'many': 4})
+    picture, forget = inside(catalogue, 'picture'), inside(catalogue, 'forget')
+
+    route = respx.get('https://pictures.test/0.jpg').mock(
+        return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
+    )
+    forget()
+
+    first = picture('https://pictures.test/0.jpg')
+    again = picture('https://pictures.test/0.jpg')
+    assert first == again and route.call_count == 1, 'one build asks twice and fetches once'
+
+    forget()
+    picture('https://pictures.test/0.jpg')
+
+    assert route.call_count == 2, 'the cache outlived the build'
+
+
+def test_every_build_starts_by_forgetting_the_last_one():
+    """The call that makes the test above mean something for the tool."""
+    source = (REPO / '.harry' / 'tools' / 'digest_build' / 'tool.py').read_text(encoding='utf-8')
+    body = source[source.index('def digest_build(') : source.index('def _deliver(')]
+
+    assert 'forget()' in body, 'the pictures from the last build are still in memory'
+
+
+def test_three_events_at_nine_share_a_column_and_the_one_at_eight_does_not(digest):
+    """The reader's own correction: *"only at the hour they are overlapping should columns be
+    created"*. An earlier version counted the largest overlap anywhere in the day and split
+    every block by it, so three meetings colliding at 09:00 left a lone 20:00 event one third
+    of a column wide."""
+    catalogue = digest(
+        news={'many': 4},
+        icloud={
+            'events': [
+                {'at': '09:00', 'ends': '10:00', 'title': 'One', 'where': '', 'calendar': 'Shaun'},
+                {'at': '09:15', 'ends': '09:45', 'title': 'Two', 'where': '', 'calendar': 'Kids'},
+                {'at': '09:30', 'ends': '10:30', 'title': 'Three', 'where': '', 'calendar': 'Shaun'},
+                {'at': '20:00', 'ends': '21:00', 'title': 'Alone', 'where': '', 'calendar': 'Kids'},
+            ]
+        },
+    )
+    answer = built(catalogue)(intro='Overlapping.', picks=[pick(0)])
+
+    placed = inside(catalogue, 'lay_out')(
+        [
+            {'all_day': False, 'from': 540, 'to': 600, 'title': 'One', 'calendar': 'Shaun'},
+            {'all_day': False, 'from': 555, 'to': 585, 'title': 'Two', 'calendar': 'Kids'},
+            {'all_day': False, 'from': 570, 'to': 630, 'title': 'Three', 'calendar': 'Shaun'},
+            {'all_day': False, 'from': 1200, 'to': 1260, 'title': 'Alone', 'calendar': 'Kids'},
+        ]
+    )
+    widths = {event['title']: round(width, 3) for event, _, width in placed}
+
+    assert widths == {'One': 0.333, 'Two': 0.333, 'Three': 0.333, 'Alone': 1.0}
+    assert answer['page']['crowded'] == []
+
+
+def test_the_reader_sets_the_name_and_the_colours(digest):
+    """The two settings a person actually chooses. Neither was exercised by any test, so the
+    masthead and the calendar palette were both drawn only in their default."""
+    catalogue = digest(
+        settings='NAME=The Bundervoet Daily\nCOLOURS=Shaun=yellow|Kids=pink',
+        news={'many': 4},
+        icloud={
+            'events': [
+                {'at': '09:00', 'ends': '10:00', 'title': 'Standup', 'where': '', 'calendar': 'Shaun'},
+                {'at': 'all day', 'ends': None, 'title': 'School run', 'where': '', 'calendar': 'Kids'},
+            ]
+        },
+    )
+    answer = built(catalogue)(intro='Named.', picks=[pick(0)])
+
+    prose = text_of(answer['page']['path'])
+    assert says(prose, 'The Bundervoet Daily'), 'the masthead is still the default'
+    # The legend names only the calendars with something on today, which is both of these.
+    assert says(prose, 'Shaun') and says(prose, 'Kids')
+
+
+def test_the_weather_strip_carries_four_hours(digest):
+    """Every other test hands over one hour, so the strip was empty everywhere and fifteen of
+    the sixteen weather icons were drawn by nothing."""
+    hours = [
+        {'at': f'{h:02d}:00', 'temperature': 15 + h, 'summary': 'clear' if h < 18 else 'rain'} for h in range(6, 23)
+    ]
+    catalogue = digest(
+        news={'many': 4},
+        weather={
+            'answer': {
+                'available': True,
+                'place': 'Leuven',
+                'summary': 'overcast',
+                'high': 29,
+                'low': 17,
+                'rain_chance': 53,
+                'hours': hours,
+            }
+        },
+    )
+    answer = built(catalogue)(intro='Hourly.', picks=[pick(0)])
+
+    prose = text_of(answer['page']['path'])
+    assert [says(prose, at) for at in ('08:00', '12:00', '16:00', '20:00')] == [True] * 4
+    assert answer['page']['crowded'] == []
+
+
+def test_the_file_a_reader_opens_is_the_size_and_shape_it_should_be(digest):
+    """Read back off the PDF, not off what `render` computed from its own document object.
+    The tablet opens the file."""
+    answer = built(digest(news={'many': 6}))(
+        intro='Read back.',
+        picks=[pick(0), pick(1)],
+        more=[{'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'topic': 'tech'}],
+    )
+    reader = PdfReader(answer['page']['path'])
+
+    box = reader.pages[0].mediabox
+    assert (round(float(box.width), 2), round(float(box.height), 2)) == (509.34, 679.13)
+
+    def titles(outline) -> list[str]:
+        """The outline is a tree — a list holding entries and nested lists of entries."""
+        out = []
+        for one in outline:
+            out += titles(one) if isinstance(one, list) else [str(one.get('/Title'))]
+        return out
+
+    named = titles(reader.outline)
+    assert named[0] == 'The day', 'the front page is where the navigator starts'
+    assert sum(name.startswith('Story ') for name in named) == 3, named
+
+    annotations = sum(len(page.get('/Annots') or []) for page in reader.pages)
+    assert annotations > 20, f'{annotations} tappable things — the tablet has no address bar'

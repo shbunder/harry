@@ -26,7 +26,16 @@ from .timetable import hour_height, timetable
 
 _SHOTS: dict[str, str] = {}
 """Pictures already fetched, by address. A build asks for the same thumbnail twice — once in
-the index and once at the foot of an article — and the second is a dictionary lookup."""
+the index and once at the foot of an article — and the second is a dictionary lookup.
+
+**Emptied at the start of every build.** Harry runs for weeks on a NUC, and yesterday's
+addresses are never asked for again — so without `forget()` this is twenty base64 images a
+day accumulating for the life of the process, none of it reachable."""
+
+
+def forget() -> None:
+    """Drop the pictures from the last build."""
+    _SHOTS.clear()
 
 
 def picture(url: str | None) -> str:

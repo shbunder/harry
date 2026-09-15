@@ -23,7 +23,10 @@ class Forecast:
         how = plan('weather')
         self.asked += 1
         refuse(how)
-        return how.get('answer') or WORKING
+        # `if 'answer' in how`, not `or` — a plan that asks for
+        # `{'available': False, 'why': …}` must arrive verbatim, and the falsy-or made that
+        # shape unexpressible, which is how the bug this fixture now covers went unseen.
+        return how['answer'] if 'answer' in how else WORKING
 
 
 def register(registry: Registry, context: Context) -> None:

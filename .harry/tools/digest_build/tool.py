@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from harry.sdk import Context, Registry
 
-from .page import fit, render
+from .page import fit, forget, render
 from .sheet import colours
 from .timetable import when
 
@@ -111,7 +111,7 @@ def gather(sources: dict[str, Any], settings: dict[str, Any], picks: list[dict],
         ]
         articles.append(main)
 
-    forecast = _forecast(sources['weather'])
+    forecast = _forecast(sources['weather'], log)
     day_events = _events(sources['icloud'], log)
     palette = colours(str(settings['colours']))
     return {
@@ -152,6 +152,7 @@ def register(registry: Registry, context: Context) -> None:
         if len(rest) > MOST_MORE:
             raise Unknown(f'{len(rest)} second-page stories is more than the {MOST_MORE} this builds')
 
+        forget()
         data = gather(sources, settings, list(picks), rest)
         html, measured = fit(intro, data, settings['log'])
         where = Path(str(config.get('out_dir') or 'out')) / f'{data["today"].isoformat()}.pdf'
@@ -162,7 +163,7 @@ def register(registry: Registry, context: Context) -> None:
         if not deliver:
             delivered = {'pushed': False, 'why': 'deliver=false — the page is on disk only'}
         elif tablet is not None:
-            delivered = {'pushed': True, **tablet.push(where, data['today'].isoformat())}
+            delivered = _deliver(tablet, where, data['today'].isoformat(), settings['log'])
 
         return {
             'page': made,
@@ -175,15 +176,40 @@ def register(registry: Registry, context: Context) -> None:
         }
 
 
-def _forecast(weather: Any) -> dict:
+def _deliver(tablet: Any, where: Path, name: str, log: Any) -> dict:
+    """Put the page on the tablet, and say what happened either way.
+
+    **A push that failed must not take the answer down.** The page is rendered and on disk by
+    now; raising here loses the path with it, and the brief tells Claude to call `digest_build`
+    once more on an error — which would re-fetch every article and re-render the whole PDF at
+    06:30 for a tablet that is merely offline.
+
+    The tablet connector has already tried twice and put a line in Slack, so there is nothing
+    to add there. What the caller needs is the path and a sentence.
+    """
+    try:
+        return {'pushed': True, **tablet.push(where, name)}
+    except Exception as error:  # noqa: BLE001 — the page exists; the delivery is the part that failed
+        why = f'{type(error).__name__}: {error}'
+        log.warning('the page is on disk but not on the tablet: %s', why)
+        return {'pushed': False, 'why': why, 'path': str(where)}
+
+
+def _forecast(weather: Any, log: Any) -> dict:
     """Today's weather, or an empty answer. A dead forecast costs the panel, not the page."""
     if weather is None:
         return {}
     try:
         answer = weather.forecast()
-    except Exception:  # noqa: BLE001 — one dead source costs one section
+    except Exception as error:  # noqa: BLE001 — one dead source costs one section
+        # Logged, like its sibling below. This was the one place a weather failure left no
+        # trace anywhere — and it is the place that builds the page.
+        log.warning('no weather on the page: %s', error)
         return {}
-    return answer if answer.get('available') else {}
+    if not answer.get('available'):
+        log.warning('no weather on the page: %s', answer.get('why'))
+        return {}
+    return answer
 
 
 def _strip(forecast: dict) -> str:

@@ -58,7 +58,6 @@ namespace: <namespace>
 description: <one line for the roster>
 requires: [<connector>, …]      # missing → this tool is skipped
 optional: [<connector>, …]      # missing → this tool loads without it
-optional: [<connector>, …]
 always_load: false          # true only if it is needed nearly every run
 annotations:
   readOnlyHint: true        # required — it is how a client knows what to gate

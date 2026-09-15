@@ -193,3 +193,33 @@ def test_the_tool_body_tells_claude_to_read_it_all_before_choosing():
     assert 'Reach for this first, every morning' in body
     assert 'Nothing here is chosen, ranked or summarised' in body
     assert 'If `unavailable` has an entry, say so' in body, 'the thing a short list looks like'
+
+
+def test_a_source_that_reports_its_own_failure_is_not_called_available(digest):
+    """The weather connector never raises. It catches its own HTTP errors and answers
+    `{'available': False, 'why': …}`, because a forecast nobody can get is an answer.
+
+    Forcing `True` over that read as a working forecast with no numbers in it and left
+    `unavailable` empty — so the tool told Claude nothing was wrong on a morning open-meteo
+    was down, and the intro would have been written about a forecast that was not there.
+    """
+    answer = called(
+        digest(
+            weather={'answer': {'available': False, 'place': 'Leuven', 'why': 'open-meteo did not answer within 5s'}}
+        )
+    )()
+
+    assert answer['weather']['available'] is False
+    assert answer['weather']['why'] == 'open-meteo did not answer within 5s'
+    assert answer['unavailable'] == ['weather'], 'and the caller is told to say so'
+
+
+def test_a_source_reporting_its_own_failure_is_logged_too(digest, caplog):
+    import logging
+
+    built = digest(weather={'answer': {'available': False, 'why': 'open-meteo answered 503'}})
+    with caplog.at_level(logging.WARNING, logger='harry.capability.digest_list_candidates'):
+        called(built)()
+
+    assert 'weather says it could not answer' in caplog.text
+    assert 'open-meteo answered 503' in caplog.text

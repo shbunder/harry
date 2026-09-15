@@ -27,18 +27,29 @@ def register(registry: Registry, context: Context) -> None:
     def section(name: str, call: Any, absent: str) -> tuple[dict, str | None]:
         """One source's answer, or why there is none. Never raises.
 
-        A source that is not configured and a source that broke are different sentences and
-        the same outcome: the page renders without it. Both are said out loud — silence is
-        the one thing that looks like "nothing happened today".
+        A source that is not configured, a source that broke, and a source that reports its
+        own failure are three sentences and one outcome: the page renders without it. All
+        three are said out loud — silence is the one thing that looks like "nothing happened
+        today".
+
+        **The source's own `available` wins.** The weather connector never raises: it catches
+        its own HTTP errors and answers `{'available': False, 'why': …}`, because a forecast
+        nobody can get is an answer rather than an error. Forcing `True` over that read as a
+        working forecast with no numbers in it, and left `unavailable` empty — so Claude was
+        told to say nothing was wrong.
         """
         if call is None:
             return {'available': False, 'why': absent}, name
         try:
-            return {'available': True, **call()}, None
+            answer = call()
         except Exception as error:  # noqa: BLE001 — one dead source costs one section
             why = f'{type(error).__name__}: {error}'
             log.warning('%s could not answer: %s', name, why)
             return {'available': False, 'why': why}, name
+        if answer.get('available') is False:
+            log.warning('%s says it could not answer: %s', name, answer.get('why'))
+            return answer, name
+        return {'available': True, **answer}, None
 
     @registry.tool
     def digest_list_candidates(
@@ -91,11 +102,9 @@ def register(registry: Registry, context: Context) -> None:
 
 
 def forecast_of(weather: Any) -> dict:
-    """The forecast without the `available` the connector already puts on it.
+    """The forecast, exactly as the connector shaped it.
 
-    `section` adds that key itself, so two sources that shape their answers differently — one
-    with `available`, one a bare list — still come back looking the same.
+    Its `available` is kept rather than stripped: this is the one source that reports its own
+    failure instead of raising, and that answer is the truth about the morning.
     """
-    answer = dict(weather.forecast())
-    answer.pop('available', None)
-    return answer
+    return dict(weather.forecast())
