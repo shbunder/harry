@@ -163,7 +163,7 @@ class Tablet:
                 if entry.type == 'DocumentType' and entry.visibleName == name and entry.id != keeping
             ]
             for one in older:
-                client.delete(one)
+                self._twice(lambda c, item=one: c.delete(item))
         except ExpiredToken:
             # `ExpiredToken` is a `RemarkableAPIError`, so the catch below would swallow it and
             # send somebody to tidy a folder when the answer is to pair again. The page itself
@@ -224,6 +224,26 @@ class Tablet:
         ]
 
     # -- the work -------------------------------------------------------------
+
+    def _twice(self, call: Callable[[Any], Any]) -> Any:
+        """One attempt, then one more, and then let it raise.
+
+        The same `ATTEMPTS` a push gets, for the same reason: reMarkable answers a transient
+        error often enough that giving up on the first one is giving up too early. `_trying`
+        cannot be reused here — it alerts and converts the failure into `Refused`, and this
+        caller has already put the page on the tablet and must not raise.
+
+        A removal that fails twice is caught by `_retire`, which keeps the page, says so and
+        alerts. What this stops is a single blip leaving a duplicate **forever**: nothing
+        revisits yesterday's name, because tomorrow's is different.
+        """
+        last: Exception | None = None
+        for _ in range(ATTEMPTS):
+            try:
+                return call(self._reach())
+            except (RemarkableAPIError, httpx.HTTPError, OSError) as error:
+                last = error
+        raise last if last is not None else RuntimeError('unreachable')
 
     def _trying(self, what: str, call: Callable[[Any], Any], key: str) -> Any:
         """One attempt, then one more, then say so to the caller and to a person.
