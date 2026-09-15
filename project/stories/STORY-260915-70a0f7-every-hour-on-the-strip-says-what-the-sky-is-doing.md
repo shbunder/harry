@@ -2,7 +2,7 @@
 id: STORY-260915-70a0f7
 title: Every hour on the strip says what the sky is doing
 feature: FEAT-260915-153297
-status: Backlog
+status: Done
 created: 2026-09-15
 ---
 
@@ -22,13 +22,13 @@ how a useful line becomes noise.
 
 ## Acceptance criteria
 
-- [ ] Each of the seventeen `hours` entries is `{at, temperature, summary}`
-- [ ] `summary` uses the same `WORDS` table as `today()`, so an hour and the day can never disagree about what a code means
-- [ ] `hourly` asks for `temperature_2m,weather_code` on the one request that already fetches the day
-- [ ] An hourly block with no `weather_code` array still gives seventeen readings, each `summary: null`
-- [ ] An hour whose code the table does not carry gives the temperature and `summary: null`
-- [ ] Seventeen hours of the same unknown code produce one log line naming that code, not seventeen
-- [ ] `weather_forecast` returns it and `TOOL.md` says what it is; `docs/sources.md` describes it
+- [x] Each of the seventeen `hours` entries is `{at, temperature, summary}`
+- [x] `summary` uses the same `WORDS` table as `today()`, so an hour and the day can never disagree about what a code means
+- [x] `hourly` asks for `temperature_2m,weather_code` on the one request that already fetches the day
+- [x] An hourly block with no `weather_code` array still gives seventeen readings, each `summary: null`
+- [x] An hour whose code the table does not carry gives the temperature and `summary: null`
+- [x] Seventeen hours of the same unknown code produce one log line naming that code, not seventeen
+- [x] `weather_forecast` returns it and `TOOL.md` says what it is; `docs/sources.md` describes it
 
 ## Subtasks
 

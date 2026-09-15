@@ -31,9 +31,13 @@ DAILY = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probab
 and the page answers "will I need a coat" — the chance it rains at all, not the average
 across the hours."""
 
-HOURLY = 'temperature_2m'
+HOURLY = 'temperature_2m,weather_code'
 """The shape of the day, on the same request as the summary of it. One endpoint answers both,
-so asking twice would be a second call for something the first could have carried."""
+so asking twice would be a second call for something the first could have carried.
+
+`weather_code` as well as the temperature, because a strip of numbers is half a forecast:
+nine degrees under a sun and nine under a thundercloud are different mornings. Claude reads
+both through `weather_forecast`."""
 
 FIRST_HOUR, LAST_HOUR = 6, 22
 """The hours worth printing. Before six nobody is reading and after ten nobody is going out,
@@ -146,10 +150,26 @@ class Weather:
         if not times or not degrees:
             self._log.info('no hourly temperatures for %s; the page carries the day without its strip', self.place)
             return []
-        found = []
+        # An hourly block with no codes is still a strip worth drawing — the numbers are the
+        # part that cannot be guessed from the day's own summary. But it is said out loud: a
+        # single unrecognised code already warns, and the larger loss going quiet is how a
+        # strip of bare numbers arrives for a month and nobody wonders why.
+        codes = hourly.get('weather_code') or []
+        if len(codes) < len(times):
+            self._log.info(
+                'the hourly forecast for %s carried %d code(s) for %d hour(s); '
+                'those hours draw a temperature and no sky',
+                self.place,
+                len(codes),
+                len(times),
+            )
+        found: list[dict] = []
+        unknown: set[int] = set()
         # `strict=False`: arrays of different lengths are a malformed answer, and the honest
-        # response is the part that lines up rather than no strip at all.
-        for stamp, degree in zip(times, degrees, strict=False):
+        # response is the part that lines up rather than no strip at all. `codes` is padded so
+        # a missing array costs the words and not the readings.
+        padded = list(codes) + [None] * max(len(times) - len(codes), 0)
+        for stamp, degree, code in zip(times, degrees, padded, strict=False):
             # Open-Meteo's default `timeformat` is iso8601, so a stamp is `2026-09-15T06:00`
             # and characters 11 to 16 are the time. Asking for `unixtime` instead would empty
             # the strip silently, which is why the request never does.
@@ -159,8 +179,33 @@ class Weather:
             except (TypeError, ValueError):
                 continue
             if FIRST_HOUR <= hour <= LAST_HOUR:
-                found.append({'at': at, 'temperature': reading})
+                found.append({'at': at, 'temperature': reading, 'summary': self._word(code, unknown)})
+        if unknown:
+            # Once per answer, not once per hour: a day of the same unrecognised code would
+            # otherwise say the same thing seventeen times and bury everything around it.
+            self._log.warning(
+                'no word for WMO code(s) %s in the hourly forecast; those hours carry the number only',
+                ', '.join(str(code) for code in sorted(unknown)),
+            )
         return found
+
+    @staticmethod
+    def _word(code: object, unknown: set[int]) -> str | None:
+        """One hour's sky, from the same table the day uses, remembering what it could not read.
+
+        The same `WORDS` as `_read`, so an hour and the day it belongs to can never disagree
+        about what a code means.
+        """
+        try:
+            # pyright: ignore[reportArgumentType] — None and a non-numeric string both land
+            # below. A numeric string does not: int("3") is 3, and 3 is a code the table has.
+            number = int(code)  # pyright: ignore[reportArgumentType]
+        except (TypeError, ValueError):
+            return None
+        word = WORDS.get(number)
+        if word is None:
+            unknown.add(number)
+        return word
 
 
 def _why(error: Exception) -> str:
