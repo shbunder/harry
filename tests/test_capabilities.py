@@ -499,3 +499,43 @@ def test_a_tool_namespaced_after_no_connector_is_nobody_s_to_offer(harry, capsys
     harry('tools', 'digest_list_candidates', TOOL)
 
     assert cap.main([]) == 0
+
+
+def test_an_optional_naming_a_connector_that_does_not_exist_is_refused(harry, capsys):
+    """A typo in `requires:` skips the capability loudly. A typo in `optional:` is silent
+    forever — the name simply never appears, and the capability degrades every morning as
+    though the connector were down. The lint check is the only thing that catches it."""
+    harry('tools', 'digest_list_candidates', TOOL.replace('requires: [remarkable]', 'optional: [wetaher]'))
+
+    assert cap.main([]) == 1
+    assert 'optionally names connectors that do not exist: wetaher' in capsys.readouterr().err
+
+
+def test_an_optional_naming_a_connector_that_does_exist_passes(harry, capsys):
+    """The other half, so the check is about the name rather than about the field."""
+    harry('connectors', 'remarkable', CONNECTOR)
+    harry('tools', 'digest_list_candidates', TOOL.replace('requires: [remarkable]', 'optional: [remarkable]'))
+
+    assert cap.main([]) == 0, capsys.readouterr().err
+
+
+def test_a_connector_cannot_be_both_required_and_optional(harry, capsys):
+    """The two lists answer one question — if this is missing, is there still something worth
+    doing? — and naming a connector in both says yes and no."""
+    harry('connectors', 'remarkable', CONNECTOR)
+    harry(
+        'tools',
+        'digest_list_candidates',
+        TOOL.replace('requires: [remarkable]', 'requires: [remarkable]\noptional: [remarkable]'),
+    )
+
+    assert cap.main([]) == 1
+    assert 'both `requires` and `optional`' in capsys.readouterr().err
+
+
+def test_an_optional_that_is_not_a_list_is_refused(harry, capsys):
+    """`optional: weather` is the shape somebody writes by hand on the first try."""
+    harry('tools', 'digest_list_candidates', TOOL.replace('requires: [remarkable]', 'optional: weather'))
+
+    assert cap.main([]) == 1
+    assert '`optional` must be a list' in capsys.readouterr().err

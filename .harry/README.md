@@ -58,7 +58,8 @@ a name**: the name, the description and the annotations are in the declaration H
 already read. Each returns what you passed, so `@registry.tool` over the function works.
 
 `context` carries `name`, `kind`, `folder`, `declaration`, `body`, `config`,
-`config_for(principal)`, `log` — and `connectors`, which is what your `requires:` named, as
+`config_for(principal)`, `log` — and `connectors`, which is what your `requires:` and
+`optional:` named, as
 the objects those connectors registered. **That is how you use another capability: you
 declare it and it is handed to you.** You never import one.
 

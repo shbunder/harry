@@ -62,7 +62,14 @@ def register(registry: Registry, context: Context) -> None:
         return {'day': day, 'summary': 'grey, as ever'}
 ```
 
-`connectors` is the other half of `requires:`. Declare what you need and it is handed to
+**`requires:` or `optional:` — one question decides it.** *If this connector is missing, is
+there still something worth doing?* Answer **no** and it goes in `requires:`: the capability
+is skipped, loudly, with a reason. Answer **yes** and it goes in `optional:`: the capability
+loads, and the name is simply not in `connectors`. The morning page is why both exist — a
+lapsed calendar password costs the agenda column, not the page. A connector in neither list
+is never handed over at all.
+
+`connectors` is the other half of those two lists. Declare what you need and it is handed to
 you — you never import another capability, because two folders that import each other are
 two folders that cannot be swapped:
 
@@ -93,7 +100,7 @@ does not use up the folder's one implementation — see [alerting.md](alerting.m
 | `body` | The declaration's body, verbatim |
 | `config` | Its settings, resolved |
 | `config_for(principal)` | The same settings for one person — the NUC serves more than one |
-| `connectors` | What `requires:` named, as the objects those connectors registered |
+| `connectors` | What `requires:` and `optional:` named, as the objects those connectors registered. An optional one that did not load is absent — ask `'icloud' in connectors` |
 | `log` | A logger named for this capability |
 | `alert(message, key)` | Say something went wrong, to whoever is *not* reading the log |
 
@@ -123,6 +130,7 @@ Each of these costs exactly that one capability, and each one's reason appears i
 | `enabled: false` | `disabled in its declaration` |
 | A `required: true` setting with no value | `required setting app_password is not set` |
 | A connector in `requires:` that did not load | `needs icloud, which did not load` |
+| A connector in `optional:` that did not load | nothing — the capability loads, and the name is not in `connectors` |
 | An import that reaches past the SDK | `reaches past harry.sdk — connector.py:9 imports harry.scheduler` |
 | `register` missing from the module | `connector.py has no register(registry, context)` |
 | A **tool** with no `tool.py` beside it | `no tool.py, so there is nothing for this tool to call` |

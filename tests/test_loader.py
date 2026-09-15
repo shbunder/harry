@@ -578,3 +578,114 @@ def test_reaching_for_a_connector_it_never_declared_is_refused_in_words(tmp_path
     assert 'weather' in reason
     assert 'did not declare' in reason and 'requires:' in reason
     assert 'KeyError' not in reason
+
+
+# ---------------------------------------------------------------------------
+# optional: — if this connector is missing, is there still something worth doing?
+# ---------------------------------------------------------------------------
+
+
+def reached_by(catalogue, name: str = 'hopeful_report') -> list[str]:
+    """What the tool was handed, called the way production calls it."""
+    found = catalogue.get('tool', name)
+    assert found is not None and found.target is not None, [f'{c.name}: {c.reason}' for c in catalogue.skipped]
+    return found.target()['reached']
+
+
+def test_a_tool_declaring_a_connector_optional_loads_without_it(tmp_path):
+    """The whole point. A lapsed calendar password should cost the agenda column, not the
+    page — and the page can only be built at all if it loads with the calendar absent."""
+    root = root_with(tmp_path / 'root', 'tools/hopeful_report')
+
+    catalogue = load([root])
+
+    assert reached_by(catalogue) == []
+
+
+def test_an_optional_connector_that_did_load_is_handed_over(tmp_path):
+    """Optional is not "ignored". When it is there, it is there."""
+    root = root_with(tmp_path / 'root', 'tools/hopeful_report', 'connectors/weather')
+
+    catalogue = load([root])
+
+    assert reached_by(catalogue) == ['weather']
+
+
+def test_an_optional_connector_that_did_not_load_is_simply_absent(tmp_path):
+    """Absent rather than None. A capability asks `'weather' in context.connectors`, which is
+    one question; a None that has to be checked for is two, and the second gets forgotten."""
+    root = root_with(tmp_path / 'root', 'tools/hopeful_report')
+
+    catalogue = load([root])
+
+    assert reached_by(catalogue) == []
+
+
+def test_an_optional_connector_that_broke_is_absent_rather_than_fatal(tmp_path):
+    """`broken` raises on import. The capability that hoped for it still loads: a connector
+    that is present and failing is the same answer as one that was never configured."""
+    root = root_with(tmp_path / 'root', 'tools/hopeful_report', 'connectors/broken')
+
+    catalogue = load([root])
+
+    assert reached_by(catalogue) == [], 'a connector that raised was handed over anyway'
+    broke = catalogue.get('connector', 'broken')
+    assert broke is not None and broke.status == 'skipped', 'and it really did fail'
+
+
+def test_an_optional_connector_that_registered_nothing_is_absent_too(tmp_path):
+    """`quiet` loads and registers nothing — it is `LOADED` with no target, which is the one
+    case `status` alone does not catch. Required, that is a skip; optional, it is the same as
+    absent, because there is nothing to hand over either way."""
+    root = root_with(tmp_path / 'root', 'tools/hopeful_report', 'connectors/quiet')
+    catalogue = load([root])
+    present = catalogue.get('connector', 'quiet')
+    assert present is not None and present.status == 'loaded' and present.target is None
+
+    assert reached_by(catalogue) == []
+
+
+def test_required_is_not_weakened_by_the_arrival_of_optional(tmp_path):
+    """The whole risk of this change: `requires:` still refuses."""
+    root = root_with(tmp_path / 'root', 'tools/weather_forecast')
+
+    catalogue = load([root])
+
+    assert reasons(catalogue)['weather_forecast'] == 'needs weather, which did not load'
+
+
+def test_the_two_lists_do_not_interfere(tmp_path):
+    """One connector each way. The required one is guaranteed or the tool is skipped; the
+    optional one is there only if it loaded."""
+    root = root_with(tmp_path / 'root', 'tools/both_lists_report', 'connectors/weather')
+
+    catalogue = load([root])
+
+    assert reached_by(catalogue, 'both_lists_report') == ['weather']
+
+
+def test_a_missing_required_connector_skips_even_when_the_optional_one_is_there(tmp_path):
+    """`optional:` must not rescue a capability whose `requires:` cannot be met."""
+    root = root_with(tmp_path / 'root', 'tools/both_lists_report', 'connectors/icloud')
+
+    catalogue = load([root])
+
+    assert reasons(catalogue)['both_lists_report'] == 'needs weather, which did not load'
+
+
+def test_the_pages_say_how_to_choose_between_the_two_lists():
+    """Three places a person looks, and the question is the same in each: if this connector
+    is missing, is there still something worth doing?"""
+    repo = Path(__file__).parent.parent
+    pages = {
+        'docs/capabilities.md': ' '.join((repo / 'docs' / 'capabilities.md').read_text(encoding='utf-8').split()),
+        '.harry/README.md': ' '.join((repo / '.harry' / 'README.md').read_text(encoding='utf-8').split()),
+        'new-tool': ' '.join(
+            (repo / '.claude' / 'skills' / 'new-tool' / 'SKILL.md').read_text(encoding='utf-8').split()
+        ),
+    }
+
+    for name, prose in pages.items():
+        assert 'optional:' in prose, f'{name} does not mention the second list'
+    assert 'is there still something worth doing?' in pages['docs/capabilities.md']
+    assert "'weather' in context.connectors" in pages['new-tool'], 'absent, not None — the thing people get wrong'
