@@ -4,7 +4,7 @@ title: A page pushed twice replaces yesterday's copy, not sits beside it
 track: story
 created: 2026-09-15
 touches: [connectors/remarkable, docs]
-stories: []
+stories: [STORY-260915-1c6e8e]
 decisions: []
 ---
 
@@ -39,6 +39,7 @@ not "list, delete, push".
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
+- [ ] [[STORY-260915-1c6e8e]] — A push replaces the copy it supersedes, and removes nothing else
 
 ## Notes
 
