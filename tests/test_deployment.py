@@ -1,17 +1,18 @@
-"""The three places a credential must never be, and a check for each.
+"""What the two stacks promise, and what the image must not carry.
 
-Harry holds three all-or-nothing secrets — a tablet token with no scopes, an iCloud app
-password, and a live logged-in newspaper session. `.claude/rules/secrets-and-config.md`
-says where they live; this says where they do not.
+`docker-compose.yml` is the whole of Harry's deployment, so the promises a reader takes
+from it are worth holding to something that runs: the two stacks cannot collide on a port
+or a volume, only one of them keeps the clock, only one starts by default, the real one
+names a version, and no credential is written down in it.
 
-**The committed compose file** is checked in the gate, because that is the file somebody
-edits at a terminal to make one thing work and then commits.
+**The compose file** is checked in the gate. It is the file somebody edits at a terminal to
+make one thing work, and then commits.
 
 **The image** is checked under `live`, because the truth of it depends on something the
 repository does not track: a built `harry:latest`. Run it with `make test-live` after
 `make image`. The `.dockerignore` lines it verifies are otherwise a control nothing
-executes — they are three globs, and a glob that matches nothing looks exactly like a glob
-that matches everything it should.
+executes — they are globs, and a glob that matches nothing looks exactly like a glob that
+matches everything it should.
 """
 
 from __future__ import annotations
@@ -111,6 +112,16 @@ def test_the_dev_stack_is_behind_a_profile_so_make_up_cannot_start_it():
     )
 
 
+def test_the_real_stack_names_a_version_and_dev_tracks_latest():
+    """Pinned to `latest`, the real stack runs whatever was built last — including a build
+    somebody made to try something. `make deploy` sets HARRY_TAG; the fallback is only
+    there so a machine that has never deployed can still start."""
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+
+    assert compose['services']['harry']['image'] == 'harry:${HARRY_TAG:-latest}'
+    assert compose['services']['harry-dev']['image'] == 'harry:latest'
+
+
 # ---------------------------------------------------------------------------
 # The built image
 # ---------------------------------------------------------------------------
@@ -184,3 +195,16 @@ def test_the_image_is_handed_no_configuration_beyond_a_port_and_a_path(built_ima
     baked = sorted(variable for variable in built_image['Config']['Env'] if variable.startswith('HARRY_'))
 
     assert baked == ['HARRY_DATA_DIR=/data', 'HARRY_PORT=7430'], baked
+
+
+@pytest.mark.live
+def test_a_virtual_display_is_in_the_image_before_anything_needs_one(built_image):
+    """De Tijd's edge refuses every headless browser, and a NUC has no screen for a headed
+    one. Putting `xvfb` in now costs a few megabytes and means the feature that needs it is
+    a code change rather than an image rebuild and a re-deploy.
+
+    Nothing uses it yet. That is the point of the test: it is easy to drop a dependency
+    that nothing imports, and the next person would not find out until a build they were
+    hoping to avoid.
+    """
+    assert in_the_image('command -v Xvfb || true').strip(), 'Xvfb is not in the image'

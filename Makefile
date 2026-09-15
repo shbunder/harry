@@ -34,7 +34,7 @@ OFF   := \033[0m
 
 .PHONY: help env-install check lint format typecheck test test-cov lock env-template \
         board lanes lessons worktree worktree-prune probe spike serve digest-dry digest-candidates remarkable-pair \
-        image up down logs health up-dev down-dev logs-dev health-dev docs clean
+        image up down logs health up-dev down-dev logs-dev health-dev deploy rollback versions docs clean
 
 help:  ## Show this help
 	@echo ""
@@ -166,11 +166,23 @@ digest-dry:  ## Build today's page from PICKS=a-file.json, to out/ and nowhere e
 # The container
 # ---------------------------------------------------------------------------
 
-image:  ## Build Harry's image
-	docker build -t harry:latest .
+# What a build is called. The short commit, because it is the one name that cannot be
+# reused for different code — a date can be, twice in an afternoon. A dirty tree gets
+# `-dirty` appended so it is visibly not a version anybody can go back to, and `deploy`
+# refuses one outright.
+TAG      = $(shell git rev-parse --short HEAD)$(shell git diff --quiet HEAD 2>/dev/null || echo -dirty)
+DEPLOYED = .deployed-tags
+# The tag the real stack runs, newest first. `latest` when nothing has been deployed here,
+# which is what makes `make up` work on a machine straight out of a clone.
+RUNNING  = $(shell head -1 $(DEPLOYED) 2>/dev/null || echo latest)
 
-up:  ## Start Harry with compose, and wait until it is actually answering
-	docker compose up -d --wait --wait-timeout 120
+image:  ## Build Harry's image, tagged with the commit and as latest
+	docker build -t harry:$(TAG) -t harry:latest .
+	@echo "  built harry:$(TAG)"
+
+up:  ## Start the real stack on whatever tag is deployed here
+	HARRY_TAG=$(RUNNING) docker compose up -d --wait --wait-timeout 120
+	@echo "  harry is on harry:$(RUNNING)"
 
 # This service by name, not `docker compose down`: that takes the project's network with
 # it and prints "Resource is still in use" whenever the dev stack is up — a line that reads
@@ -192,6 +204,7 @@ health:  ## What loaded, what did not, and why — from the running container
 
 up-dev:  ## Start the dev stack on 7431, with its clock off
 	docker compose --profile dev up -d --wait --wait-timeout 120 harry-dev
+	@echo "  harry-dev is on harry:latest"
 
 down-dev:  ## Stop the dev stack. The real one is untouched
 	docker compose --profile dev stop harry-dev
@@ -203,6 +216,44 @@ logs-dev:  ## Follow the dev stack's logs
 health-dev:  ## What the dev stack loaded. `jobs.enabled` is false here, and true on the real one
 	docker compose exec harry-dev python -c "import urllib.request,os,json,sys; \
 	  print(json.dumps(json.load(urllib.request.urlopen(f'http://localhost:{os.environ[\"HARRY_PORT\"]}/health')), indent=2))"
+
+# ---------------------------------------------------------------------------
+# Moving versions
+# ---------------------------------------------------------------------------
+#
+# Neither of these touches a volume. The data outlives every deploy and every rollback,
+# because the only thing either one changes is which image the container is made from.
+
+deploy:  ## Build this commit, tag it, and put the real stack on it
+	@git diff --quiet HEAD || { \
+	  echo -e "$(WARN) The tree is dirty, so this build could not be rebuilt from git."; \
+	  echo "   Commit first. There is no CI here: the tag IS the record of what shipped."; exit 1; }
+	@$(MAKE) --no-print-directory image
+	@printf '%s\n' "$(TAG)" > $(DEPLOYED).new
+	@grep -vxF "$(TAG)" $(DEPLOYED) 2>/dev/null >> $(DEPLOYED).new || true
+	@mv $(DEPLOYED).new $(DEPLOYED)
+	HARRY_TAG=$(TAG) docker compose up -d --wait --wait-timeout 120
+	@echo -e "$(GREEN)✓ harry is on harry:$(TAG)$(OFF)   (go back with: make rollback)"
+
+rollback:  ## Put the real stack back on the tag it was running before
+	@test -s $(DEPLOYED) || { echo -e "$(WARN) Nothing has been deployed here, so there is nothing to go back to."; exit 1; }
+	@test "$$(wc -l < $(DEPLOYED))" -ge 2 || { \
+	  echo -e "$(WARN) Only one version has been deployed here: harry:$(RUNNING)."; \
+	  echo "   Nothing to roll back to."; exit 1; }
+	@PREV=$$(sed -n 2p $(DEPLOYED)); \
+	 docker image inspect harry:$$PREV >/dev/null 2>&1 || { \
+	   echo -e "$(WARN) harry:$$PREV was the previous version and is no longer on this machine."; \
+	   echo "   Rebuild it: git checkout $$PREV && make deploy"; exit 1; }
+	@PREV=$$(sed -n 2p $(DEPLOYED)); \
+	 { sed -n 2p $(DEPLOYED); sed -n 1p $(DEPLOYED); sed -n '3,$$p' $(DEPLOYED); } > $(DEPLOYED).new; \
+	 mv $(DEPLOYED).new $(DEPLOYED); \
+	 HARRY_TAG=$$PREV docker compose up -d --wait --wait-timeout 120; \
+	 echo -e "$(GREEN)✓ harry is back on harry:$$PREV$(OFF)   (make rollback again returns to the other one)"
+
+versions:  ## What is deployed here, newest first, and what is still on the machine
+	@echo "deployed on this machine, newest first:"; \
+	 test -s $(DEPLOYED) && sed 's/^/  /' $(DEPLOYED) || echo "  (nothing yet — make up runs harry:latest)"
+	@echo "images still present:"; docker images harry --format '  harry:{{.Tag}}  {{.CreatedSince}}'
 
 # ---------------------------------------------------------------------------
 # Housekeeping

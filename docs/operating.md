@@ -3,7 +3,8 @@
 Harry runs on the NUC in Docker on port 7430. Marcel owns 7420 and 7421.
 
 ```bash
-make image        # build the image
+make image        # build the image, tagged with this commit
+make deploy       # build, tag, and put the real stack on it
 make up           # start, and wait until Harry is actually answering
 make health       # what loaded, what did not, and why
 make logs         # follow
@@ -108,6 +109,53 @@ itself as healthy**, because the image's healthcheck reads the same variable and
 to the right place while the outside world knocks on the wrong one. It was measured before
 being fixed: `/data` empty, the store written to a path that dies with the container, and
 `Container harry Healthy` on the console.
+
+## Deploying a version, and going back
+
+```bash
+make deploy      # build this commit, tag it, put the real stack on it
+make rollback    # put the real stack back on the tag it was running before
+make versions    # what has been deployed here, and what images are still around
+```
+
+**Neither one touches a volume.** The store, the rendered pages and the De Tijd session
+outlive every deploy and every rollback, because the only thing either changes is which
+image the container is made from.
+
+A build is named after the short commit — `harry:a1b2c3d` — because that is the one name
+that cannot mean two different things, and a date can mean two within an afternoon. A dirty
+tree builds as `harry:a1b2c3d-dirty` and **`make deploy` refuses it**: there is no CI here,
+so the tag is the only record of what shipped, and a tag that cannot be rebuilt from git
+records nothing.
+
+The real stack names a tag; the dev stack tracks `latest` on purpose, because dev is where
+the newest build is tried.
+
+A worked example. Something is wrong with the page this morning:
+
+```
+$ make versions
+deployed on this machine, newest first:
+  9f2a1c4
+  a1b2c3d
+images still present:
+  harry:9f2a1c4  2 hours ago
+  harry:a1b2c3d  6 days ago
+  harry:latest   2 hours ago
+
+$ make rollback
+✓ harry is back on harry:a1b2c3d   (make rollback again returns to the other one)
+```
+
+`make rollback` swaps the top two, so running it twice returns you to where you started —
+useful when the rollback turns out not to have been the problem. It stops and says so if
+only one version has ever been deployed here, or if the previous image has been pruned off
+the machine, and in the second case it tells you the commit to rebuild from.
+
+`make up` starts the real stack on whatever tag was last deployed, falling back to `latest`
+on a machine that has never deployed — which is what lets a fresh clone start without
+setting anything up. The record is `.deployed-tags` in the repository root, gitignored,
+because which version this machine runs is machine state rather than code.
 
 ## Configuration
 

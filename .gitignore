@@ -65,3 +65,7 @@ site/
 # `git add`; the same rule is cheaper here than the cleanup was there.
 *.png
 !docs/**/*.png
+
+# Which image tags have been deployed on this machine, newest first. Machine state, not
+# code: it is the answer to "what is running" and to "what does rollback go back to".
+.deployed-tags

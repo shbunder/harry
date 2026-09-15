@@ -20,6 +20,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libffi-dev shared-mime-info fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
+# A virtual display, for the one source that will not answer a headless browser. De Tijd's
+# edge returns 403 to httpx and to every flavour of headless Chromium; only a headed browser
+# gets 200, and a NUC has no screen for one to be headed on. Nothing uses this yet — it is
+# here so that adding full-text fetching later is a code change rather than an image rebuild,
+# which on this image is several minutes and a re-deploy.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        xvfb \
+    && rm -rf /var/lib/apt/lists/*
+
 # Nothing else talks to the tablet. The Go rmapi binary used to be downloaded here for
 # one call made once per machine — pairing — and remarkapy turned out to do that itself
 # with register_device(code). Two clients would be two reverse-engineered protocol

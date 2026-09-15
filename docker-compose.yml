@@ -5,7 +5,11 @@
 services:
   harry:
     build: .
-    image: harry:latest
+    # The real stack names a tag. `make deploy` sets HARRY_TAG to the commit it built, and
+    # `make rollback` sets it to the one before — so what is running is a version somebody
+    # chose rather than whatever `latest` last pointed at. The fallback is what makes a
+    # first `make up` work on a machine that has never deployed.
+    image: harry:${HARRY_TAG:-latest}
     container_name: harry
     restart: unless-stopped
     # Both files, in the same order and with the same meaning as everywhere else:
@@ -44,6 +48,8 @@ services:
   harry-dev:
     profiles: [dev]
     build: .
+    # Dev tracks `latest` on purpose: it is where the newest build is tried, and pinning it
+    # would mean two things to move for every change instead of one.
     image: harry:latest
     container_name: harry-dev
     restart: unless-stopped
