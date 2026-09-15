@@ -76,6 +76,7 @@ suppresses every error on the line. It reads narrow and behaves broad.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-15** — Reflection: pre-close verifier said REQUEST CHANGES on one Critical and one Important, both fixed on the branch — every hour losing its word was completely silent while one bad code warned, and the 'hour and day share a table' criterion had a test that passed against a private two-entry table because the recording carries only codes 0 and 3. Traceability 6/6 and 7/7. Degraded paths exercised: no hourly block, no weather_code array, a truncated codes array, an unrecognised code, seventeen hours of the same unknown code, two different unknown codes. Nine controls deleted one at a time, all red. No scope drift.
 
 ## Links
 
