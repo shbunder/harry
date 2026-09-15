@@ -24,12 +24,22 @@ What all of it is for. At 06:30 a Claude scheduled task asks Harry for candidate
 - [ ] digest_list_candidates calls weather.today(), calendar.today() and news.candidates(limit) and returns their answers, and returns the same shape with no sources loaded at all
 - [ ] Candidates come back newest first, capped at limit, and a capped answer says how many were dropped; summary is the source's own text, truncated at 280 characters under concise
 - [ ] A source that raises, and a source that returns None, both leave that section reading "unavailable" rather than blank, with the others intact
-- [ ] digest_build takes an intro and picks of id-and-note, and the front page carries the intro verbatim
+- [ ] digest_build takes an intro and picks of id, note, also and topic, and the front page carries the intro verbatim
 - [ ] Each picked article appears with the note Claude wrote above its text, unedited
 - [ ] An article whose text could not be fetched still appears with its headline and note, saying the text was unavailable
 - [ ] digest_build resolves each pick with news.article(id), so nothing is held between the two calls, and an id the source does not know is an error naming it
 - [ ] picks is capped at 12, and digest_build emits a progress notification per article so the call survives past 300 seconds
-- [ ] The page renders at exactly 509.34 by 679.13 points, with an outline entry per article in the order Claude picked
+- [ ] The page renders at exactly 509.34 by 679.13 points, its left margin 24 points wider than the others, with an outline entry per article in the order Claude picked
+- [ ] The masthead carries the configured name, and the date on its own baseline with the weekday under it
+- [ ] The weather panel carries an icon for the day and four hours each with a temperature and an icon of its own
+- [ ] Each event is a block as tall as its own length, drawn in its calendar's colour, with a legend naming only the calendars that have something on today
+- [ ] Three events overlapping at 09:00 are each a third of the column wide, and an event alone at 20:00 is the full width
+- [ ] The timetable ends within 10 points of the bottom margin whatever length the intro runs to, and nothing crosses the bottom or right margin
+- [ ] Each index entry carries its number, its topic mark, its headline, its source and its picture
+- [ ] A pick carrying `also` shows two "see also" links and a count of the rest, and every companion has its own page reachable from the lead and from the front page
+- [ ] Every headline, thumbnail, companion and way out is a link annotation in the PDF
+- [ ] A picture is fetched with a browser User-Agent on a 403, and a picture that cannot be fetched costs the picture and nothing else
+- [ ] The reader sets the journal name and the calendar colours; Claude sets the intro, the picks, the notes, the grouping and the topics, on the call
 - [ ] With no tablet the page is written to out_dir/<date>.pdf and the answer quotes the path; with one, tablet.push is called and the answer quotes what it returned, and the page stays on disk
 - [ ] The morning-page job is one markdown file whose brief is served as a prompt and tells Claude the three calls to make
 - [ ] `make digest-dry` renders to out/digest.pdf through scripts/call_tool.py with no server, credential or tablet, and prints what it could not put on the page
