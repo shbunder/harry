@@ -354,3 +354,74 @@ def test_a_virtual_display_is_in_the_image_before_anything_needs_one(built_image
     hoping to avoid.
     """
     assert in_the_image('command -v Xvfb || true').strip(), 'Xvfb is not in the image'
+
+
+@pytest.fixture
+def running_stack():
+    """The real stack, up. Skips unless it is — nothing here starts or stops it.
+
+    `make up` is a deliberate act with a data volume behind it, so a test does not do it
+    on somebody's behalf.
+    """
+    if shutil.which('docker') is None:
+        pytest.skip('docker is not installed here')
+    up = subprocess.run(
+        ['docker', 'compose', 'ps', '--status', 'running', '--format', '{{.Service}}'],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    )
+    if 'harry' not in up.stdout.split():
+        pytest.skip('the real stack is not running — `make up` first')
+
+    def run(*command: str, stdin: str | None = None) -> str:
+        done = subprocess.run(
+            ['docker', 'compose', 'exec', '-T', 'harry', *command],
+            cwd=REPO,
+            input=stdin,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        assert done.returncode == 0, done.stderr[-2000:]
+        return done.stdout
+
+    return run
+
+
+@pytest.mark.live
+def test_a_page_is_built_inside_the_container_and_stays_on_the_volume(running_stack):
+    """The whole product minus the clock, on the machine that will run it.
+
+    Reaches the real feeds and the real forecast, which is why it is `live`. It needs no
+    credential: weather and news carry defaults, so this is the page a fresh NUC can build
+    before anything has been configured — a weather panel and headlines and no agenda.
+
+    `scripts/call_tool.py`, not `make`: the image has no `make` and the `Makefile` is not
+    copied into it. This was a manual run recorded on the board; a note is not a control,
+    and the artefact it described was deleted with the volume it lived on.
+    """
+    candidates = json.loads(running_stack('uv', 'run', 'python', 'scripts/call_tool.py', 'digest_list_candidates'))
+
+    assert candidates['weather']['available'] is True, candidates['weather']
+    assert candidates['agenda']['available'] is False, 'no calendar is configured, so the agenda must say so'
+    assert candidates['agenda']['why'], 'the agenda is unavailable without saying why'
+    assert len(candidates['headlines']) >= 10, f'only {len(candidates["headlines"])} headlines came back'
+
+    picks = {
+        'intro': 'Built by the suite, from the feeds, with nothing configured.',
+        'deliver': False,
+        'picks': [{'id': candidates['headlines'][0]['id'], 'note': 'The first one, unchosen.', 'topic': 'world'}],
+        'more': [],
+    }
+    running_stack('sh', '-c', 'cat > /data/suite-picks.json', stdin=json.dumps(picks))
+    answer = json.loads(
+        running_stack(
+            'uv', 'run', 'python', 'scripts/call_tool.py', 'digest_build', '--args', '@/data/suite-picks.json'
+        )
+    )
+
+    assert answer['delivered']['pushed'] is False, 'deliver=false still pushed to the tablet'
+    assert answer['page']['path'].startswith('/data/'), f'the page landed at {answer["page"]["path"]}, off the volume'
+    assert running_stack('sh', '-c', f'test -s {answer["page"]["path"]} && echo yes').strip() == 'yes'
+    assert answer['page']['pages'] >= 2, answer['page']
