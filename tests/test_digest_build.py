@@ -357,3 +357,18 @@ def test_call_tool_knows_no_capability_by_name():
 
     for name in ('digest', 'weather', 'icloud', 'news', 'remarkable', 'slack'):
         assert name not in code, f'{name} is named in the code of call_tool.py'
+
+
+def test_the_docs_say_what_a_reader_sets_and_what_breaks_quietly():
+    """The page a person opens when the paper looks wrong, or when they want to change its
+    name. Four settings and one silence worth naming."""
+    prose = ' '.join((REPO / 'docs' / 'morning-page.md').read_text(encoding='utf-8').split())
+    index = (REPO / 'docs' / 'index.md').read_text(encoding='utf-8')
+
+    assert 'morning-page.md' in index, 'a page nobody links to is a page nobody reads'
+    for setting in ('NAME', 'COLOURS', 'OUT_DIR', 'TIMEZONE'):
+        assert setting in prose, f'{setting} is not documented'
+    assert 'make digest-dry PICKS=picks.json' in prose
+    assert 'morning-page has not run today' in prose, 'the one failure with no other trace'
+    assert 'the columns are local' in prose
+    assert 'silent correction is how the wrong story gets printed' in prose
