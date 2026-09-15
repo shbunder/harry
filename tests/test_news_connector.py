@@ -12,7 +12,6 @@ trimmed out of each one. The failures are respx side-effects over those same URL
 from __future__ import annotations
 
 import logging
-import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -22,6 +21,8 @@ import respx
 
 from harry.alerts import Alerts
 from harry.loader import load
+
+from .capability_copy import copy_capability
 
 REPO = Path(__file__).parent.parent
 FIXTURES = Path(__file__).parent / 'fixtures' / 'news'
@@ -61,7 +62,7 @@ def news(tmp_path, monkeypatch):
         root = tmp_path / 'root'
         for where in ('connectors/news', *(f'tools/{tool}' for tool in tools)):
             (root / where).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(REPO / '.harry' / where, root / where, dirs_exist_ok=True)
+            copy_capability(REPO / '.harry' / where, root / where)
         if settings:
             (root / 'connectors' / 'news' / '.env.local').write_text(settings, encoding='utf-8')
 

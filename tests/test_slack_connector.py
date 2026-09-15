@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 from pathlib import Path
 
 import httpx
@@ -26,6 +25,8 @@ from harry.boundary import forbidden_imports
 from harry.loader import load
 from harry.mcp import FIND_TOOLS, build_server
 from harry.store import Store
+
+from .capability_copy import copy_capability
 
 REPO = Path(__file__).parent.parent
 POST_MESSAGE = 'https://slack.com/api/chat.postMessage'
@@ -44,7 +45,7 @@ def slack(tmp_path, monkeypatch):
         folder.parent.mkdir(parents=True, exist_ok=True)
         # dirs_exist_ok so one test may load the same tree twice, which is what a restart
         # looks like from here.
-        shutil.copytree(REPO / '.harry' / 'connectors' / 'slack', folder, dirs_exist_ok=True)
+        copy_capability(REPO / '.harry' / 'connectors' / 'slack', folder)
         settings = ''.join(f'{key}={value}\n' for key, value in (('BOT_TOKEN', token), ('CHANNEL', channel)) if value)
         (folder / '.env.local').write_text(settings, encoding='utf-8')
         return load([root])
@@ -365,7 +366,7 @@ def harry_with_slack(tmp_path, monkeypatch):
         root = tmp_path / 'root'
         for where in ('connectors/slack', 'tools/slack_post'):
             (root / where).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(REPO / '.harry' / where, root / where, dirs_exist_ok=True)
+            copy_capability(REPO / '.harry' / where, root / where)
         settings_file = root / 'connectors' / 'slack' / '.env.local'
         settings_file.write_text(f'BOT_TOKEN={token}\nCHANNEL=#harry\n' if token else 'CHANNEL=#harry\n', 'utf-8')
         return build_server(load([root]), Store(tmp_path / 'jobs.json'))

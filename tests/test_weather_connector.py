@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import json
 import logging
-import shutil
 from pathlib import Path
 
 import httpx
@@ -24,6 +23,8 @@ from fastmcp import Client
 from harry.loader import load
 from harry.mcp import FIND_TOOLS, build_server
 from harry.store import Store
+
+from .capability_copy import copy_capability
 
 REPO = Path(__file__).parent.parent
 FORECAST = 'https://api.open-meteo.com/v1/forecast'
@@ -45,7 +46,7 @@ def weather(tmp_path, monkeypatch):
         wanted = ['connectors/weather'] + (['tools/weather_forecast'] if with_tool else [])
         for where in wanted:
             (root / where).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(REPO / '.harry' / where, root / where, dirs_exist_ok=True)
+            copy_capability(REPO / '.harry' / where, root / where)
         if settings:
             (root / 'connectors' / 'weather' / '.env.local').write_text(settings, encoding='utf-8')
         return load([root])

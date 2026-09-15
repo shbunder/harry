@@ -15,7 +15,6 @@ from __future__ import annotations
 import inspect
 import json
 import logging
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +24,8 @@ from remarkapy import Client, ExpiredToken, RemarkableAPIError
 
 from harry.alerts import Alerts
 from harry.loader import load
+
+from .capability_copy import copy_capability
 
 REPO = Path(__file__).parent.parent
 TOKEN = 'device-token-that-must-never-be-printed-0f2744'
@@ -105,7 +106,7 @@ def tablet(tmp_path, monkeypatch):
         root = tmp_path / 'root'
         for where in ('connectors/remarkable', *(f'tools/{tool}' for tool in tools)):
             (root / where).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(REPO / '.harry' / where, root / where, dirs_exist_ok=True)
+            copy_capability(REPO / '.harry' / where, root / where)
         (root / 'connectors' / 'remarkable' / '.env.local').write_text(settings, encoding='utf-8')
 
         alerts = Alerts()

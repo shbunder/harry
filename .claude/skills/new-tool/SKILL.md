@@ -127,6 +127,10 @@ unknown annotation, a near-empty description, and a roster where everything is d
 Then tests: the happy path against a fixture, the failure path asserting the steering
 message, and — if `requires` names a connector — the path where that connector is down.
 
+Copy the tool's folder into the test root with `copy_capability` from
+`tests/capability_copy.py`, never with `shutil.copytree`: the helper leaves this machine's
+`.env.local` behind, and a test fails if anything copies out of `.harry/` another way.
+
 ### The code, if it has any
 
 `.harry/tools/<name>/tool.py`, with one function:
