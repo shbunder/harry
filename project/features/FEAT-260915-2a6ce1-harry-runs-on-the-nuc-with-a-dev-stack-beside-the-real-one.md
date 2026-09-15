@@ -1,0 +1,53 @@
+---
+id: FEAT-260915-2a6ce1
+title: Harry runs on the NUC, with a dev stack beside the real one
+track: full
+created: 2026-09-15
+touches: [Dockerfile, compose, core, docs, scripts]
+stories: [STORY-260915-e0628f, STORY-260915-1b871c, STORY-260915-843c7d]
+decisions: [ADR-260915-8882ef]
+---
+
+# FEAT-260915-2a6ce1 — Harry runs on the NUC, with a dev stack beside the real one
+
+## Summary
+
+Harry works on a laptop and has never run in a container. This puts it on the NUC, on all the
+time, restarting with the machine — and puts a **dev stack beside it** on the same box, with
+its own port, data and credentials, so a change can be tried without touching the morning.
+
+The plan is on the requirements page and is written to be picked up by a session with no
+memory of the one that wrote it. Start with the compose file: there is not one, so `make up`
+fails today, and Scenario 1 — a first boot with nothing configured at all — is the acceptance
+test that needs no credentials.
+
+## Acceptance criteria
+
+- [ ] `make up` starts Harry on a machine with no `.env.local` anywhere, and `/health` lists every capability as skipped with the setting it is missing
+- [ ] Nothing crashes on that first boot — a capability whose configuration is absent disables itself
+- [ ] Each credential put on the NUC turns its capability from skipped to loaded without a rebuild
+- [ ] No credential is in the repository, in the image, or in a committed compose file
+- [ ] A dev stack runs beside the real one with its own port, data directory and credentials
+- [ ] The dev stack's scheduler is off, so it can never report a deadline the real one met
+- [ ] Stopping or rebuilding either stack leaves the other running
+- [ ] `make digest-candidates` and `make digest-dry` work inside the container, and the dry one pushes nothing
+- [ ] Harry restarts with the machine and keeps its data across a reboot
+- [ ] Deploying a new version is one command and going back to the previous image is another
+- [ ] `docs/operating.md` describes what is actually on the NUC, in the present tense
+
+## Stories
+
+<!-- Maintained by `board.py new-story`. -->
+- [ ] [[STORY-260915-e0628f]] — A compose file, and Harry starts with nothing configured
+- [ ] [[STORY-260915-1b871c]] — A dev stack beside the real one, with its scheduler off
+- [ ] [[STORY-260915-843c7d]] — The credentials reach the NUC, one capability at a time
+
+## Notes
+
+<!-- Appended by `board.py note`. -->
+
+## Links
+
+- Requirements: [[FEAT-260915-2a6ce1]]
+- Decision: [[ADR-260915-8882ef]] — One image, two compose profiles
+
