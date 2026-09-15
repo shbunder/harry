@@ -51,6 +51,11 @@ def resolve(given: str, known: dict[str, dict]) -> str:
     ids, and the second, against a brief rewritten to warn about exactly that, rebuilt two
     from the headline and made them longer. Prose did not fix it.
     """
+    # An exact match first, and it is load-bearing rather than an optimisation. The news
+    # connector disambiguates two same-day stories whose first five title words match by
+    # appending `-2`, so `…-de-huur` and `…-de-huur-2` are both real ids and the first is a
+    # strict prefix of the second. Without this, asking for the shorter one would be
+    # ambiguous — or worse, resolve to the other and print a story nobody chose.
     if given in known:
         return given
     hits = [one for one in known if one.startswith(given) or given.startswith(one)]

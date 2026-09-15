@@ -607,3 +607,32 @@ def test_the_file_a_reader_opens_is_the_size_and_shape_it_should_be(digest):
 
     annotations = sum(len(page.get('/Annots') or []) for page in reader.pages)
     assert annotations > 20, f'{annotations} tappable things — the tablet has no address bar'
+
+
+def test_an_id_that_is_a_beginning_of_two_candidates_is_refused(digest):
+    """The safety property the whole resolution rule rests on, and it is not "ids never begin
+    one another" — they can.
+
+    The news connector disambiguates two same-day stories whose first five title words match
+    by appending `-2`, so `…-de-huur` and `…-de-huur-2` are both real ids and the first is a
+    strict prefix of the second. A truncation that lands on the shorter one must therefore be
+    refused rather than resolved to either, and that refusal is what sends Claude back to look
+    the id up again.
+    """
+    catalogue = digest(news={'many': 4, 'collide': True})
+    base = 'vrt-2026-09-15-story-0-and-what-came-of-it'
+
+    with pytest.raises(Exception, match='could mean any of'):
+        built(catalogue)(intro='Colliding.', picks=[pick(0, id=base[:-6])])
+
+
+def test_an_exact_match_always_wins_over_a_longer_candidate(digest):
+    """The other half. With `X` and `X-2` both real, asking for `X` means `X` — anything else
+    would silently hand back a story nobody chose, and `resolved` would stay empty."""
+    catalogue = digest(news={'many': 4, 'collide': True})
+    base = 'vrt-2026-09-15-story-0-and-what-came-of-it'
+
+    answer = built(catalogue)(intro='Exact.', picks=[pick(0, id=base)])
+
+    assert answer['resolved'] == [], 'nothing needed resolving'
+    assert says(text_of(answer['page']['path']), 'Story 0')

@@ -38,6 +38,16 @@ class News:
         self.asked.append(how)
         refuse(wanted)
         many = wanted.get('many', 3)
+        if wanted.get('collide'):
+            # What `News._unique` really produces when two same-day stories share their first
+            # five title words: the second id is the first with `-2` on the end.
+            made = [
+                {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'title': 'Story 0', 'source': 'VRT NWS',
+                 'feed': 'vrt', 'date': '2026-09-15', 'summary': 'A summary.', 'image': wanted.get('image')},
+                {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it-2', 'title': 'Story 0b', 'source': 'VRT NWS',
+                 'feed': 'vrt', 'date': '2026-09-15', 'summary': 'A summary.', 'image': wanted.get('image')},
+            ]
+            return {'candidates': made, 'unavailable': []}
         made = [
             {'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'title': f'Story {n}', 'source': 'VRT NWS',
              'feed': 'vrt', 'date': '2026-09-15', 'summary': 'A summary.' * (40 if wanted.get('long') else 1),
