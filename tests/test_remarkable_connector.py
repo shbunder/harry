@@ -12,6 +12,7 @@ stops that stand-in drifting away from remarkapy.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 import logging
@@ -55,15 +56,16 @@ class Item:
 class StandIn:
     """remarkapy's client, with the network taken out.
 
-    Only the four calls this connector makes. Everything else remarkapy offers — delete,
-    move, rename, download — is absent on purpose: if the connector grows a fifth call, this
-    stand-in fails rather than quietly allowing it.
+    Only the five calls this connector makes. Everything else remarkapy offers — move,
+    rename, download, bulk_delete — is absent on purpose: if the connector grows a sixth
+    call, this stand-in fails rather than quietly allowing it.
     """
 
     def __init__(self, folders: list[Item] | None = None, documents: list[Item] | None = None) -> None:
         self.folders = folders if folders is not None else []
         self.documents = documents if documents is not None else []
         self.pushed: list[tuple[str, bytes, str]] = []
+        self.deleted: list[str] = []
         self.folders_made = 0
         self.fail_for = 0
         self.fails_with: Exception = RemarkableAPIError('nope')
@@ -94,6 +96,14 @@ class StandIn:
         made = Item(id=f'doc-{len(self.pushed)}', visibleName=visible_name, parent=parent)
         self.documents.append(made)
         return made
+
+    def delete(self, item_ref: str, refresh: bool = False) -> Item:
+        """reMarkable's soft delete: to the trash, not away."""
+        self._maybe_fail()
+        gone = next(d for d in self.documents if d.id == item_ref)
+        self.documents.remove(gone)
+        self.deleted.append(item_ref)
+        return gone
 
 
 @pytest.fixture
@@ -152,7 +162,7 @@ def test_a_pdf_is_uploaded_under_the_name_it_was_given(tablet, tmp_path):
     assert name == 'Morning page — Monday 14 September', 'the visible name is what a person reads on the tablet'
     assert payload.startswith(b'%PDF')
     assert parent == 'folder-1', 'it went inside the folder, not to the top level'
-    assert where == {'where': 'Harry', 'id': 'doc-1', 'name': 'Morning page — Monday 14 September'}
+    assert where == {'where': 'Daily', 'id': 'doc-1', 'name': 'Morning page — Monday 14 September', 'replaced': 0}
 
 
 def test_the_folder_is_made_once_and_found_after(tablet, tmp_path):
@@ -168,7 +178,7 @@ def test_the_folder_is_made_once_and_found_after(tablet, tmp_path):
 
 
 def test_an_existing_folder_is_used_rather_than_a_second_one(tablet, tmp_path):
-    cloud = StandIn(folders=[Item(id='already-there', type='CollectionType', visibleName='Harry')])
+    cloud = StandIn(folders=[Item(id='already-there', type='CollectionType', visibleName='Daily')])
 
     connector(tablet(cloud=cloud)).push(a_pdf(tmp_path / 'page.pdf'), 'A page')
 
@@ -213,7 +223,7 @@ def test_a_file_that_is_not_there_is_refused(tablet, tmp_path):
 
 def test_documents_come_back_newest_first(tablet):
     cloud = StandIn(
-        folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
+        folders=[Item(id='f', type='CollectionType', visibleName='Daily')],
         documents=[
             Item(id='old', visibleName='Friday', parent='f', lastModified='1789124400000'),
             Item(id='new', visibleName='Monday', parent='f', lastModified='1789384626339'),
@@ -236,7 +246,7 @@ def test_a_recorded_listing_becomes_a_time_a_person_can_read(tablet):
     """
     recorded = json.loads((REPO / 'tests' / 'fixtures' / 'remarkable' / 'folder-listing.json').read_text('utf-8'))
     cloud = StandIn(
-        folders=[Item(id='12c9c3b8-6108-4f3b-abcd-06736f99e65e', type='CollectionType', visibleName='Harry')],
+        folders=[Item(id='12c9c3b8-6108-4f3b-abcd-06736f99e65e', type='CollectionType', visibleName='Daily')],
         documents=[
             Item(**{key: entry[key] for key in ('id', 'hash', 'type', 'visibleName', 'lastModified', 'parent')})
             for entry in recorded
@@ -252,7 +262,7 @@ def test_a_recorded_listing_becomes_a_time_a_person_can_read(tablet):
 def test_a_timestamp_in_a_shape_nobody_expected_is_passed_through(tablet):
     """If reMarkable ever starts sending ISO, the listing must not start returning None."""
     cloud = StandIn(
-        folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
+        folders=[Item(id='f', type='CollectionType', visibleName='Daily')],
         documents=[Item(id='d', visibleName='Monday', parent='f', lastModified='2026-09-14T06:30:00Z')],
     )
 
@@ -267,7 +277,7 @@ def test_a_folder_nobody_has_made_yet_lists_empty(tablet):
 
 def test_a_folder_of_folders_lists_only_documents(tablet):
     cloud = StandIn(
-        folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
+        folders=[Item(id='f', type='CollectionType', visibleName='Daily')],
         documents=[
             Item(id='doc', visibleName='Monday', parent='f'),
             Item(id='sub', type='CollectionType', visibleName='Archive', parent='f'),
@@ -494,13 +504,47 @@ def test_the_stand_in_has_the_same_shape_as_the_real_client():
         assert list(ours.parameters) == list(theirs.parameters), f'{name} has drifted from remarkapy'
 
 
-def test_the_connector_only_ever_asks_for_four_things():
-    """The token permits delete, move and rename. The connector does not, and the stand-in
-    is the thing that fails if one appears."""
+def test_the_connector_only_ever_asks_for_five_things():
+    """The token permits move, rename and bulk delete. The connector does not, and the
+    stand-in is the thing that fails if one appears."""
     source = (REPO / '.harry' / 'connectors' / 'remarkable' / 'connector.py').read_text(encoding='utf-8')
 
-    for forbidden in ('delete', 'bulk_move', 'rename', 'download_item'):
+    for forbidden in ('bulk_delete', 'bulk_move', 'move', 'rename', 'download_item', 'delete_device'):
         assert f'client.{forbidden}' not in source, f'{forbidden} is not something Harry does to your tablet'
+
+
+def test_the_one_call_that_removes_anything_lives_in_one_place():
+    """`delete` arrived so a push can replace what it supersedes. It is the only call Harry
+    makes that takes something off the tablet, and the token it uses has no scopes — so this
+    fails if it ever appears anywhere but the method whose whole job is bounding it."""
+    source = (REPO / '.harry' / 'connectors' / 'remarkable' / 'connector.py').read_text(encoding='utf-8')
+    tree = ast.parse(source)
+
+    deleting = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == 'delete'
+    ]
+    assert len(deleting) == 1, 'exactly one call removes anything'
+
+    holders = [
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and any(one in ast.walk(node) for one in deleting)
+    ]
+    assert holders == ['_retire'], f'the delete moved out of _retire and into {holders}'
+
+
+def test_retiring_a_copy_is_bounded_by_folder_name_and_id():
+    """Three conditions, and the test that says none of them may quietly go. A connector that
+    can remove a document the caller did not name is a connector that can empty a tablet."""
+    source = (REPO / '.harry' / 'connectors' / 'remarkable' / 'connector.py').read_text(encoding='utf-8')
+    body = source[source.index('def _retire') : source.index('def documents')]
+
+    assert 'self._find_folder(client)' in body, "inside this connector's own folder"
+    assert 'entry.visibleName == name' in body, 'exactly the name just written'
+    assert 'entry.id != keeping' in body, 'never the document just created'
+    assert "entry.type == 'DocumentType'" in body, 'a document, never a folder'
 
 
 def test_remarkapy_is_pinned_exactly_and_says_why():
@@ -703,7 +747,7 @@ async def test_claude_can_push_a_pdf_it_has_a_path_to(tablet, tmp_path):
 
     answer = await through_mcp(built, tmp_path, 'remarkable_push_document', {'path': str(page), 'name': 'A page'})
 
-    assert answer.data == {'where': 'Harry', 'id': 'doc-1', 'name': 'A page'}
+    assert answer.data == {'where': 'Daily', 'id': 'doc-1', 'name': 'A page', 'replaced': 0}
     assert cloud.pushed[0][0] == 'A page'
 
 
@@ -739,7 +783,7 @@ async def test_neither_or_both_is_an_error_saying_which(tablet, tmp_path, argume
 
 async def test_claude_can_see_what_is_already_on_the_tablet(tablet, tmp_path):
     cloud = StandIn(
-        folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
+        folders=[Item(id='f', type='CollectionType', visibleName='Daily')],
         documents=[
             Item(id='old', visibleName='Friday', parent='f', lastModified='2026-09-11T06:30:00Z'),
             Item(id='new', visibleName='Monday', parent='f', lastModified='2026-09-14T06:30:00Z'),
@@ -1057,7 +1101,7 @@ def test_a_listing_is_capped(tablet):
     """A folder that grew without a ceiling would be a year of mornings in the caller's
     context. Sixty documents in, fifty out, newest kept."""
     cloud = StandIn(
-        folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
+        folders=[Item(id='f', type='CollectionType', visibleName='Daily')],
         documents=[
             Item(id=f'd{n}', visibleName=f'Day {n}', parent='f', lastModified=str(1789384626339 + n)) for n in range(60)
         ],
@@ -1071,7 +1115,7 @@ def test_a_listing_is_capped(tablet):
 
 def test_a_smaller_limit_is_honoured(tablet):
     cloud = StandIn(
-        folders=[Item(id='f', type='CollectionType', visibleName='Harry')],
+        folders=[Item(id='f', type='CollectionType', visibleName='Daily')],
         documents=[
             Item(id=f'd{n}', visibleName=f'Day {n}', parent='f', lastModified=str(1789384626339 + n)) for n in range(10)
         ],
@@ -1131,3 +1175,162 @@ def test_the_pairing_target_runs_the_pairing_script():
     assert 'scripts/remarkable_pair.py' in recipe
     assert '$(CODE)' in recipe, 'the target takes the code from the command line'
     assert 'my.remarkable.com/device/desktop/connect' in recipe, 'it should say where a code comes from'
+
+
+# ---------------------------------------------------------------------------
+# A push replaces what it supersedes
+# ---------------------------------------------------------------------------
+
+
+def a_folder(name: str = 'Daily') -> Item:
+    return Item(id='folder-1', type='CollectionType', visibleName=name, parent='')
+
+
+def test_pushing_a_name_that_is_already_there_leaves_one_document(tablet, tmp_path):
+    """The morning page is built at 06:30 and again whenever something needed fixing. Two
+    documents called `2026-09-15` with no timestamp between them is a reader opening one of
+    them and not knowing whether it has the correction in it."""
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
+    )
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert answer['replaced'] == 1
+    assert cloud.deleted == ['yesterday']
+    assert [d.visibleName for d in cloud.documents] == ['2026-09-15']
+    assert [d.id for d in cloud.documents] == ['doc-1'], 'the one that stayed is the one just pushed'
+
+
+def test_the_push_happens_before_anything_is_removed(tablet, tmp_path):
+    """A push that fails must leave yesterday's page where it is. The worst this order can do
+    is leave two copies, which is exactly what this connector did before."""
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
+    )
+    cloud.fail_for = 99
+    built = tablet(cloud=cloud)
+
+    with pytest.raises(Exception, match='could not push'):
+        connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert cloud.deleted == [], 'nothing was removed for a page that never arrived'
+    assert [d.id for d in cloud.documents] == ['yesterday']
+
+
+def test_a_document_of_another_name_is_never_touched(tablet, tmp_path):
+    """The bound that matters. A connector that can remove a document the caller did not name
+    is a connector that can empty a tablet."""
+    keep = [
+        Item(id='older-page', visibleName='2026-09-14', parent='folder-1'),
+        Item(id='a-book', visibleName='Sapiens', parent='folder-1'),
+        Item(id='near-miss', visibleName='2026-09-15 (1)', parent='folder-1'),
+    ]
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[*keep, Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
+    )
+    built = tablet(cloud=cloud)
+
+    connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert cloud.deleted == ['yesterday']
+    assert {d.id for d in cloud.documents} >= {'older-page', 'a-book', 'near-miss'}
+
+
+def test_a_document_of_the_same_name_in_another_folder_is_never_touched(tablet, tmp_path):
+    """Harry owns one folder. Everything else on the tablet is somebody's, and the token
+    cannot tell the difference."""
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[Item(id='elsewhere', visibleName='2026-09-15', parent='someone-elses')],
+    )
+    built = tablet(cloud=cloud)
+
+    connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert cloud.deleted == []
+    assert 'elsewhere' in {d.id for d in cloud.documents}
+
+
+def test_a_folder_of_the_same_name_is_never_touched(tablet, tmp_path):
+    """A document and a folder can share a name, and one of them is not a page."""
+    cloud = StandIn(
+        folders=[a_folder(), Item(id='same-name', type='CollectionType', visibleName='2026-09-15', parent='folder-1')],
+        documents=[Item(id='same-name', type='CollectionType', visibleName='2026-09-15', parent='folder-1')],
+    )
+    built = tablet(cloud=cloud)
+
+    connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert cloud.deleted == []
+
+
+def test_the_first_push_of_a_name_still_creates_it(tablet, tmp_path):
+    """Nothing to replace is not a failure."""
+    cloud = StandIn()
+    built = tablet(cloud=cloud)
+
+    answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert answer['replaced'] == 0
+    assert cloud.deleted == []
+    assert [d.visibleName for d in cloud.documents] == ['2026-09-15']
+
+
+def test_a_replacement_that_fails_keeps_the_page_and_says_so(tablet, tmp_path, caplog):
+    """The page arrived, which is the thing that mattered, so this does not raise. But two
+    copies a morning is a folder quietly filling up, which nobody notices."""
+    cloud = StandIn(
+        folders=[a_folder()],
+        documents=[Item(id='yesterday', visibleName='2026-09-15', parent='folder-1')],
+    )
+
+    def refuse(item_ref: str, refresh: bool = False):
+        raise RemarkableAPIError('the tablet said no')
+
+    cloud.delete = refuse
+    built = tablet(cloud=cloud)
+
+    with caplog.at_level(logging.WARNING, logger='harry.capability.remarkable'):
+        answer = connector(built).push(a_pdf(tmp_path / 'page.pdf'), '2026-09-15')
+
+    assert answer['id'] == 'doc-1', 'the page is on the tablet'
+    assert answer['replaced'] == 0
+    assert 'could not retire' in caplog.text
+    _, sink = built
+    assert any('more than one' in said for said in sink.heard), 'and a person is told'
+
+
+def test_the_replacement_alert_is_keyed_apart_from_the_push(tablet, tmp_path):
+    """One key for everything would let a folder that will not tidy spend the day's budget,
+    and then the 06:30 push would fail in silence."""
+    source = (REPO / '.harry' / 'connectors' / 'remarkable' / 'connector.py').read_text(encoding='utf-8')
+
+    assert "key='retire'" in source
+    assert "key='push'" in source
+
+
+def test_the_docs_and_the_runbook_say_a_push_replaces():
+    """The operator reads one of these two pages when a document looks wrong."""
+    prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
+    runbook = ' '.join(
+        (REPO / '.harry' / 'connectors' / 'remarkable' / 'CONNECTOR.md').read_text(encoding='utf-8').split()
+    )
+
+    for page in (prose, runbook):
+        assert 'replaces it' in page
+        assert "sent to the tablet's trash" in page, 'a soft delete is recoverable, and that matters'
+    assert 'goes up **first**' in prose, 'the order is the safety argument'
+    assert 'Two documents of the same name' in runbook, 'the row an operator looks for'
+
+
+def test_the_committed_env_ships_the_daily_folder():
+    """The generated `.env` is what a fresh clone gets, and it is where the default is real
+    rather than declared."""
+    declared = (REPO / '.harry' / 'connectors' / 'remarkable' / '.env').read_text(encoding='utf-8')
+
+    assert 'FOLDER=Daily' in declared

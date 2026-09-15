@@ -11,7 +11,7 @@ config:
     secret: true
   folder:
     description: Which folder on the tablet documents go into. Created at the top level the first time, if it is not already there.
-    default: Harry
+    default: Daily
 ---
 
 Where Harry's output goes. One write, one folder, and the most dangerous credential in this
@@ -51,8 +51,20 @@ To revoke it, go to my.remarkable.com and remove the device. Then pair again.
 
 ## What it does
 
-One folder, named in `FOLDER` and `Harry` by default. It is created at the top level the first
+One folder, named in `FOLDER` and `Daily` by default. It is created at the top level the first
 time something is pushed, and found rather than re-created after that.
+
+**Pushing a name that is already in the folder replaces it.** The new document goes up first;
+only then is the older copy of that name sent to the tablet's trash. A push that failed
+therefore leaves yesterday's page exactly where it was, and the worst this order can do is
+leave two copies — which is visible, and what this connector did before.
+
+That removal is the only call Harry makes that takes anything off the tablet, and it is bound
+three ways: inside this connector's own folder, matching the name just written exactly, and
+never the document just created. reMarkable's delete is a soft delete, so what it takes goes
+to the tablet's trash. A removal that fails does not fail the push — the page arrived — but it
+does put one line in Slack, because a folder quietly filling with duplicates is not something
+anyone notices.
 
 A push that fails is tried **exactly once more**. A retry that works is not a fault and says
 nothing. Two failures raise — so whoever asked knows the page did not arrive — and put one
@@ -68,5 +80,6 @@ disk where it was, and whoever asked is told it did not arrive.
 | The cloud is unreachable or slow | Retried once, then `the tablet could not be reached`; one Slack line | Usually transient. The next push is a fresh attempt |
 | The token has been revoked | `the tablet refused the token — pair this machine again`; one Slack line | `make remarkable-pair CODE=…` with a fresh code |
 | A push succeeds but nothing appears on the device | — | The tablet syncs when it has wifi and the screen is on. Give it a minute, then open the folder |
+| Two documents of the same name in the folder | One Slack line saying there is more than one | The older copy could not be removed. Delete it on the tablet; the newer one is the one that was pushed last |
 | Every write started failing and nothing here changed | Two failures, one Slack line | reMarkable changed the protocol. It happened in August 2026. Bump the exact `remarkapy` pin in `pyproject.toml` and run `make test-live ARGS=tests/test_remarkable_connector.py` |
 | A document you never touched disappeared | — | The free tier removes documents nobody opens after 50 days. Irrelevant for a page replaced every morning |

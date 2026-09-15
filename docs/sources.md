@@ -226,8 +226,22 @@ Where Harry's output goes. One folder, one write, and the most dangerous credent
 
 **The device token grants complete read and write access to every document on the tablet,
 with no scopes and no expiry.** There is no read-only variant to ask for. So this connector
-does one thing — add a document — and deleting, moving and renaming are not exposed even
-though the token permits all three.
+does two things — add a document, and remove the copy that document replaces — and moving,
+renaming and bulk deleting are not exposed even though the token permits all three.
+
+**Pushing a name that is already in the folder replaces it.** The page is built at 06:30 and
+again whenever something needed fixing, and two documents both called `2026-09-15` with no
+timestamp between them is a reader opening one of them and not knowing whether it has the
+correction in it.
+
+The new document goes up **first**; only then is the older copy of that name sent to the
+tablet's trash. A push that failed therefore leaves yesterday's page exactly where it was, and
+the worst that order can do is leave two copies — which is visible, and what this connector
+did before. The removal is bound three ways: inside Harry's own folder, matching the name just
+written exactly, and never the document just created. It is reMarkable's *soft* delete, so
+what it takes goes to the trash rather than away. A removal that fails does not fail the push
+— the page arrived — but it does put one line in Slack, under its own key, so it can never
+silence the push's own alert.
 
 ### Pairing, once per machine
 

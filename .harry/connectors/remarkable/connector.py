@@ -121,11 +121,62 @@ class Tablet:
         return self.push_bytes(document.read_bytes(), name)
 
     def push_bytes(self, payload: bytes, name: str) -> dict:
-        """The same push, for something that was rendered rather than read off disk."""
+        """The same push, for something that was rendered rather than read off disk.
+
+        Pushing a name that is already there **replaces** it. The morning page is built at
+        06:30 and again whenever something needed fixing, and two documents both called
+        `2026-09-15` with no timestamp between them is a reader opening one of them and not
+        knowing whether it has the correction in it.
+        """
         entry = self._trying(
             f'push {name!r}', lambda client: client.put_pdf(name, payload, parent=self._where(client)), key='push'
         )
-        return {'where': self.folder, 'id': entry.id, 'name': name}
+        return {'where': self.folder, 'id': entry.id, 'name': name, 'replaced': self._retire(name, entry.id)}
+
+    def _retire(self, name: str, keeping: str) -> int:
+        """Send the copies this push replaces to the tablet's trash. Returns how many.
+
+        **After the push, never before.** A push that fails must leave yesterday's page where
+        it is; the worst this order can do is leave two copies, which is exactly what this
+        connector did before and is a thing a person can see.
+
+        Bounded three ways, because the device token has no scopes and this is the only call
+        Harry makes that removes anything: inside this connector's own folder, matching the
+        name just written **exactly**, and never the document just created. `delete` is
+        reMarkable's soft delete — what it takes goes to the tablet's trash rather than away.
+        """
+        older: list[str] = []
+        try:
+            client = self._reach()
+            where = self._find_folder(client)
+            if where is None:
+                return 0
+            older = [
+                entry.id
+                for entry in client.list_directory_hydrated(where)
+                if entry.type == 'DocumentType' and entry.visibleName == name and entry.id != keeping
+            ]
+            for one in older:
+                client.delete(one)
+        except (RemarkableAPIError, httpx.HTTPError, OSError) as error:
+            # The page arrived, which is the thing that mattered, so this does not raise.
+            # But it does not go quiet either: two copies is visible, a folder quietly
+            # filling up over weeks is what nobody notices.
+            self._log.warning('could not retire the older %r: %s', name, _why(error))
+            self._alert(
+                f'reMarkable: there is more than one {name!r} in {self.folder!r} — the older copy could not be removed',
+                key='retire',
+            )
+            return 0
+        if older:
+            self._log.info(
+                'replaced %d older cop%s of %r in %r',
+                len(older),
+                'y' if len(older) == 1 else 'ies',
+                name,
+                self.folder,
+            )
+        return len(older)
 
     # -- what the tools call --------------------------------------------------
 
