@@ -24,8 +24,8 @@ declare no required setting and load on a bare machine.
 
 ## Acceptance criteria
 
-- [ ] `make up` starts Harry on a machine with no `.env.local` anywhere; weather and news load, and icloud, remarkable and slack are skipped, each naming the setting it is missing
-- [ ] Nothing crashes on that first boot — a capability whose configuration is absent disables itself
+- [x] `make up` starts Harry on a machine with no `.env.local` anywhere; weather and news load, and icloud, remarkable and slack are skipped, each naming the setting it is missing
+- [x] Nothing crashes on that first boot — a capability whose configuration is absent disables itself
 - [ ] Each credential put on the NUC turns its capability from skipped to loaded without a rebuild
 - [ ] No credential is in the repository, in the image, or in a committed compose file
 - [ ] A dev stack runs beside the real one with its own port, data directory and credentials

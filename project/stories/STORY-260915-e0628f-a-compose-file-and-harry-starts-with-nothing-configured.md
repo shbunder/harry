@@ -27,18 +27,21 @@ the first page built on the NUC has a weather panel and headlines and no agenda.
 
 ## Acceptance criteria
 
-- [ ] The existing `docker-compose.yml` is extended rather than replaced, or the `paths:` in both rules that name it are changed in the same commit
-- [ ] The data volume is named and survives `make down` followed by `make up`
-- [ ] `restart: unless-stopped`, so Harry comes back with the machine
-- [ ] The healthcheck the image already declares is what compose waits on
-- [ ] `make up` on a tree with no `.env.local` anywhere starts Harry and answers `/health`
-- [ ] weather and news are loaded; icloud, remarkable and slack are skipped, each naming the setting it is missing
-- [ ] No credential and no secret is in the committed compose file
-- [ ] `docs/operating.md` says how to start, stop and follow it, in the present tense
+- [x] The existing `docker-compose.yml` is extended rather than replaced, or the `paths:` in both rules that name it are changed in the same commit
+- [x] The data volume is named and survives `make down` followed by `make up`
+- [x] `restart: unless-stopped`, so Harry comes back with the machine
+- [x] The healthcheck the image already declares is what compose waits on
+- [x] `make up` on a tree with no `.env.local` anywhere starts Harry and answers `/health`
+- [x] weather and news are loaded; icloud, remarkable and slack are skipped, each naming the setting it is missing
+- [x] No credential and no secret is in the committed compose file
+- [x] `docs/operating.md` says how to start, stop and follow it, in the present tense
 
 ## Subtasks
 
 <!-- Maintained by `board.py add-subtask`. Only when the story has a natural order. -->
 
 ## Notes
+
+
+- **2026-09-15** — Proven on the NUC from a tree with no .env.local anywhere (tar copy into a scratch dir, project name 'bareboot'): healthy in 6s, 8 loaded and 7 skipped exactly as docs/operating.md now lists, /data survives make down + make up, and killing the python process inside the container brings it back healthy on its own with RestartCount=1. Note for anyone repeating that last one: docker kill and docker stop count as manual intervention, so restart: unless-stopped correctly does NOT restart after them — crash the process inside the container instead, or you will conclude the policy is dead when it is not.
 
