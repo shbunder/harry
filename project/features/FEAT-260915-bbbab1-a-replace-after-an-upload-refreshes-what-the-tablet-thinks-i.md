@@ -47,6 +47,7 @@ tomorrow's is different.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-15** — Reflection: found by pushing a real page, not by a test. The first theory (a stale sync generation, fixed with remarkapy's refresh=) was implemented and live-tested, and the live test passed against the unfixed connector with one older copy and with two — so it was reverted rather than shipped. The defect that can be shown is the single attempt where a push gets two; both probe directions go red. The live test is kept as a protocol guard and says at its assertion that it cannot prove the retry. Traceability 5/5 and 6/6.
 
 ## Links
 
