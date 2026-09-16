@@ -45,7 +45,7 @@ also hits is Cloudflare's and a limit only the routine hits is the routine's.
 - [ ] `sleep` for 30, 60, 120 and 300 seconds is run from the NUC through the tunnel, and then from the routine; the longest that returns on each path is recorded, and a limit the NUC also hits is attributed to Cloudflare rather than the routine
 - [ ] If every sleep up to 300 returns from the routine, that is recorded as "at least 300s" and no longer sleep is attempted
 - [ ] A routine request that never appears in the probe's server output is treated as a setup fault — branch, network setting or routine — and fixed and retried, not recorded as the route failing
-- [ ] If a request does arrive and the token demonstrably cannot reach the header, the reason is recorded, the tunnel and its DNS record and `spike/harry-remote` are deleted, and a dated note on FEAT-260912-0f2744 hands the trigger to the local `claude -p` route
+- [ ] If a request does arrive and the token demonstrably cannot reach the header, the reason is recorded, the tunnel and its DNS record and `spike/harry-remote` are deleted, and a dated note on FEAT-260912-0f2744 hands the trigger to the local `claude -p` route — written after FEAT-260915-2a6ce1 merges, since that branch already carries a note on the same file
 - [ ] The finding is a dated note on FEAT-260912-0f2744, quoting what was configured and what came back
 - [ ] ADR-260912-bd36c2's Consequences is amended, since it names this route as its own unproven half
 
