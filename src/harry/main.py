@@ -25,6 +25,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, Request
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from harry import __version__, config
 from harry.alerts import Alerts, report_start_up
@@ -34,6 +35,31 @@ from harry.scheduler import Jobs
 from harry.store import Store
 
 MCP_PATH = '/mcp'
+
+
+class McpWithoutTheSlash:
+    """Answer `/mcp` as `/mcp/` instead of redirecting to it.
+
+    The MCP app is mounted at `/mcp`, and a mount answers its bare path with 307 to the
+    slashed one. A claude.ai custom connector sends `POST /mcp` and does not follow that
+    redirect — and behind `cloudflared` the redirect is built as `http://`, because uvicorn
+    only trusts forwarded-protocol headers from 127.0.0.1 and tunnel traffic arrives from
+    the Docker bridge. The connector, holding the right token, reports "Couldn't reach
+    harry" and goes looking for OAuth that does not exist.
+
+    Rewriting the path before routing means both spellings are answered by the same app,
+    with no redirect for any client to handle. Pure ASGI rather than `@app.middleware`,
+    whose wrapper can break the streaming responses MCP uses.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope['type'] == 'http' and scope['path'] == MCP_PATH:
+            slashed = f'{MCP_PATH}/'
+            scope = {**scope, 'path': slashed, 'raw_path': slashed.encode()}
+        await self.app(scope, receive, send)
 
 
 TALKATIVE = ('httpx', 'httpcore', 'niquests', 'urllib3')
@@ -122,4 +148,5 @@ def build_app() -> FastAPI:
         }
 
     app.mount(MCP_PATH, mcp_app)
+    app.add_middleware(McpWithoutTheSlash)
     return app
