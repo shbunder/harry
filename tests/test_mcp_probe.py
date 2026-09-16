@@ -310,3 +310,54 @@ async def test_sleep_reporting_still_works_with_no_progress_handler(probe_log):
     async with Client(server) as client:
         result = await client.call_tool('sleep_reporting', {'seconds': 1, 'every': 1})
     assert 'still returned' in str(result.data)
+
+
+def test_serve_names_the_token_it_is_using_without_printing_it(probe_log, monkeypatch, capsys):
+    """`serve` printed the bearer token itself, and on a machine with a real one in
+    `.env.local` that is the token guarding a service holding the tablet's credentials —
+    on the terminal, and in the transcript of any agent that ran `make probe`.
+
+    It prints a fingerprint instead, which is what lets somebody confirm the probe is
+    serving the throwaway they meant rather than the real token, with neither appearing.
+    """
+    from pydantic import SecretStr
+
+    import harry.config
+
+    real = 'a' * 64
+    monkeypatch.setattr(harry.config, 'get_settings', lambda: harry.config.Settings(api_token=SecretStr(real)))
+    monkeypatch.setattr(mcp_probe, 'get_settings', harry.config.get_settings)
+    monkeypatch.setattr(mcp_probe.FastMCP, 'run', lambda self, **kw: None)
+
+    assert mcp_probe.main(['serve', '--port', '7499']) == 0
+    banner = capsys.readouterr().err
+
+    assert real not in banner, 'serve printed the bearer token'
+    assert mcp_probe.fingerprint(real) in banner, 'serve does not say which token it is using'
+    assert "Harry's settings" in banner
+
+
+def test_serve_says_when_it_has_fallen_back_to_the_committed_default(probe_log, monkeypatch, capsys):
+    """The failure the tunnel plan has to rule out is a probe quietly serving a token other
+    than the one intended. Saying where the token came from is half of ruling it out."""
+    from pydantic import SecretStr
+
+    import harry.config
+
+    monkeypatch.setattr(harry.config, 'get_settings', lambda: harry.config.Settings(api_token=SecretStr('')))
+    monkeypatch.setattr(mcp_probe, 'get_settings', harry.config.get_settings)
+    monkeypatch.setattr(mcp_probe.FastMCP, 'run', lambda self, **kw: None)
+
+    assert mcp_probe.main(['serve', '--port', '7499']) == 0
+    banner = capsys.readouterr().err
+
+    assert mcp_probe.fingerprint(mcp_probe.DEFAULT_TOKEN) in banner
+    assert 'committed default' in banner
+
+
+def test_a_fingerprint_matches_what_sha256sum_gives_in_a_shell():
+    """The comparison the docs tell an operator to make has to agree with this function."""
+    import hashlib
+
+    assert mcp_probe.fingerprint('throwaway') == hashlib.sha256(b'throwaway').hexdigest()[:12]
+    assert len(mcp_probe.fingerprint('x')) == 12
