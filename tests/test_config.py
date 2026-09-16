@@ -253,8 +253,19 @@ def test_no_key_make_worktree_overrides_is_exported():
         pytest.skip('no Makefile or .env in this tree')
 
     recipe = makefile.read_text(encoding='utf-8').partition('worktree:')[2].partition('\nworktree-prune:')[0]
-    overridden = set(re.findall(r'(HARRY_[A-Z_]+)=%s', recipe))
-    assert overridden, 'make worktree no longer writes any setting — this test is now checking nothing'
+
+    # Every settings name the recipe mentions, not just the ones reaching `printf %s`.
+    # An earlier version matched `(HARRY_[A-Z_]+)=%s`, so moving one key to an `echo` took
+    # it out of scope silently — the test stayed green with that key exported.
+    overridden = set(re.findall(r'HARRY_[A-Z_]+', recipe))
+
+    # A vacuity check with teeth: these two are what the recipe writes today, and the
+    # trap is measured in `secrets-and-config.md`. If the recipe legitimately stops
+    # writing one, this line is where you say so.
+    assert {'HARRY_PORT', 'HARRY_DATA_DIR'} <= overridden, (
+        f'`make worktree` no longer writes HARRY_PORT and HARRY_DATA_DIR — it writes {sorted(overridden)}. '
+        'Update this test deliberately rather than letting it check nothing.'
+    )
 
     exported = {
         line.split('=')[0].removeprefix('export ').strip()
@@ -300,4 +311,22 @@ def test_no_key_in_the_committed_env_is_exported_with_an_empty_value():
     assert exported_empty == [], (
         f'{exported_empty} are exported with no value, so sourcing .env would shadow .env.local. '
         'Drop the `export` on those keys; keep it on the ones that carry a real default.'
+    )
+
+
+def test_the_committed_env_leaves_the_clock_on():
+    """One word in a committed file switches off the only thing that reports a morning
+    nobody watched.
+
+    `.env` outranks the field default and is read by any Harry started outside compose —
+    `make serve`, `python -m harry`, a fresh clone on the NUC. The dev stack turns the
+    clock off on its own service in `docker-compose.yml`; the committed file is not where
+    that belongs, and nothing else would notice if it moved there.
+    """
+    repo = Path(__file__).parent.parent
+    if not (repo / '.env').exists():
+        pytest.skip('no committed .env in this tree')
+
+    assert settings_from(repo / '.env').scheduler_enabled is True, (
+        'the committed .env turns the deadline watchdog off for every instance that reads it'
     )

@@ -24,18 +24,18 @@ declare no required setting and load on a bare machine.
 
 ## Acceptance criteria
 
-- [ ] `make up` starts Harry on a machine with no `.env.local` anywhere; weather and news load, and icloud, remarkable and slack are skipped, each naming the setting it is missing
-- [ ] Nothing crashes on that first boot — a capability whose configuration is absent disables itself
-- [ ] Each credential put on the NUC turns its capability from skipped to loaded without a rebuild
-- [ ] No credential is in the repository, in the image, or in a committed compose file
-- [ ] A dev stack runs beside the real one with its own port, data directory and credentials
-- [ ] The dev stack's scheduler is off, so it can never report a deadline the real one met
-- [ ] Stopping or rebuilding either stack leaves the other running
-- [ ] A page is built inside the container through `scripts/call_tool.py`, written under the data volume, with nothing pushed
+- [x] `make up` starts Harry on a machine with no `.env.local` anywhere; weather and news load, and icloud, remarkable and slack are skipped, each naming the setting it is missing
+- [x] Nothing crashes on that first boot — a capability whose configuration is absent disables itself
+- [x] Each credential put on the NUC turns its capability from skipped to loaded without a rebuild
+- [x] No credential is in the repository, in the image, or in a committed compose file
+- [x] A dev stack runs beside the real one with its own port, data directory and credentials
+- [x] The dev stack's scheduler is off, so it can never report a deadline the real one met
+- [x] Stopping or rebuilding either stack leaves the other running
+- [x] A page is built inside the container through `scripts/call_tool.py`, written under the data volume, with nothing pushed
 - [ ] Harry restarts with the machine and keeps its data across a reboot
-- [ ] Every build is tagged with something that cannot be reused, the real service names a tag, and going back to the previous one is one command
-- [ ] `xvfb` is in the image and nothing uses it yet, so the De Tijd feature does not have to rebuild it
-- [ ] `docs/operating.md` describes what is actually on the NUC, in the present tense
+- [x] Every build is tagged with something that cannot be reused, the real service names a tag, and going back to the previous one is one command
+- [x] `xvfb` is in the image and nothing uses it yet, so the De Tijd feature does not have to rebuild it
+- [x] `docs/operating.md` describes what is actually on the NUC, in the present tense
 
 ## Stories
 
@@ -48,6 +48,11 @@ declare no required setting and load on a bare machine.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-15** — Criterion 9 ('restarts with the machine and keeps its data across a reboot') is half proven and deliberately not ticked. Proven: restart: unless-stopped is live — killing the python process inside the container brought it back healthy on its own with RestartCount=1 — and the named volume survives make down followed by make up, and survives a deploy and a rollback. Not proven: an actual reboot of the NUC, which nobody has done since Harry was containerised. Tick it after the next reboot, or reboot deliberately and tick it then. Note that docker kill and docker stop count as manual intervention, so unless-stopped correctly does not restart after those — crash the process inside the container instead, or you will conclude the policy is dead when it is not.
+- **2026-09-15** — Correction to an earlier note on this feature: it said the bare boot answers '8 loaded and 7 skipped exactly as docs/operating.md now lists'. The count was right and the claim was not — the docs table listed only the seven connectors and tools and omitted the morning-page job, which is the eighth and is the watchdog. Fixed in docs/operating.md; the table now names it and says it loads on a bare machine, so a missed 07:00 is noticed from the first boot before any source is configured.
+- **2026-09-15** — Second verifier pass. 23 of 28 mutations now go red; six things did not and are fixed. Two of them meant the gate was red while I had reported it green: tests/test_deploy.py cited a story id in its docstring (check_no_board_refs.py resolves it to a real board item), and my gate run had passed only because the file was still untracked and the guard scans tracked files only — so 'gate green' was true of a tree that did not contain the file I had just written. Worth knowing: run the gate after git add, not before. The other was tests/test_digest_build.py asserting the pushed document is named 2026-09-15, which went red at midnight Brussels; the assertion was wrong in kind rather than stale and now derives the date from the same clock and zone tool.py reads. Also fixed: make rollback joined its commands with ';' so a failed compose up still rewrote the record and printed a green tick while exiting 0 — the same defect found in deploy the round before, with its sibling left and a board note claiming both were guarded.
+- **2026-09-16** — Housekeeping on the notes above, 2026-09-16: the containers and volumes those measurements were taken from were torn down at the end of that session, so 'RestartCount=1', '/data survives make down + make up' and the 8-loaded-to-15-loaded credential run cannot be re-run as written — 'docker volume ls' lists no harry volume. The conclusions stand and the mechanisms are now covered by tests (test_loader_degrades for the credential transition, test_both_stacks_come_back_by_themselves for the restart field, test_deploy for the volume surviving a deploy), but do not go looking for the artefacts. The one claim that IS reproducible is the in-container page build, which is a live test now. Also: 'make versions' will show 8d49dc2 and 2f05e4e as deployed on this machine while nothing is running — that file records what was deployed, not what is up.
+- **2026-09-16** — Criterion 11 ('xvfb is in the image ... so the De Tijd feature does not have to rebuild it') was ticked while false: xvfb-run failed with 'xauth command not found', so a headed browser could only start if Xvfb was launched by hand. xauth added; the live test now starts a headed browser through xvfb-run instead of checking the binary exists, and both tests go red on an image built without xauth. Found while resolving a contradiction between this feature's requirements page (every headless flavour 403s) and the De Tijd spike of 09-13 (full Chromium headless gets 200). Both were true on their day — the edge tightened in between. Measured today: shell 403, full headless 403, headed under Xvfb 200.
 
 ## Links
 

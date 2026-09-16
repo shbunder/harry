@@ -91,6 +91,6 @@ def test_no_retired_key_is_still_declared():
 def test_the_keys_the_current_design_needs_are_present():
     """The other direction, which nothing else checks: a setting the code reads and the
     committed file never mentions is one nobody knows exists."""
-    required = {'HARRY_PORT', 'HARRY_DATA_DIR', 'HARRY_API_TOKEN', 'HARRY_LOCATION_TZ'}
+    required = {'HARRY_PORT', 'HARRY_DATA_DIR', 'HARRY_API_TOKEN', 'HARRY_LOCATION_TZ', 'HARRY_SCHEDULER_ENABLED'}
     missing = sorted(required - declared_keys())
     assert not missing, f'declared in config.py but absent from .env: {", ".join(missing)}'

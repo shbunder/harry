@@ -34,8 +34,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from harry import config
 from harry.alerts import Alerts
-from harry.config import get_settings
 from harry.registry import Capability, Catalogue
 from harry.store import Store
 
@@ -65,7 +65,7 @@ class Jobs:
         self._alerts = alerts
         self._store = store
         self._now = now or (lambda: dt.datetime.now(dt.UTC))
-        self._scheduler = BackgroundScheduler(timezone=get_settings().timezone)
+        self._scheduler = BackgroundScheduler(timezone=config.get_settings().timezone)
         self._scheduler.add_listener(self._job_failed, EVENT_JOB_ERROR)
         self._scheduler.add_listener(self._job_was_still_running, EVENT_JOB_MAX_INSTANCES)
 
@@ -76,11 +76,32 @@ class Jobs:
 
     # -- starting and stopping ----------------------------------------------
 
+    @property
+    def running(self) -> bool:
+        """Whether this instance is actually keeping time.
+
+        False on a stack whose scheduler is switched off, and false before `start()`. It is
+        the honest answer to "is anything watching?", which is a question `/health` gets
+        asked at 07:10 by somebody who did not get a page.
+        """
+        return self._scheduler.running
+
     def start(self) -> None:
         """Schedule everything, then check the deadlines once.
 
         The check at start-up is what reports a deadline that passed while Harry was off.
+
+        **A stack with the scheduler off returns here having done nothing**, which is the
+        whole of the dev/prod asymmetry. Nothing is scheduled, the watchdog is not
+        registered and the clock is never started, so a second Harry on the same machine
+        cannot report a deadline it was never watching. Returning early rather than
+        starting an empty scheduler matters: an empty scheduler still runs, and the next
+        person to add a job here would have got one on both stacks.
         """
+        if not config.get_settings().scheduler_enabled:
+            LOG.info('the scheduler is off for this instance: nothing scheduled, no deadline watched')
+            return
+
         for capability in self._scheduled():
             self._safely(capability, self._schedule, 'be scheduled')
 
@@ -217,8 +238,14 @@ class Jobs:
         and the honest answer is the list of what is watched and when each was last
         finished. Job names and times only; no setting values, secret or otherwise.
         """
+        if not self.running:
+            # Listing what *would* be watched on a stack that is watching nothing is the
+            # kind of honest-looking answer that costs a morning. Say it is off instead.
+            return {'enabled': False, 'scheduled': [], 'watched': []}
+
         remembered = self._store.as_dict()
         return {
+            'enabled': True,
             'scheduled': [
                 {'name': c.name, 'next_run': self._next_run(c.name)} for c in sorted(self._scheduled(), key=_by_name)
             ],
@@ -248,7 +275,7 @@ def _declaration(capability: Capability) -> dict[str, Any]:
 
 def _zone(declaration: dict[str, Any]) -> ZoneInfo:
     """The job's own timezone, or Harry's. 06:30 is a local time, not a UTC one."""
-    return ZoneInfo(str(declaration.get('timezone') or get_settings().timezone))
+    return ZoneInfo(str(declaration.get('timezone') or config.get_settings().timezone))
 
 
 def _name_of(job_id: str) -> str:

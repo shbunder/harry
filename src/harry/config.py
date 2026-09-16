@@ -108,6 +108,16 @@ class Settings(BaseSettings):
     timezone: str = Field(default='Europe/Brussels', validation_alias='HARRY_LOCATION_TZ')
     """The scheduler's timezone. 06:30 is a local time, not a UTC one."""
 
+    scheduler_enabled: bool = True
+    """Whether this instance runs the clock at all. Off for a second stack on one machine.
+
+    Two Harrys sharing a box would both run the deadline watchdog, and the spare one would
+    say "morning-page has not run today" about a morning the real one delivered — which is
+    how the channel that carries real failures gets muted. A stack with this off schedules
+    nothing and watches nothing, and `/health` says so rather than listing deadlines that
+    nobody is checking.
+    """
+
     @property
     def mcp_url(self) -> str:
         """The local address to register Harry at, for a session on this machine.
