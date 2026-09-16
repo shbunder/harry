@@ -36,9 +36,15 @@ how a corrected password takes effect.
 
 Playwright bounds what it waits for, but not everything it does: reading a page's content or
 saving the session take no timeout, and a renderer wedged in an ad script can hold one forever.
-Every read runs in a thread of its own and is given up on after 4 minutes, so the morning page
-waiting on it moves on with the feed's summary. A read still stuck holds the browser, and the
-next one waits at most as long again before saying so.
+Every read runs in a thread of its own and is given up on after 150 seconds, so the morning
+page waiting on it moves on with the feed's summary. Once a read is known to be stuck, every
+later article is answered at once rather than queued behind it, until it comes back or Harry
+restarts.
+
+**Why 150.** A tool call that says nothing for 300 seconds is abandoned by the client, and the
+morning page reads its articles one after another inside one call. Starting the browser, two
+pages and a login are 150 seconds of waiting at the very worst, and the limit sits exactly
+there, so one stuck read leaves the rest of the page half the ceiling.
 """
 
 from __future__ import annotations
@@ -67,12 +73,13 @@ LOGIN_SECONDS = 60.0
 """How long a whole login may take, every step included. Two pages and a login are two
 minutes of waiting; starting the browser can add half a minute each time it starts."""
 
-READ_SECONDS = 240.0
-"""The hard limit on one read, whatever inside it did not come back."""
+READ_SECONDS = 150.0
+"""The hard limit on one read, whatever inside it did not come back. See the module's own
+account of why 150."""
 
 WAIT_AFTER_FAILURE = timedelta(hours=6)
 WAIT_AFTER_SILENCE = timedelta(minutes=15)
-LOCKOUT_FREE = frozenset({'login-unreachable', 'login-stalled'})
+LOCKOUT_FREE = frozenset({'login-unreachable', 'login-stalled', 'login-broke'})
 """Failures in which nothing was refused, so trying again sooner cannot lock the account."""
 
 STATE_FILE = 'storage-state.json'
@@ -92,8 +99,16 @@ WHY = {
         'may have added a step, such as a code. Harry waits 6 hours before trying again'
     ),
     'login-stalled': (
-        'Harry could not log in: at {step}, the login page did not show what Harry expects in time. '
+        'Harry could not log in: {step}, the login page did not show what Harry expects in time. '
         'It may be slow, or De Tijd may have changed it. Harry tries again in 15 minutes'
+    ),
+    'login-broke': (
+        'Harry could not log in: the browser or the network failed {step}, before the password was '
+        'sent. Harry tries again in 15 minutes'
+    ),
+    'login-broke-sent': (
+        'Harry could not log in: the browser or the network failed after the password was sent, so '
+        'Harry cannot tell whether De Tijd accepted it. Harry waits 6 hours before trying again'
     ),
     'login-unreachable': "Harry could not log in: De Tijd's homepage did not answer. Harry tries again in 15 minutes",
     'blocked': (
@@ -105,8 +120,8 @@ WHY = {
     'page': 'De Tijd answered {status} for the article',
     'paywall': 'Harry logged in, but De Tijd still shows the paywall. Check that the subscription is active',
     'session': ('Harry could not save the De Tijd session in {where}, so every article will need a login until it can'),
-    'stuck': 'reading the article took longer than 4 minutes, so Harry stopped waiting for it',
-    'busy': 'an earlier De Tijd article was still being read after 4 minutes, so this one was not',
+    'stuck': 'reading the article took longer than 150 seconds, so Harry stopped waiting for it',
+    'busy': 'an earlier De Tijd article is still stuck in the browser, so this one was not read',
 }
 """Every sentence this connector can say. Fixed, so there is nothing in one to scrub."""
 
@@ -132,6 +147,8 @@ class Tijd:
         self._browser = browser
         self._now = now
         self._one_at_a_time = threading.Lock()
+        self._stuck: threading.Thread | None = None
+        """The read that outlasted its limit, while it has still not come back."""
         self._waiting: tuple[datetime, str, str] | None = None
         """Until when no login is tried, and the reason and sentence every article gets meanwhile."""
 
@@ -149,6 +166,10 @@ class Tijd:
         One read at a time — two browsers writing one session file is how it gets corrupted —
         and never longer than `READ_SECONDS`, whatever happens inside it.
         """
+        if self._stuck is not None and self._stuck.is_alive():
+            # Queueing behind a read that is known stuck would spend this call's limit waiting
+            # for nothing, and a morning page with two De Tijd stories would outlast its client.
+            return self._fault('busy')
         if not self._one_at_a_time.acquire(timeout=READ_SECONDS):
             return self._fault('busy')
         answer: dict[str, Any] = {}
@@ -163,6 +184,7 @@ class Tijd:
         worker.start()
         worker.join(READ_SECONDS)
         if worker.is_alive():
+            self._stuck = worker
             return self._fault('stuck')
         return answer
 
@@ -234,6 +256,12 @@ class Tijd:
             end = browser.log_in(self._email, self._password, LOGIN_SECONDS)
         except LoginUnreachable:
             reason, details = 'login-unreachable', {}
+        except (BrowserFailed, PageDidNotLoad):
+            # Part-way, so how long to wait turns on whether the password had gone: after it,
+            # nobody can tell whether De Tijd counted a refusal.
+            step = getattr(browser, 'login_step', 'open')
+            reason = 'login-broke-sent' if step == 'sent' else 'login-broke'
+            details = {'step': STEPS.get(step, step)}
         else:
             reason = login_outcome(end)
             details = {'step': STEPS.get(end.step, end.step)}

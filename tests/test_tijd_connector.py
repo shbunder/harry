@@ -144,7 +144,11 @@ class Script:
 
     def log_in(self, email: str, password: str, seconds: float) -> Any:
         self.logged_in.append((email, password, seconds))
-        return self._play(self._next(self.logins))
+        entry = self._next(self.logins)
+        if isinstance(entry, Broke):
+            self.login_step = entry.step
+            raise entry.failure(f'net::ERR_CONNECTION_RESET {PASSWORD}')
+        return self._play(entry)
 
     def storage_state(self) -> dict:
         return self.state
@@ -318,20 +322,23 @@ def test_the_login_hand_over_page_is_not_the_end_of_the_login(harry):
 class Interrupted:
     """A page whose first load is abandoned by a redirect still finishing, as Chromium reports it."""
 
-    def __init__(self, error: type[Exception], messages: list[str]) -> None:
+    def __init__(self, error: type[Exception], messages: list[Any]) -> None:
         self.error, self.messages, self.url, self.loads = error, messages, ARTICLE, 0
+        self.timeouts: list[float] = []
 
-    def goto(self, link: str, **_: Any) -> Any:
+    def goto(self, link: str, **options: Any) -> Any:
         self.loads += 1
+        self.timeouts.append(options['timeout'])
         if self.messages:
-            raise self.error(self.messages.pop(0))
+            failure = self.messages.pop(0)
+            raise failure if isinstance(failure, Exception) else self.error(failure)
         return type('Response', (), {'status': 200})()
 
     def content(self) -> str:
         return LOGGED_IN.html
 
 
-def chromium_with(built: Harry, *messages: str) -> tuple[Any, Interrupted]:
+def chromium_with(built: Harry, *messages: Any) -> tuple[Any, Interrupted]:
     from playwright.sync_api import Error
 
     module = sys.modules[type(built.tijd).__module__ + '.browser']
@@ -349,6 +356,19 @@ def test_a_load_the_page_s_own_redirect_abandoned_is_tried_once_more(harry):
 
     assert visit.status == 200
     assert page.loads == 2
+
+
+def test_a_page_that_does_not_arrive_within_its_thirty_seconds_did_not_load(harry):
+    """Mapped to "did not load", never to "the browser could not start" — which would send
+    whoever reads it to look at the display."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    built = harry()
+    browser, page = chromium_with(built, PlaywrightTimeout('Timeout 30000ms exceeded'))
+
+    with pytest.raises(built.failures().PageDidNotLoad):
+        browser.visit(STUB, 30)
+    assert len(page.timeouts) == 1 and 29_000 < page.timeouts[0] <= 30_000, page.timeouts
 
 
 def test_a_second_abandoned_load_is_not_a_race_and_says_the_page_did_not_load(harry):
@@ -381,12 +401,15 @@ class Step:
         return self
 
     def click(self, timeout: float) -> None:
+        self.page.timeouts.append(timeout)
         self.page.act('click', self.selector)
 
     def fill(self, value: str, timeout: float) -> None:
+        self.page.timeouts.append(timeout)
         self.page.act('fill', self.selector, value)
 
     def wait_for(self, state: str, timeout: float) -> None:
+        self.page.timeouts.append(timeout)
         self.page.act('wait_for', self.selector)
 
     def is_visible(self) -> bool:
@@ -404,8 +427,10 @@ class LoginPage:
         self.failures = dict(failures or {})
         self.typed: list[str] = []
         self.submits = 0
+        self.timeouts: list[float] = []
 
-    def goto(self, link: str, **_: Any) -> Any:
+    def goto(self, link: str, **options: Any) -> Any:
+        self.timeouts.append(options['timeout'])
         if isinstance(self.home, Exception):
             raise self.home
         return type('Response', (), {'status': self.home})()
@@ -431,14 +456,17 @@ class LoginPage:
         return None
 
     def wait_for_load_state(self, state: str, timeout: float) -> None:
-        return None
+        self.timeouts.append(timeout)
+        failure = self.failures.get(('load', state))
+        if failure is not None:
+            raise failure
 
     def content(self) -> str:
         return '<html></html>'
 
 
-def logging_in(built: Harry, page: LoginPage, seconds: float = 0.3) -> Any:
-    """`Chromium.log_in` against a stand-in page. No cookie dialog unless a test puts one up."""
+def chromium_for(built: Harry, page: LoginPage) -> Any:
+    """A `Chromium` driving a stand-in page. No cookie dialog unless a test puts one up."""
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
     module = sys.modules[type(built.tijd).__module__ + '.browser']
@@ -446,7 +474,12 @@ def logging_in(built: Harry, page: LoginPage, seconds: float = 0.3) -> Any:
     browser = module.Chromium(None)
     browser._page = page  # noqa: SLF001 — the page Chromium would drive
     browser._context = type('Context', (), {'clear_cookies': lambda self: None})()  # noqa: SLF001
-    return browser.log_in(EMAIL, PASSWORD, seconds)
+    return browser
+
+
+def logging_in(built: Harry, page: LoginPage, seconds: float = 0.3) -> Any:
+    """`Chromium.log_in` against a stand-in page."""
+    return chromium_for(built, page).log_in(EMAIL, PASSWORD, seconds)
 
 
 LOGIN_FIELDS = {'#username', '#password'}
@@ -460,6 +493,26 @@ def test_a_login_through_both_steps_ends_back_on_de_tijd(harry):
 
     assert page.typed == ['#username', '#password']
     assert pages_module(built).login_outcome(end) is None
+
+
+def test_every_wait_in_a_login_fits_inside_the_login_s_one_budget(harry):
+    built = harry()
+    page = LoginPage(visible=LOGIN_FIELDS)
+
+    logging_in(built, page, seconds=5)
+
+    assert page.timeouts, 'nothing was waited for'
+    assert max(page.timeouts) <= 5_000, f'a wait of {max(page.timeouts)} ms inside a 5-second login'
+
+
+def test_a_login_whose_fields_never_come_gives_up_when_its_budget_is_spent(harry):
+    built = harry()
+    started = time.monotonic()
+
+    end = logging_in(built, LoginPage(visible=set()), seconds=0.5)
+
+    assert end.step == 'open'
+    assert time.monotonic() - started < 1.5, 'the login kept waiting past its budget'
 
 
 def test_a_homepage_that_does_not_answer_is_unreachable_and_one_that_says_403_is_the_browser_refused(harry):
@@ -487,6 +540,24 @@ def test_a_step_that_runs_out_of_time_reports_the_step_it_was_in(harry):
     assert end.step == 'email'
     assert no_password_field.typed == ['#username'], 'the password is never typed without its field'
     assert rules.login_outcome(end) == 'login-stalled'
+
+
+def test_a_login_the_browser_loses_part_way_remembers_whether_the_password_had_gone(harry):
+    """How long the next login waits turns on this: after the password, a retry could count."""
+    from playwright.sync_api import Error
+
+    built = harry()
+    after = LoginPage(visible=LOGIN_FIELDS, failures={('load', 'load'): Error('Target page has been closed')})
+    browser = chromium_for(built, after)
+    with pytest.raises(built.failures().BrowserFailed):
+        browser.log_in(EMAIL, PASSWORD, 5)
+    assert browser.login_step == 'sent'
+
+    before = LoginPage(visible=LOGIN_FIELDS, failures={('fill', '#password'): Error('Target page has been closed')})
+    browser = chromium_for(built, before)
+    with pytest.raises(built.failures().BrowserFailed):
+        browser.log_in(EMAIL, PASSWORD, 5)
+    assert browser.login_step == 'password'
 
 
 def test_nothing_is_typed_on_a_page_that_is_not_the_login_service(harry):
@@ -810,22 +881,48 @@ async def test_a_saved_session_the_browser_refuses_is_set_aside_and_the_read_goe
     assert built.sink.heard == []
 
 
-def test_a_read_that_does_not_come_back_is_given_up_on_and_the_next_one_says_so(harry, monkeypatch):
-    """A renderer wedged in an ad script holds a Playwright call with no timeout of its own."""
+def test_a_read_that_does_not_come_back_is_given_up_on_and_nothing_queues_behind_it(harry, monkeypatch):
+    """A renderer wedged in an ad script holds a Playwright call with no timeout of its own.
+
+    Once a read is known stuck, the next is answered at once: queueing behind it would spend that
+    call's own limit waiting, and a page with two De Tijd stories would outlast its client.
+    """
     built = harry()
     monkeypatch.setattr(built.failures(), 'READ_SECONDS', 0.3)
-    built.script.pause = 1.0
+    built.script.pause = 1.5
 
     stuck = built.tijd.read(STUB)
     built.script.pause = 0.0
+    started = time.monotonic()
     busy = built.tijd.read(STUB)
-    time.sleep(1.0)
+    waited = time.monotonic() - started
+    time.sleep(1.5)
     fine = built.tijd.read(STUB)
 
-    assert stuck['why'] == 'reading the article took longer than 4 minutes, so Harry stopped waiting for it'
-    assert busy['why'] == 'an earlier De Tijd article was still being read after 4 minutes, so this one was not'
-    assert 'html' in fine, 'the stuck read finished, and the browser is free again'
+    assert stuck['why'] == 'reading the article took longer than 150 seconds, so Harry stopped waiting for it'
+    assert busy['why'] == 'an earlier De Tijd article is still stuck in the browser, so this one was not read'
+    assert waited < 0.1, f'the article behind a stuck read waited {waited:.2f}s instead of being answered at once'
+    assert 'html' in fine, 'the stuck read came back, and the browser is free again'
     assert len(built.sink.heard) == 2
+
+
+def test_the_hard_limit_leaves_the_morning_page_half_its_client_s_patience(harry):
+    """A tool call silent for 300 seconds is abandoned. The limit is the worst the waits add up to:
+    starting the browser (Playwright's 30 seconds), two pages and a login."""
+    module = harry().failures()
+    worst = 30 + 2 * module.PAGE_SECONDS + module.LOGIN_SECONDS
+    assert module.READ_SECONDS == worst == 150
+
+
+def test_the_tijd_connector_s_own_lines_have_its_email_and_password_scrubbed(harry):
+    """The fixed sentences carry neither. This is the net under them: the declaration marks both
+    secret, so a line that did carry them would be scrubbed on its way to Slack."""
+    built = harry()
+    context = built.catalogue.get('connector', 'tijd').context
+
+    context.alert(f'refused {EMAIL} with {PASSWORD}', key='probe')
+
+    assert built.sink.heard == ['refused [redacted] with [redacted]']
 
 
 def test_two_reads_at_once_use_the_browser_one_after_the_other(harry):
@@ -903,29 +1000,76 @@ async def test_a_refused_login_is_one_attempt_and_one_line_for_five_articles(har
     assert built.sink.heard == [f'De Tijd: {answers[0]["why"]}']
 
 
+@dataclass(frozen=True)
+class Broke:
+    """A login the browser or the network ended part-way, having reached `step`."""
+
+    failure: Any
+    step: str
+
+
+def ending(built: Harry, how: Any) -> Any:
+    """A login ending for `Script.logins`, with the connector's own exception classes filled in."""
+    if isinstance(how, Broke):
+        return Broke(getattr(built.failures(), how.failure), how.step)
+    if isinstance(how, str):
+        return getattr(built.failures(), how)
+    return how
+
+
+SIX_HOURS = {
+    'refused': (REFUSED, 'refused the email or password'),
+    'challenge': (End('sent', PASSWORD_STEP, page('login-captcha.html')), 'such as a captcha'),
+    'login-page': (
+        End('sent', PASSWORD_STEP, page('login-unexpected.html')),
+        'after the password was sent, the login page did not show',
+    ),
+    'login-broke-sent': (Broke('BrowserFailed', 'sent'), 'cannot tell whether De Tijd accepted it'),
+}
+"""Every login failure after which a retry could count towards De Tijd blocking the account."""
+
+FIFTEEN_MINUTES = {
+    'login-unreachable': ('LoginUnreachable', "De Tijd's homepage did not answer"),
+    'login-stalled': (
+        End('email', 'https://auth.mediafin.be/u/login/identifier', page('login-unexpected.html')),
+        'at the email step, the login page did not show what Harry expects in time',
+    ),
+    'login-broke': (Broke('PageDidNotLoad', 'email'), 'the browser or the network failed at the email step'),
+}
+"""Every login failure in which the password was never sent, so a retry cannot lock anything."""
+
+
+@pytest.mark.parametrize('reason', sorted(SIX_HOURS))
 @respx.mock
-async def test_six_hours_after_a_refused_login_harry_tries_once_more(harry):
+async def test_after_a_failure_that_could_count_towards_a_lockout_harry_waits_six_hours(harry, reason):
+    how, said = SIX_HOURS[reason]
     feeds_are_up()
     built = harry()
     built.script.pages = [LOGGED_OUT]
-    built.script.logins = [REFUSED]
+    built.script.logins = [ending(built, how)]
 
-    await article(built)
+    first = await article(built)
     built.clock.now = NOW + timedelta(hours=5, minutes=59)
-    await article(built)
-    assert len(built.script.logged_in) == 1
+    second = await article(built)
+    assert len(built.script.logged_in) == 1, 'a second attempt inside the six hours'
+    assert said in first['why']
+    assert 'Harry waits 6 hours before trying again' in first['why']
+    assert second['why'] == first['why']
 
     built.clock.now = NOW + timedelta(hours=6, seconds=1)
     await article(built)
-    assert len(built.script.logged_in) == 2
+    assert len(built.script.logged_in) == 2, 'no attempt once the six hours are up'
 
 
+@pytest.mark.parametrize('reason', sorted(FIFTEEN_MINUTES))
 @respx.mock
-async def test_a_login_page_that_did_not_answer_waits_fifteen_minutes_not_six_hours(harry):
+async def test_after_a_failure_that_sent_no_password_harry_tries_again_in_fifteen_minutes(harry, reason):
+    """A slow homepage at 06:30 must not cost De Tijd until noon."""
+    how, said = FIFTEEN_MINUTES[reason]
     feeds_are_up()
     built = harry()
     built.script.pages = [LOGGED_OUT]
-    built.script.logins = [built.failures().LoginUnreachable]
+    built.script.logins = [ending(built, how)]
 
     first = await article(built)
     built.clock.now = NOW + timedelta(minutes=14)
@@ -935,7 +1079,8 @@ async def test_a_login_page_that_did_not_answer_waits_fifteen_minutes_not_six_ho
     built.clock.now = NOW + timedelta(minutes=15, seconds=1)
     await article(built)
     assert len(built.script.logged_in) == 2
-    assert first['why'] == "Harry could not log in: De Tijd's homepage did not answer. Harry tries again in 15 minutes"
+    assert said in first['why']
+    assert first['why'].endswith('Harry tries again in 15 minutes')
 
 
 @respx.mock
@@ -948,38 +1093,6 @@ async def test_a_captcha_is_reported_as_one(harry):
     answer = await article(built)
 
     assert 'such as a captcha' in answer['why']
-
-
-@respx.mock
-async def test_a_step_after_the_password_harry_does_not_know_waits_six_hours(harry):
-    feeds_are_up()
-    built = harry()
-    built.script.pages = [LOGGED_OUT]
-    built.script.logins = [End('sent', PASSWORD_STEP, page('login-unexpected.html'))]
-
-    answer = await article(built)
-    built.clock.now = NOW + timedelta(hours=5)
-    await article(built)
-
-    assert answer['why'].startswith('Harry could not log in: after the password was sent, the login page did not show')
-    assert len(built.script.logged_in) == 1
-
-
-@respx.mock
-async def test_a_login_that_stalled_before_the_password_names_the_step_and_waits_fifteen_minutes(harry):
-    """A slow homepage at 06:30 must not cost De Tijd until noon."""
-    feeds_are_up()
-    built = harry()
-    built.script.pages = [LOGGED_OUT]
-    built.script.logins = [End('email', 'https://auth.mediafin.be/u/login/identifier', page('login-unexpected.html'))]
-
-    answer = await article(built)
-    built.clock.now = NOW + timedelta(minutes=15, seconds=1)
-    await article(built)
-
-    assert answer['why'].startswith('Harry could not log in: at the email step, the login page did not show')
-    assert answer['why'].endswith('Harry tries again in 15 minutes')
-    assert len(built.script.logged_in) == 2
 
 
 @respx.mock

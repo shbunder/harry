@@ -50,9 +50,9 @@ LOGIN_SERVICE = 'auth.mediafin.be'
 """Where De Tijd's login form is, measured 2026-09-16. Nothing is typed anywhere else."""
 
 STEPS = {
-    'open': 'opening the login page',
-    'email': 'the email step',
-    'password': 'the password step',
+    'open': 'at the start of the login',
+    'email': 'at the email step',
+    'password': 'at the password step',
     'sent': 'after the password was sent',
 }
 """The steps a login can stop in, and how each is named to a person. `sent` is everything

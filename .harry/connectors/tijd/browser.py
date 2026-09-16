@@ -80,6 +80,9 @@ class Chromium:
         self._browser: Any = None
         self._context: Any = None
         self._page: Any = None
+        self.login_step = 'open'
+        """The step the last login reached, kept for a failure that raises part-way: whether the
+        password was already sent decides how long the next login waits."""
 
     def __enter__(self) -> Chromium:
         try:
@@ -150,6 +153,7 @@ class Chromium:
         """
         deadline = time.monotonic() + seconds
         page = self._page
+        self.login_step = 'open'
         try:
             # From no session at all. A session that is logged in but not subscribed shows no
             # Log in button, and would read as a login page that changed rather than as what
@@ -168,22 +172,22 @@ class Chromium:
     def _steps(self, email: str, password: str, deadline: float) -> str:
         """Walk the table in `log_in`, and answer the step it stopped in."""
         page = self._page
-        step = 'open'
+        step = self.login_step = 'open'
         try:
             self._answer_cookies(deadline)
             page.locator(LOGIN_BUTTON).first.click(timeout=_left(deadline))
             if self._first_of(deadline, email_field=EMAIL_FIELD) is None or not on_login_service(page.url):
                 return step
-            step = 'email'
+            step = self.login_step = 'email'
             page.locator(EMAIL_FIELD).fill(email, timeout=_left(deadline))
             page.locator(SUBMIT).first.click(timeout=_left(deadline))
             arrived = self._first_of(deadline, password_field=PASSWORD_FIELD, **_refusals())
             if arrived != 'password_field' or not on_login_service(page.url):
                 return step
-            step = 'password'
+            step = self.login_step = 'password'
             page.locator(PASSWORD_FIELD).fill(password, timeout=_left(deadline))
             page.locator(SUBMIT).first.click(timeout=_left(deadline))
-            step = 'sent'
+            step = self.login_step = 'sent'
             if self._first_of(deadline, landed=LANDED, **_refusals()) == 'landed':
                 page.wait_for_load_state('load', timeout=_left(deadline))
             return step
