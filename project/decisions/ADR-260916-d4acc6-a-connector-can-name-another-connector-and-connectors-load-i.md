@@ -31,8 +31,9 @@ things stop it:
 - `scripts/check_capabilities.py` does not check `requires:` or `optional:` on a connector.
 - Nothing refuses two connectors that need each other.
 
-Today a connector that named a later connector would load, look healthy, and be handed
-nothing, every morning. Nothing would say so.
+Today a connector that named a later connector under `optional:` would load, look healthy,
+and be handed nothing, every morning. Nothing would say so. Under `requires:` it would be
+skipped as though the other connector were broken.
 
 ## Decision drivers
 
@@ -85,9 +86,19 @@ News declares `optional: [tijd]` and asks `context.connectors.get('tijd')` — t
 tool already uses. The test from [[ADR-260913-c477cd]] decides which list: if tijd is missing,
 is there still something worth doing? News still has every other feed, so tijd is optional.
 
-A loop is refused by `make lint`. If one reaches a running Harry anyway, from a capabilities
-directory the lint never saw, the connectors in it load in name order, as they do today.
-Nothing crashes, and the connector loaded first is handed nothing for the other.
+A loop of any length, a connector naming itself included, is refused by `make lint`. If one
+reaches a running Harry anyway, from a capabilities directory the lint never saw:
+
+- the members of the loop load in name order, after whatever outside the loop they name;
+- a member naming a later member under `optional:` is handed nothing for it;
+- a member naming a later member under `requires:` is skipped with "needs <name>, which did
+  not load" — and so, in turn, is anything that requires it;
+- the log names the members of the loop. Nothing raises.
+
+Reading `requires:` and `optional:` to decide the order happens before any connector loads,
+so it must not be the thing that breaks. A declaration that cannot be read, or a list that is
+not a list, counts as naming nothing for ordering; the connector is then skipped with its
+reason when its own turn comes, as today.
 
 ## Consequences
 
@@ -103,5 +114,5 @@ Nothing crashes, and the connector loaded first is handed nothing for the other.
 - **`requires:` on a connector can cost two connectors.** If a required connector is skipped,
   so is the one that needs it. That is why news declares tijd `optional:` — one lapsed login
   must not take every headline down with it.
-- **A loop from an unvalidated root degrades quietly.** The first connector is handed nothing,
-  and only the lint would have said so.
+- **A loop from an unvalidated root degrades with only a log line.** The first member is
+  handed nothing, or skipped, and nothing reaches Slack unless a skip does.

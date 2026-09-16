@@ -68,8 +68,8 @@ A make target writes `HARRY_<NAME>_<KEY>` lines into a gitignored file that comp
 
 Compose mounts `./.harry` at `/settings`, read-only, on the real service only. A new core
 setting, `HARRY_CAPABILITY_SETTINGS_DIR`, names that directory. When it is set, Harry reads a
-capability's `.env.local` from `<dir>/<kind>/<name>/.env.local` as well as beside the
-capability.
+capability's `.env.local` from `<dir>/connectors/<name>/.env.local` — the kind's folder name,
+as under `.harry/` — as well as beside the capability.
 
 **For:** one file per credential. The image, the code and the tag are unchanged. Nothing but
 `.env.local` is read from the mount. The environment still wins.
