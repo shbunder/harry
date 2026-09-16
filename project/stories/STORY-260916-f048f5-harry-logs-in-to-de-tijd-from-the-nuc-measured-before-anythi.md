@@ -2,7 +2,7 @@
 id: STORY-260916-f048f5
 title: Harry logs in to De Tijd from the NUC, measured before anything is built on it
 feature: FEAT-260912-9c933f
-status: Backlog
+status: Done
 created: 2026-09-16
 ---
 
@@ -25,13 +25,13 @@ only saw a reader who is not logged in.
 
 ## Acceptance criteria
 
-- [ ] A headed Chromium in the `harry` image logs in with the email and password, through both steps of `auth.mediafin.be`, and ends back on tijd.be
-- [ ] Which page markers change once logged in is recorded: `paywall-active` on `<html>`, the `.trck_sitenav_login` button, and anything better found
-- [ ] The measured article comes back through trafilatura with more than 1,000 characters logged in, against 263 logged out
-- [ ] The saved session, opened in a fresh browser, reads the article in full without logging in again
-- [ ] What a refused password looks like is recorded — the URL and the element carrying the message — without locking the account: one wrong attempt, at most
-- [ ] Whether a consent dialog has to be dismissed before the "Log in" button can be clicked is recorded
-- [ ] The findings are a dated note on FEAT-260912-9c933f, and nothing under `scratch/` is committed
+- [x] A headed Chromium in the `harry` image logs in with the email and password, through both steps of `auth.mediafin.be`, and ends back on tijd.be
+- [x] Which page markers change once logged in is recorded: `paywall-active` on `<html>`, the `.trck_sitenav_login` button, and anything better found
+- [x] The measured article comes back through trafilatura with more than 1,000 characters logged in, against 263 logged out
+- [x] The saved session, opened in a fresh browser, reads the article in full without logging in again
+- [x] What a refused password looks like is recorded — the URL and the element carrying the message — without locking the account: one wrong attempt, at most
+- [x] Whether a consent dialog has to be dismissed before the "Log in" button can be clicked is recorded
+- [x] The findings are a dated note on FEAT-260912-9c933f, and nothing under `scratch/` is committed
 
 ## Subtasks
 
