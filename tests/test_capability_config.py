@@ -205,3 +205,144 @@ def test_what_is_generated_resolves_to_the_declared_defaults(harry_tree):
         'url': {'description': 'z', 'default': 'https://caldav.icloud.com'},
     }
     assert read_capability_config(harry_tree, 'icloud', schema) == {'url': 'https://caldav.icloud.com'}
+
+
+# ---------------------------------------------------------------------------
+# The mounted copy, for a container whose image carries no `.env.local`
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mounted(tmp_path, monkeypatch):
+    """A capability under a real-shaped root, and a settings directory laid out like `.harry/`.
+
+    The capability sits at `<tmp>/.harry/connectors/icloud` rather than `<tmp>/icloud`, because
+    the mounted file is found from the folder's parent's name — a test that put it anywhere
+    else would prove a mapping production never takes.
+    """
+    import harry.config
+
+    for name in SCHEMA:
+        monkeypatch.delenv(env_key('icloud', name), raising=False)
+    settings_dir = tmp_path / 'settings'
+    monkeypatch.setenv('HARRY_CAPABILITY_SETTINGS_DIR', str(settings_dir))
+    monkeypatch.setenv('HARRY_DATA_DIR', str(tmp_path / 'data'))
+    harry.config.get_settings.cache_clear()
+
+    def write(beside: str | None = None, there: str | None = None, kind: str = 'connectors', name: str = 'icloud'):
+        folder = tmp_path / '.harry' / kind / name
+        folder.mkdir(parents=True, exist_ok=True)
+        if beside is not None:
+            (folder / '.env.local').write_text(textwrap.dedent(beside), encoding='utf-8')
+        if there is not None:
+            (settings_dir / kind / name).mkdir(parents=True, exist_ok=True)
+            (settings_dir / kind / name / '.env.local').write_text(textwrap.dedent(there), encoding='utf-8')
+        return folder
+
+    yield write
+    harry.config.get_settings.cache_clear()
+
+
+def test_the_mounted_file_beats_the_one_beside_the_capability(mounted):
+    """In the container there is never a file beside the capability, so this order only
+    matters on a machine that has both — and there, setting the directory was deliberate."""
+    folder = mounted(beside='USERNAME=beside\n', there='USERNAME=mounted\n')
+    assert resolve(folder)['username'] == 'mounted'
+
+
+def test_the_mounted_file_is_how_a_container_gets_a_credential_at_all(mounted):
+    """The whole point: the image has nothing beside the capability, and this still resolves."""
+    folder = mounted(there='USERNAME=me@example.com\nAPP_PASSWORD=abcd-efgh-ijkl-mnop\n')
+    assert resolve(folder)['app_password'] == 'abcd-efgh-ijkl-mnop'
+
+
+def test_the_environment_still_beats_the_mounted_file(mounted, monkeypatch):
+    folder = mounted(there='URL=https://mounted.test\n')
+    monkeypatch.setenv(env_key('icloud', 'url'), 'https://injected.test')
+    assert resolve(folder)['url'] == 'https://injected.test'
+
+
+def test_a_person_s_own_file_still_beats_the_mounted_file(mounted, tmp_path):
+    from harry.config import OWNER, user_data_dir
+
+    folder = mounted(there='USERNAME=the-instance\n')
+    own = user_data_dir(OWNER) / 'connectors' / 'icloud.env'
+    own.parent.mkdir(parents=True)
+    own.write_text('USERNAME=renee\n', encoding='utf-8')
+
+    assert read_capability_config(folder, 'icloud', SCHEMA, principal=OWNER)['username'] == 'renee'
+    assert resolve(folder)['username'] == 'the-instance'
+
+
+def test_with_the_setting_empty_nothing_is_read_from_where_the_mount_would_be(mounted, monkeypatch):
+    """A laptop resolves exactly as it did before the setting existed."""
+    import harry.config
+
+    folder = mounted(beside='USERNAME=beside\n', there='USERNAME=mounted\n')
+    monkeypatch.setenv('HARRY_CAPABILITY_SETTINGS_DIR', '')
+    harry.config.get_settings.cache_clear()
+
+    assert resolve(folder)['username'] == 'beside'
+
+
+def test_only_env_local_is_read_from_the_mounted_directory(mounted, tmp_path):
+    """The committed `.env` travels in the image with the declaration it was generated from.
+    A second copy out of a checkout on another commit must not be able to overrule it."""
+    folder = mounted()
+    (folder / '.env').write_text('URL=https://from-the-image.test\n', encoding='utf-8')
+    (tmp_path / 'settings' / 'connectors' / 'icloud').mkdir(parents=True)
+    (tmp_path / 'settings' / 'connectors' / 'icloud' / '.env').write_text('URL=https://from-the-checkout.test\n')
+
+    assert resolve(folder)['url'] == 'https://from-the-image.test'
+
+
+def test_a_connector_and_a_tool_with_one_name_read_different_mounted_files(mounted):
+    """The kind's folder is part of the path, as it is under `.harry/`."""
+    connector = mounted(there='USERNAME=the-connector\n', kind='connectors')
+    tool = mounted(there='USERNAME=the-tool\n', kind='tools')
+
+    assert resolve(connector)['username'] == 'the-connector'
+    assert resolve(tool)['username'] == 'the-tool'
+
+
+CREDENTIALED = """\
+---
+name: vault
+description: A connector that cannot start without its token
+expires: manual
+enabled: true
+config:
+  token:
+    description: The token
+    required: true
+    secret: true
+---
+
+Nothing to renew.
+"""
+
+
+def test_through_the_loader_a_connector_whose_credential_is_only_mounted_loads(mounted, tmp_path, monkeypatch):
+    """The path production takes: `load()` resolves settings, then refuses or registers.
+
+    Loaded with the directory named, skipped naming its setting without — the same folder,
+    the same mounted file, one environment variable apart.
+    """
+    import harry.config
+    from harry.loader import load
+    from harry.registry import LOADED, SKIPPED
+
+    monkeypatch.delenv(env_key('vault', 'token'), raising=False)
+    folder = mounted(kind='connectors', name='vault', there='TOKEN=a-mounted-token-value\n')
+    (folder / 'CONNECTOR.md').write_text(CREDENTIALED, encoding='utf-8')
+    root = tmp_path / '.harry'
+
+    found = load(roots=[root]).get('connector', 'vault')
+    assert found is not None and found.status == LOADED, found and found.reason
+    assert found.context is not None and found.context.config['token'] == 'a-mounted-token-value'
+
+    monkeypatch.setenv('HARRY_CAPABILITY_SETTINGS_DIR', '')
+    harry.config.get_settings.cache_clear()
+    found = load(roots=[root]).get('connector', 'vault')
+    assert found is not None and found.status == SKIPPED
+    assert found.reason == 'required setting token is not set'

@@ -205,13 +205,16 @@ def test_every_key_the_committed_env_leaves_empty_resolves_to_empty(monkeypatch)
     if not (repo / '.env').exists():
         pytest.skip('no committed .env in this tree')
 
-    for name in ('HARRY_API_TOKEN', 'HARRY_PUBLIC_URL', 'HARRY_CAPABILITIES_DIR'):
+    for name in ('HARRY_API_TOKEN', 'HARRY_PUBLIC_URL', 'HARRY_CAPABILITIES_DIR', 'HARRY_CAPABILITY_SETTINGS_DIR'):
         monkeypatch.delenv(name, raising=False)
 
     settings = settings_from(repo / '.env')
     assert settings.api_token.get_secret_value() == '', 'an unset token must authorise nobody'
     assert settings.public_url is None
     assert settings.capabilities_dir is None
+    # Empty must mean "read nothing from a mount", not `Path('.')` — which would look for every
+    # capability's credentials under the working directory.
+    assert settings.capability_settings_dir is None
 
 
 # ---------------------------------------------------------------------------

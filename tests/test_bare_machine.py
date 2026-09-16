@@ -71,6 +71,8 @@ def bare(tmp_path, monkeypatch):
 
     for key in [key for key in os.environ if CONFIGURED_BY_THIS_MACHINE.match(key)]:
         monkeypatch.delenv(key, raising=False)
+    # A mounted settings directory is this machine's credentials by another route.
+    monkeypatch.delenv('HARRY_CAPABILITY_SETTINGS_DIR', raising=False)
 
     harry.config.get_settings.cache_clear()
     monkeypatch.setattr(harry.config, 'BUNDLED_CAPABILITIES', tmp_path / 'no-bundled')

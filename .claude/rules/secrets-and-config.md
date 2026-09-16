@@ -22,9 +22,19 @@ belongs to a capability**, in its own folder, in its own pair:
 ```
 
 Keys there are bare (`APP_PASSWORD`), because the folder is the namespace. The prefixed
-spelling `HARRY_ICLOUD_APP_PASSWORD` is the *environment override*, for a container, which
-has no folders. Precedence, highest first: environment, then `.env.local`, then `.env`,
-then the `default:` in the declaration.
+spelling `HARRY_ICLOUD_APP_PASSWORD` is the *environment override*, for a stack that is
+handed a flat environment — the dev stack's `.env.dev.local`. Precedence, highest first:
+environment, then the `.env.local` under `HARRY_CAPABILITY_SETTINGS_DIR` when that is set,
+then the `.env.local` beside the capability, then `.env`, then the `default:` in the
+declaration.
+
+**On the NUC the real stack reads the same file.** `.dockerignore` keeps every `.env.local`
+out of the image, so the `harry` service mounts the checkout's `.harry/` read-only at
+`/settings` and sets `HARRY_CAPABILITY_SETTINGS_DIR=/settings`. A credential is written once,
+in its connector's folder — never a second time under its prefixed name in the root
+`.env.local`. The dev stack mounts nothing and keeps `.env.dev.local`, so a value tried on dev
+can never be the one the morning page uses. Decided in
+[ADR-260916-bcbd69](../../project/decisions/ADR-260916-bcbd69-the-real-stack-reads-each-connector-s-own-env-local-through-.md).
 
 You never edit a capability's `.env` — it is generated from `config:`, and `make lint`
 fails if it has drifted. You edit `.env.local`.

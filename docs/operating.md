@@ -91,7 +91,7 @@ make health    make health-dev    # what loaded, and whether the clock is on
 | Port | 7430 | 7431 |
 | Container | `harry` | `harry-dev` |
 | Volume | `harry-data` | `harry-dev-data` |
-| Credentials | `.env.local` | `.env.dev.local` |
+| Credentials | each connector's own `.env.local`, through a read-only mount | `.env.dev.local`, prefixed names |
 | Clock | **on** | **off** |
 
 **How to tell them apart from outside**, with no access to either one's settings: ask
@@ -127,30 +127,51 @@ being fixed: `/data` empty, the store written to a path that dies with the conta
 
 ## Putting a credential on the NUC
 
-Harry's secrets arrive as **environment variables**, one file per stack, and never as a file
-inside the image. The names are `HARRY_<CAPABILITY>_<SETTING>` — the prefixed spelling of a
-capability's own setting, which exists for exactly this: a container has no folders.
+**A credential goes in its connector's own folder**, on the NUC exactly as on a laptop:
+
+```
+.harry/connectors/icloud/.env.local       USERNAME, APP_PASSWORD
+.harry/connectors/remarkable/.env.local   DEVICE_TOKEN
+.harry/connectors/slack/.env.local        BOT_TOKEN, CHANNEL
+```
+
+Keys are bare, because the folder is the namespace. Each folder's committed `.env` lists
+every key that connector reads, with a comment saying where to get it.
 
 ```bash
-install -m 600 /dev/null .env.local        # if it does not exist yet. 600, before anything goes in it
-$EDITOR .env.local
+install -m 600 /dev/null .harry/connectors/icloud/.env.local   # 600, before anything goes in it
+$EDITOR .harry/connectors/icloud/.env.local
 ```
 
 ```ini
-# .env.local — the real stack. Gitignored, mode 600, never leaves this machine.
-HARRY_ICLOUD_USERNAME=you@example.com
-HARRY_ICLOUD_APP_PASSWORD=abcd-efgh-ijkl-mnop
-HARRY_REMARKABLE_DEVICE_TOKEN=<the long token from pairing>
-HARRY_SLACK_BOT_TOKEN=xoxb-…
-HARRY_SLACK_CHANNEL=#harry
+# .harry/connectors/icloud/.env.local — gitignored, mode 600, never leaves this machine.
+USERNAME=you@example.com
+APP_PASSWORD=abcd-efgh-ijkl-mnop
 ```
 
-Then `make up`. **No rebuild** — the image carries no configuration, so a credential added
-here reaches Harry on the next start. Watch it land:
+**How the container sees it.** The image carries no `.env.local` — `.dockerignore` keeps
+every one out. So the real stack mounts the checkout's `.harry/` read-only at `/settings`,
+and `HARRY_CAPABILITY_SETTINGS_DIR=/settings` tells Harry to read each capability's
+`.env.local` from there. Only `.env.local` is read from the mount. The code, and the
+committed `.env` beside it, are still the image's.
+
+**Mode 600, every one.** The mount makes these files the credential route, and a file mode
+of 664 — what an editor usually leaves — lets every user on the NUC read them. Check with:
 
 ```bash
+find .harry -name .env.local -printf '%m %p\n'    # every line should start with 600
+chmod 600 .harry/*/*/.env.local
+```
+
+Then restart. **No rebuild** — the image carries no configuration, and settings are read once,
+at start-up, so a changed file reaches Harry on the next start:
+
+```bash
+docker compose restart harry
 make health | grep -A1 icloud     # skipped → loaded
 ```
+
+`make up` alone does not restart a running container whose compose file did not change.
 
 **Use an editor, not `echo >>`.** A secret typed on a command line is in `~/.bash_history`
 and in the process list while it runs, and neither is somewhere you can take it back from.
@@ -159,17 +180,27 @@ and in the process list while it runs, and neither is somewhere you can take it 
 — start there, then iCloud, then the tablet, checking `make health` after each. A credential
 that does not work is much easier to find when it is the only one that changed.
 
-The dev stack reads `.env.dev.local` instead, with the same names. Give it its own
-throwaway values where you can: the reMarkable token especially, because there is no
-read-only variant and the dev stack pushing to the real tablet is a thing that happens once.
+**An environment variable still wins.** `HARRY_ICLOUD_APP_PASSWORD` in the root `.env.local`
+overrules the connector's own file, so a stale one left there from before this mount existed
+is the value Harry uses. Remove it rather than keeping two.
+
+**The dev stack is different, on purpose.** It mounts nothing, because every `.env.local`
+under `.harry/` is the real one — the tablet token, which has no read-only variant, among
+them. Dev reads `.env.dev.local` in the repository root, under the prefixed names:
+
+```ini
+# .env.dev.local — the dev stack only. Throwaway values wherever you can get them.
+HARRY_SLACK_BOT_TOKEN=xoxb-…
+HARRY_SLACK_CHANNEL=#harry-dev
+```
 
 | Setting | Where to get it | Expires |
 |---|---|---|
-| `HARRY_ICLOUD_USERNAME` | The Apple ID itself | no |
-| `HARRY_ICLOUD_APP_PASSWORD` | account.apple.com → Sign-In and Security → App-Specific Passwords. Shown once | when the Apple ID password changes |
-| `HARRY_REMARKABLE_DEVICE_TOKEN` | `make remarkable-pair CODE=…`, code from my.remarkable.com/device/desktop/connect | no — but revoking the device kills it |
-| `HARRY_SLACK_BOT_TOKEN` | api.slack.com/apps → OAuth & Permissions. Needs `chat:write`, and the bot invited to the channel | no |
-| `HARRY_SLACK_CHANNEL` | A channel id like `C0123456789`, or `#harry` | — |
+| icloud `USERNAME` | The Apple ID itself | no |
+| icloud `APP_PASSWORD` | account.apple.com → Sign-In and Security → App-Specific Passwords. Shown once | when the Apple ID password changes |
+| remarkable `DEVICE_TOKEN` | `make remarkable-pair CODE=…`, code from my.remarkable.com/device/desktop/connect | no — but revoking the device kills it |
+| slack `BOT_TOKEN` | api.slack.com/apps → OAuth & Permissions. Needs `chat:write`, and the bot invited to the channel | no |
+| slack `CHANNEL` | A channel id like `C0123456789`, or `#harry` | — |
 
 The De Tijd browser session is the exception: it is a file, not a string, and it lives in
 the data volume at mode 600. See the renewal steps further down.
@@ -251,15 +282,14 @@ Two files, and `.env.local` wins:
 | File | Committed? | On the NUC it holds |
 |---|---|---|
 | `.env` | Yes — it arrives with the checkout | Every key with its working default, secrets empty |
-| `.env.local` | No | The three credentials, and anything that differs on this machine |
+| `.env.local` | No | Core's settings that differ on this machine. Credentials are in each connector's own folder |
 
 A capability's own settings live in its own folder, beside a committed `.env` that
 `make env-template` generates — `.harry/connectors/slack/.env.local` holds the Slack bot
-token. **That is the route on a laptop.** In the container it does not exist:
-`.dockerignore` keeps every `.env.local` out of the image and nothing mounts one, so on the
-NUC the same setting arrives as `HARRY_SLACK_BOT_TOKEN` in the root `.env.local`, which
-compose injects as a real environment variable. Same setting, same precedence order, two
-spellings — see [Putting a credential on the NUC](#putting-a-credential-on-the-nuc) above.
+token. **That is the route on the NUC too.** The real stack mounts `.harry/` read-only and
+reads each `.env.local` through `HARRY_CAPABILITY_SETTINGS_DIR` — see
+[Putting a credential on the NUC](#putting-a-credential-on-the-nuc) above. The root
+`.env.local` holds core's settings only.
 See also [alerting.md](alerting.md) and [capabilities.md](capabilities.md).
 
 You never copy `.env`. You create `.env.local` beside it with only what differs, so a key

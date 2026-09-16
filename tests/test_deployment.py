@@ -55,17 +55,43 @@ def test_the_committed_compose_file_carries_no_credential():
     assert found == [], f'{COMPOSE.name} contains something shaped like a credential: {found}'
 
 
+def is_bind(volume: str | dict) -> bool:
+    """A host path mounted in, as opposed to a named volume compose manages."""
+    if isinstance(volume, dict):
+        return volume.get('type') == 'bind'
+    return volume.split(':')[0].startswith(('.', '/', '~'))
+
+
 def sources(service: dict) -> set[str]:
     """The named volumes a service mounts. Empty is a finding, not a pass."""
     return {
         (volume.split(':')[0] if isinstance(volume, str) else volume.get('source', ''))
         for volume in service.get('volumes') or []
+        if not is_bind(volume)
     }
 
 
+def binds(service: dict) -> list[dict]:
+    """Every host path a service mounts, in the long form whichever way it was written."""
+    found = []
+    for volume in service.get('volumes') or []:
+        if not is_bind(volume):
+            continue
+        if isinstance(volume, dict):
+            found.append(volume)
+        else:
+            source, target, *mode = volume.split(':')
+            found.append({'source': source, 'target': target, 'read_only': mode == ['ro']})
+    return found
+
+
 def test_each_stack_keeps_its_data_on_a_named_volume_of_its_own():
-    """Secrets arrive as injected variables; nothing mounts a file that holds one. And the
-    data lives on a volume, which is what makes it outlive the container.
+    """The data lives on a volume, which is what makes it outlive the container.
+
+    Narrowed from "every mount is a named volume" when the real stack began mounting the
+    checkout's `.harry/` to read each connector's own `.env.local`. What this guards is
+    unchanged — the store has a volume of its own on each stack — and the one bind mount is
+    held to its own test below, so nothing else can arrive beside it unnoticed.
 
     **Every assertion here is positive first.** An earlier version compared the two
     services' mount lists for inequality, which passes when one of them mounts nothing at
@@ -76,12 +102,39 @@ def test_each_stack_keeps_its_data_on_a_named_volume_of_its_own():
     mounted = {name: sources(service) for name, service in compose['services'].items()}
 
     for name, found in mounted.items():
-        assert found, f'{name} mounts nothing, so everything it writes dies with the container'
+        assert found, f'{name} mounts no named volume, so everything it writes dies with the container'
         assert found <= set(compose['volumes']), f'{name} mounts {found - set(compose["volumes"])}, not a named volume'
 
     assert not (mounted['harry'] & mounted['harry-dev']), (
         f'both stacks mount {mounted["harry"] & mounted["harry-dev"]} — `down -v` on dev would take the real store'
     )
+
+
+def test_the_real_stack_reads_connector_settings_through_one_read_only_mount_and_dev_through_none():
+    """Where every connector's `.env.local` reaches the real stack, and where it must not reach.
+
+    - **Read-only.** The container reads credentials; it has no business writing next to them.
+    - **Only `./.harry`.** A second bind mount is how `~/.claude` or a root `.env.local` would
+      arrive, and this is the test that would say so.
+    - **Named by the setting.** A mount at one path and a setting naming another reads nothing,
+      and every capability quietly reports its credential missing.
+    - **Not on dev.** Every `.env.local` under `.harry/` is the real one — the tablet token with
+      no read-only mode among them.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    real, dev = compose['services']['harry'], compose['services']['harry-dev']
+
+    mounts = binds(real)
+    assert len(mounts) == 1, f'the real stack mounts {mounts}; only ./.harry belongs here'
+    (settings,) = mounts
+    assert settings['source'] == './.harry', settings
+    assert settings.get('read_only') is True, 'the checkout holding every credential is mounted writable'
+    assert real['environment'].get('HARRY_CAPABILITY_SETTINGS_DIR') == settings['target'], (
+        'HARRY_CAPABILITY_SETTINGS_DIR does not name where .harry/ is mounted, so no credential is read from it'
+    )
+
+    assert binds(dev) == [], f'the dev stack mounts {binds(dev)} — it would read the real credentials'
+    assert 'HARRY_CAPABILITY_SETTINGS_DIR' not in (dev.get('environment') or {})
 
 
 def test_the_two_stacks_cannot_collide_on_a_port_a_name_or_a_volume():
@@ -430,6 +483,35 @@ def test_a_headed_browser_starts_in_the_image_before_anything_needs_one(built_im
     started = in_the_image(f'xvfb-run -a uv run python -c "{probe}"')
 
     assert started.strip().splitlines()[-1] == 'display', started
+
+
+@pytest.mark.live
+def test_in_the_image_a_connector_loads_from_a_mounted_settings_directory(built_image, tmp_path):
+    """The route every credential takes on the NUC, run in the image rather than described.
+
+    A `.harry`-shaped directory holding only Slack's `.env.local` is mounted read-only, the
+    way compose mounts the checkout. The same container, the same mount, one environment
+    variable apart: loaded with it, skipped without. Slack because its `register` makes no
+    network call, so fake values prove the settings route and nothing else.
+    """
+    folder = tmp_path / 'settings' / 'connectors' / 'slack'
+    folder.mkdir(parents=True)
+    (folder / '.env.local').write_text('BOT_TOKEN=not-a-real-token\nCHANNEL=#a-test-channel\n', encoding='utf-8')
+    probe = "from harry.loader import load; found = load().get('connector', 'slack'); print(found.status)"
+
+    def slack_status(*docker_args: str) -> str:
+        ran = subprocess.run(
+            ['docker', 'run', '--rm', '--entrypoint', 'sh', *docker_args, IMAGE, '-c', f'uv run python -c "{probe}"'],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=True,
+        )
+        return ran.stdout.strip().splitlines()[-1]
+
+    mount = ['-v', f'{tmp_path / "settings"}:/settings:ro']
+    assert slack_status(*mount, '-e', 'HARRY_CAPABILITY_SETTINGS_DIR=/settings') == 'loaded'
+    assert slack_status(*mount) == 'skipped'
 
 
 @pytest.fixture
