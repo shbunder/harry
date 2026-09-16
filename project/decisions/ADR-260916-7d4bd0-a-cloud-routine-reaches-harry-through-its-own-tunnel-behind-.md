@@ -54,13 +54,18 @@ A second named tunnel, `harry`, on the account marcel already uses, at
 token taken from the routine's environment.
 
 **For:** the trigger does not live on the machine it is triggering, so a routine's run log
-is visible from anywhere. It reuses a Cloudflare account and zone that already work, and
-opens reaching Harry from a laptop or a phone later without a second project.
+is visible from anywhere, and a routine that never fired is visible somewhere other than the
+NUC. It reuses a Cloudflare account and zone that already work, and opens reaching Harry
+from a laptop or a phone later without a second project.
+
+It does not make the page independent of the NUC — Harry runs there, so a NUC that is down
+fails this route exactly as it fails the local one.
 
 **Against:** a public hostname in front of an unscoped tablet token, with one bearer token
 as the only guard. Two open questions about routines, and a routine's environment variables
 are readable by anyone who can use that environment. A second credential — the tunnel's
-own credentials file — that can lapse.
+own credentials file — that can lapse. **And a dependency on GitHub:** a routine clones the
+repository to find `.mcp.json`, so an outage there is a morning with no page.
 
 ### Option 2: A local timer running `claude -p` on the NUC
 
@@ -75,9 +80,13 @@ page by 07:00", which the watchdog already says.
 
 ### Option 3: A second hostname on marcel's tunnel
 
+**For:** one `cloudflared` process and one credentials file instead of two, so one thing to
+keep current and one thing that can lapse.
+
 **Rejected on the facts.** Marcel's tunnel runs with `--url` and no config file, and a
 `--url` tunnel is single-origin. Adding a hostname means ingress rules and a restart of the
-process carrying Telegram's webhook, after which one `cloudflared` failure takes out both.
+process carrying Telegram's webhook, after which one `cloudflared` failure takes out both —
+and the saving of one process is not worth coupling a newspaper to a chat bot.
 
 ## Decision outcome
 

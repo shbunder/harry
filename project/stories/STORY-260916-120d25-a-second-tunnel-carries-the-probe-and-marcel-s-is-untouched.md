@@ -32,11 +32,12 @@ environment, which outranks `.env.local`, and serve it on a port nothing else ow
            summary, and the page still renders -->
 
 - [ ] A tunnel named `harry` exists, and `harry.marcel-bot.com` resolves to it
-- [ ] No `config.yml` exists in `~/.cloudflared/`, `/etc/cloudflared/` or `/usr/local/etc/cloudflared/` after the tunnel is created
-- [ ] `cloudflared-marcel.service` has the same `ActiveEnterTimestamp` before and after, `cloudflared tunnel info marcel` still shows connections, and marcel's `make doctor` still reports the webhook healthy
-- [ ] The probe serves on port 7440 with a throwaway token generated at run time, passed as `HARRY_API_TOKEN` in the environment, and never the value in `.env.local`
+- [ ] Neither `config.yml` nor `config.yaml` exists in `~/.cloudflared/`, `~/.cloudflare-warp/`, `~/cloudflare-warp/`, `/etc/cloudflared/` or `/usr/local/etc/cloudflared/` after the tunnel is created
+- [ ] `cloudflared-marcel.service` has the same `ActiveEnterTimestamp` before and after, `cloudflared tunnel info marcel` still shows connections, and `https://marcel-bot.com/health` answers 200 before and after
+- [ ] The probe serves on port 7440 with a throwaway exported as `HARRY_API_TOKEN`, and the fingerprint in its banner matches `printf %s "$HARRY_API_TOKEN" | sha256sum | cut -c1-12` before `cloudflared tunnel run` is started
 - [ ] `ping` returns through `https://harry.marcel-bot.com/mcp` with the throwaway token
-- [ ] A request with no `Authorization` header at all, and one with a wrong token, are both refused with 401 through the tunnel
+- [ ] A request with no `Authorization` header at all, and one with a wrong token, are both refused with 401 through the tunnel, and both appear in the probe's server output with their status
+- [ ] `docs/mcp.md` says how the tunnel is created and run, how it is deleted — stop the run, `tunnel delete`, then the CNAME in the dashboard — and no longer says `HARRY_PUBLIC_URL` is how Harry is reached off the machine
 
 ## Subtasks
 
