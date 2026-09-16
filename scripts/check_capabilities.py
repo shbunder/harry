@@ -312,6 +312,67 @@ def check_requires(fields: dict[str, Any], connectors: set[str]) -> None:
         raise Problem(f'requires connectors that do not exist: {", ".join(missing)} (known: {known})')
 
 
+def connector_references(paths: list[Path], connectors: set[str]) -> list[str]:
+    """What connectors name under `requires:` and `optional:`, once every connector is known.
+
+    A second pass, because the first is what builds the list of names to check against. A
+    declaration the first pass already refused is not reported twice.
+
+    **A loop is refused here, of any length.** The loader loads a connector after the ones it
+    names, and a loop has no such order: the first member is handed nothing for the rest, or
+    skipped if it `requires:` one. That is survivable at start-up and wrong every morning.
+    """
+    problems: list[str] = []
+    names: dict[str, set[str]] = {}
+    for path in paths:
+        try:
+            fields = read_frontmatter(path)
+        except Malformed:
+            continue
+        if str(fields.get('name')) not in connectors:
+            continue
+        try:
+            check_connector_lists(fields, connectors)
+        except Problem as problem:
+            problems.append(f'{path.relative_to(ROOT)}: {problem}')
+            continue
+        names[str(fields['name'])] = {str(name) for key in ('requires', 'optional') for name in fields.get(key) or []}
+    return problems + [_say_loop(loop) for loop in loops(names)]
+
+
+def loops(names: dict[str, set[str]]) -> list[list[str]]:
+    """Every set of connectors that name each other, round and back, including one naming itself."""
+
+    def reach(start: str) -> set[str]:
+        seen, stack = set(), [start]
+        while stack:
+            for name in names.get(stack.pop(), set()):
+                if name not in seen:
+                    seen.add(name)
+                    stack.append(name)
+        return seen
+
+    reaches = {name: reach(name) for name in names}
+    found: list[list[str]] = []
+    for name in sorted(names):
+        if name not in reaches[name]:
+            continue
+        loop = sorted({name} | {other for other in reaches[name] if name in reaches.get(other, set())})
+        if loop not in found:
+            found.append(loop)
+    return found
+
+
+def _say_loop(loop: list[str]) -> str:
+    if len(loop) == 1:
+        return f'connector {loop[0]} names itself in `requires:` or `optional:` — take the name out'
+    named = f'{", ".join(loop[:-1])} and {loop[-1]}'
+    return (
+        f'connectors {named} name each other in `requires:` or `optional:`, so none of them can load '
+        'after the others. Decide which one needs which, and take the name out of the other list'
+    )
+
+
 # The format itself lives in `harry.declaration`, so the gate and the loader cannot
 # disagree about where a declaration is or what it is called.
 KINDS = tuple((kind.folder, kind.declaration) for kind in DECLARED_KINDS)
@@ -364,6 +425,7 @@ def main(argv: list[str] | None = None) -> int:
     # Connectors first: `requires` on a job or a tool is checked against what they declare.
     problems, valid_connectors = validate(connector_files, check_connector)
     connectors = {str(fields['name']) for fields in valid_connectors}
+    problems += connector_references(connector_files, connectors)
 
     job_problems, _ = validate(job_files, check_job, connectors)
     tool_problems, valid_tools = validate(tool_files, check_tool, connectors)
