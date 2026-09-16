@@ -16,8 +16,9 @@ display_number="${DISPLAY#:}"
 rm -f "/tmp/.X${display_number}-lock" "/tmp/.X11-unix/X${display_number}"
 
 # In the background, and not fatal: without a display Harry still starts, and De Tijd's articles
-# answer "the browser could not start" rather than taking the page down.
-Xvfb "$DISPLAY" -screen 0 1280x1024x24 -nolisten tcp >/dev/null 2>&1 &
+# answer "the browser could not start" rather than taking the page down. Its complaints go to
+# the container's log, which is the only place a display that failed can be seen.
+Xvfb "$DISPLAY" -screen 0 1280x1024x24 -nolisten tcp >/dev/null &
 
 # Up to five seconds for its socket, so the display exists before Harry does. Xvfb is ready in a
 # fraction of that; if it never comes, Harry starts anyway, for the reason above.
@@ -26,5 +27,7 @@ while [ ! -S "/tmp/.X11-unix/X${display_number}" ] && [ "$waited" -lt 50 ]; do
     sleep 0.1
     waited=$((waited + 1))
 done
+[ -S "/tmp/.X11-unix/X${display_number}" ] ||
+    echo "with-display: Xvfb did not start on $DISPLAY, so De Tijd's articles will say the browser could not start" >&2
 
 exec "$@"

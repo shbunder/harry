@@ -352,6 +352,15 @@ def test_the_image_starts_the_display_before_harry_and_hands_harry_the_signals()
     assert code[started].endswith('&'), 'Xvfb runs in the foreground, so Harry never starts'
     assert any(line.startswith('rm -f') and '-lock' in line for line in code[:started]), 'a stale lock would stop Xvfb'
     assert code[-1] == 'exec "$@"', 'the shell stays PID 1 and swallows docker stop'
+    assert any('>&2' in line and 'did not start' in line for line in code), 'a display that never came says nothing'
+
+
+def test_both_stacks_run_an_init_that_reaps_what_a_crashed_browser_leaves():
+    """After `exec`, PID 1 is `uv`, which reaps nothing. Every Chromium that crashes in a container
+    that runs for months would leave its processes behind."""
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    for name, service in compose['services'].items():
+        assert service.get('init') is True, f'{name} has no init, so orphaned browser processes are never reaped'
 
 
 def test_each_stack_pins_its_own_port_and_data_directory_on_the_service():

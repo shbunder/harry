@@ -82,8 +82,8 @@ class End:
 
 LOGGED_IN = Visit(200, ARTICLE, page('article-logged-in.html'))
 LOGGED_OUT = Visit(200, ARTICLE, page('article-logged-out.html'))
-BACK_HOME = End('password', HOME, '<html lang="nl"></html>')
-REFUSED = End('password', PASSWORD_STEP, page('login-refused.html'))
+BACK_HOME = End('sent', HOME, '<html lang="nl"></html>')
+REFUSED = End('sent', PASSWORD_STEP, page('login-refused.html'))
 
 
 class Script:
@@ -98,6 +98,7 @@ class Script:
         self.pages: list[Any] = [LOGGED_IN]
         self.logins: list[Any] = [BACK_HOME]
         self.on_start: type[Exception] | None = None
+        self.on_saved_state: type[Exception] | None = None
         self.opened_with: list[Path | None] = []
         self.visited: list[str] = []
         self.logged_in: list[tuple[str, str, float]] = []
@@ -114,6 +115,8 @@ class Script:
     def __enter__(self) -> Script:
         if self.on_start is not None:
             raise self.on_start(f'the browser would not start ({PASSWORD})')
+        if self.on_saved_state is not None and self.opened_with[-1] is not None:
+            raise self.on_saved_state('the browser refused the saved session')
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -264,20 +267,42 @@ def test_the_recorded_refusal_is_a_refusal_though_its_script_talks_about_captcha
 
 
 def test_a_captcha_element_is_a_challenge(harry):
-    captcha = End('password', PASSWORD_STEP, page('login-captcha.html'))
+    captcha = End('sent', PASSWORD_STEP, page('login-captcha.html'))
     assert pages_module(harry()).login_outcome(captcha) == 'challenge'
 
 
 def test_a_page_that_neither_finished_nor_refused_is_a_login_page_harry_does_not_know(harry):
     """Including one whose script mentions captchas — a word is not an element."""
-    unexpected = End('password', PASSWORD_STEP, page('login-unexpected.html'))
+    unexpected = End('sent', PASSWORD_STEP, page('login-unexpected.html'))
     assert 'data-captcha-provider' in unexpected.html
     assert pages_module(harry()).login_outcome(unexpected) == 'login-page'
 
 
-def test_finishing_the_email_step_on_tijd_be_is_not_finishing_the_login(harry):
-    """Only the password step ends a login."""
-    assert pages_module(harry()).login_outcome(End('email', HOME, '<html></html>')) == 'login-page'
+def test_a_login_that_stopped_before_the_password_was_sent_is_stalled_not_changed(harry):
+    """Only a sent password ends a login, and only after one can a failure count towards a
+    lockout. Before it, a slow page and a changed one look the same, and both are tried again soon."""
+    rules = pages_module(harry())
+    for step in ('open', 'email', 'password'):
+        assert rules.login_outcome(End(step, HOME, '<html></html>')) == 'login-stalled', step
+    assert rules.login_outcome(End('email', PASSWORD_STEP, page('login-refused.html'))) == 'refused'
+
+
+def test_only_de_tijd_s_login_service_is_somewhere_to_type(harry):
+    rules = pages_module(harry())
+    assert rules.on_login_service('https://auth.mediafin.be/u/login/identifier?state=x')
+    assert not rules.on_login_service('https://www.tijd.be/')
+    assert not rules.on_login_service('https://auth.mediafin.be.example.com/u/login/identifier')
+
+
+def test_no_fixture_a_logged_in_person_saw_carries_an_email_address(harry):
+    """The login page carries the account's address twice: in the email field, and URL-encoded in
+    its "forgot password" link. The first scrub caught one. This reads every encoding."""
+    from urllib.parse import unquote
+
+    address = __import__('re').compile(r'[A-Za-z0-9._%+-]+(?:@|%40|%2540|&#64;)([A-Za-z0-9.-]+\.[A-Za-z]{2,})', 2)
+    for fixture in sorted(PAGES.iterdir()):
+        domains = {unquote(match.group(1)).lower() for match in address.finditer(fixture.read_text(encoding='utf-8'))}
+        assert domains <= {'example.com', 'de.tijd'}, f'{fixture.name} carries an address at {sorted(domains)}'
 
 
 def test_the_login_hand_over_page_is_not_the_end_of_the_login(harry):
@@ -345,6 +370,153 @@ def test_a_network_failure_is_the_page_s_and_anything_else_is_the_browser_s(harr
     browser, _ = chromium_with(built, 'Target page, context or browser has been closed')
     with pytest.raises(built.failures().BrowserFailed):
         browser.visit(STUB, 30)
+
+
+class Step:
+    def __init__(self, page: LoginPage, selector: str) -> None:
+        self.page, self.selector = page, selector
+
+    @property
+    def first(self) -> Step:
+        return self
+
+    def click(self, timeout: float) -> None:
+        self.page.act('click', self.selector)
+
+    def fill(self, value: str, timeout: float) -> None:
+        self.page.act('fill', self.selector, value)
+
+    def wait_for(self, state: str, timeout: float) -> None:
+        self.page.act('wait_for', self.selector)
+
+    def is_visible(self) -> bool:
+        return self.selector in self.page.visible
+
+
+class LoginPage:
+    """The page `Chromium.log_in` drives. Each action can be made to fail; the second submit,
+    the password's, lands back on www.tijd.be."""
+
+    def __init__(
+        self, *, url: str = 'https://auth.mediafin.be/u/login/identifier', home: Any = 200, visible=(), failures=None
+    ):
+        self.url, self.home, self.visible = url, home, set(visible)
+        self.failures = dict(failures or {})
+        self.typed: list[str] = []
+        self.submits = 0
+
+    def goto(self, link: str, **_: Any) -> Any:
+        if isinstance(self.home, Exception):
+            raise self.home
+        return type('Response', (), {'status': self.home})()
+
+    def get_by_role(self, role: str, name: str) -> Step:
+        return Step(self, f'button:{name}')
+
+    def locator(self, selector: str) -> Step:
+        return Step(self, selector)
+
+    def act(self, action: str, selector: str, value: str | None = None) -> None:
+        failure = self.failures.get((action, selector))
+        if failure is not None:
+            raise failure
+        if action == 'fill':
+            self.typed.append(selector)
+        if action == 'click' and selector.startswith('button[type=submit]'):
+            self.submits += 1
+            if self.submits == 2:
+                self.url = HOME
+
+    def wait_for_timeout(self, milliseconds: float) -> None:
+        return None
+
+    def wait_for_load_state(self, state: str, timeout: float) -> None:
+        return None
+
+    def content(self) -> str:
+        return '<html></html>'
+
+
+def logging_in(built: Harry, page: LoginPage, seconds: float = 0.3) -> Any:
+    """`Chromium.log_in` against a stand-in page. No cookie dialog unless a test puts one up."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    module = sys.modules[type(built.tijd).__module__ + '.browser']
+    page.failures.setdefault(('wait_for', 'button:Optionele cookies weigeren'), PlaywrightTimeout('no dialog'))
+    browser = module.Chromium(None)
+    browser._page = page  # noqa: SLF001 — the page Chromium would drive
+    browser._context = type('Context', (), {'clear_cookies': lambda self: None})()  # noqa: SLF001
+    return browser.log_in(EMAIL, PASSWORD, seconds)
+
+
+LOGIN_FIELDS = {'#username', '#password'}
+
+
+def test_a_login_through_both_steps_ends_back_on_de_tijd(harry):
+    built = harry()
+    page = LoginPage(visible=LOGIN_FIELDS)
+
+    end = logging_in(built, page, seconds=5)
+
+    assert page.typed == ['#username', '#password']
+    assert pages_module(built).login_outcome(end) is None
+
+
+def test_a_homepage_that_does_not_answer_is_unreachable_and_one_that_says_403_is_the_browser_refused(harry):
+    from playwright.sync_api import Error, TimeoutError as PlaywrightTimeout
+
+    built = harry()
+    failures = built.failures()
+    for home in (PlaywrightTimeout('Timeout 60000ms exceeded'), Error('net::ERR_NAME_NOT_RESOLVED')):
+        with pytest.raises(failures.LoginUnreachable):
+            logging_in(built, LoginPage(home=home))
+    with pytest.raises(failures.Refused):
+        logging_in(built, LoginPage(home=403))
+
+
+def test_a_step_that_runs_out_of_time_reports_the_step_it_was_in(harry):
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    built = harry()
+    rules = pages_module(built)
+    button = LoginPage(failures={('click', '.trck_sitenav_login:visible'): PlaywrightTimeout('late')})
+    assert logging_in(built, button).step == 'open'
+
+    no_password_field = LoginPage(visible={'#username'})
+    end = logging_in(built, no_password_field)
+    assert end.step == 'email'
+    assert no_password_field.typed == ['#username'], 'the password is never typed without its field'
+    assert rules.login_outcome(end) == 'login-stalled'
+
+
+def test_nothing_is_typed_on_a_page_that_is_not_the_login_service(harry):
+    built = harry()
+    elsewhere = LoginPage(url='https://ads.example.com/landing', visible=LOGIN_FIELDS)
+
+    end = logging_in(built, elsewhere)
+
+    assert elsewhere.typed == []
+    assert end.step == 'open'
+
+
+def test_an_error_carrying_the_typed_password_is_never_chained_onto_what_is_raised(harry):
+    """Playwright's call log puts `fill("<value>")` into its error. A traceback printed later
+    would print it, so the error raised in its place stands alone."""
+    import traceback
+
+    from playwright.sync_api import Error, TimeoutError as PlaywrightTimeout
+
+    built = harry()
+    crashed = LoginPage(
+        visible=LOGIN_FIELDS, failures={('fill', '#password'): Error(f'fill("{PASSWORD}") — Target closed')}
+    )
+    with pytest.raises(built.failures().BrowserFailed) as raised:
+        logging_in(built, crashed)
+    printed = ''.join(traceback.format_exception(raised.value))
+    assert PASSWORD not in printed
+
+    slow = LoginPage(visible=LOGIN_FIELDS, failures={('fill', '#password'): PlaywrightTimeout(f'fill("{PASSWORD}")')})
+    assert logging_in(built, slow).step == 'password', 'a password that was never sent is not a refusal'
 
 
 # ---------------------------------------------------------------------------
@@ -495,7 +667,7 @@ async def test_nothing_harry_says_carries_the_email_or_the_password(harry):
     built = harry()
     failures = built.failures()
     said: list[str] = []
-    for playing in (failures.BrowserFailed, failures.PageDidNotLoad, failures.Refused):
+    for playing in (failures.BrowserFailed, failures.PageDidNotLoad, failures.Refused, RuntimeError):
         built.script.pages = [playing]
         said.append((await article(built))['why'])
     built.script.pages = [LOGGED_OUT]
@@ -520,16 +692,69 @@ async def test_a_page_de_tijd_answers_with_an_error_says_which(harry):
 
 
 @respx.mock
-async def test_a_reader_that_raises_costs_that_article_and_news_says_so(harry):
+async def test_a_surprise_inside_a_read_costs_that_article_and_its_text_is_never_logged(harry, caplog):
+    """The stand-in's error carries the password, as a Playwright `fill` error carries what it typed."""
     feeds_are_up()
     built = harry()
     built.script.pages = [RuntimeError]
 
-    answer = await article(built)
+    with caplog.at_level(logging.DEBUG, logger='harry'):
+        answer = await article(built)
 
     assert answer['available'] is False
+    assert answer['why'] == 'the browser Harry reads De Tijd with could not start, or stopped'
+    assert built.sink.heard == [f'De Tijd: {answer["why"]}']
+    assert 'RuntimeError' in caplog.text, 'the log says what kind of surprise it was'
+    assert PASSWORD not in caplog.text and EMAIL not in caplog.text
+
+
+@respx.mock
+async def test_a_reader_that_raises_costs_that_article_and_news_says_so_without_a_traceback(harry, caplog):
+    feeds_are_up()
+    built = harry()
+
+    def boom(link: str) -> dict:
+        raise RuntimeError(f'fill("{PASSWORD}")')
+
+    built.tijd.read = boom
+
+    with caplog.at_level(logging.DEBUG, logger='harry'):
+        answer = await article(built)
+
     assert answer['why'] == 'the connector that reads De Tijd failed (RuntimeError)'
     assert built.sink.heard == [f'De Tijd: {answer["why"]}']
+    assert PASSWORD not in caplog.text
+
+
+@respx.mock
+async def test_a_reader_answering_neither_a_page_nor_a_why_is_a_failure_too(harry):
+    feeds_are_up()
+    built = harry()
+    built.tijd.read = lambda link: {}
+
+    answer = await article(built)
+
+    assert answer['why'] == 'the connector that reads De Tijd failed (TypeError)'
+
+
+@respx.mock
+async def test_a_reader_that_cannot_say_which_links_are_its_own_costs_the_other_sources_nothing(harry, caplog):
+    feeds_are_up()
+    respx.get(url__startswith=TRAIN).mock(
+        return_value=httpx.Response(200, text=(FEEDS / 'bbc-article.html').read_text())
+    )
+    built = harry()
+
+    def boom(link: str) -> bool:
+        raise RuntimeError('broken')
+
+    built.tijd.handles = boom
+
+    with caplog.at_level(logging.ERROR, logger='harry'):
+        answer = await article(built, TRAIN_ID)
+
+    assert answer['available'] is True
+    assert 'could not say whether it reads a link' in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -565,6 +790,42 @@ async def test_a_session_that_cannot_be_written_still_returns_the_article_and_sa
     assert built.sink.heard == [
         f'De Tijd: Harry could not save the De Tijd session in {built.session}, so every article will need a login until it can'
     ]
+
+
+@respx.mock
+async def test_a_saved_session_the_browser_refuses_is_set_aside_and_the_read_goes_on(harry, caplog):
+    feeds_are_up()
+    built = harry()
+    built.session.mkdir(parents=True)
+    saved = built.session / 'storage-state.json'
+    saved.write_text(json.dumps({'cookies': [{'name': 'from-an-older-browser'}], 'origins': []}))
+    built.script.on_saved_state = built.failures().BrowserFailed
+
+    with caplog.at_level(logging.WARNING, logger='harry'):
+        answer = await article(built)
+
+    assert answer['available'] is True
+    assert built.script.opened_with == [saved, None]
+    assert 'would not start with the saved De Tijd session' in caplog.text
+    assert built.sink.heard == []
+
+
+def test_a_read_that_does_not_come_back_is_given_up_on_and_the_next_one_says_so(harry, monkeypatch):
+    """A renderer wedged in an ad script holds a Playwright call with no timeout of its own."""
+    built = harry()
+    monkeypatch.setattr(built.failures(), 'READ_SECONDS', 0.3)
+    built.script.pause = 1.0
+
+    stuck = built.tijd.read(STUB)
+    built.script.pause = 0.0
+    busy = built.tijd.read(STUB)
+    time.sleep(1.0)
+    fine = built.tijd.read(STUB)
+
+    assert stuck['why'] == 'reading the article took longer than 4 minutes, so Harry stopped waiting for it'
+    assert busy['why'] == 'an earlier De Tijd article was still being read after 4 minutes, so this one was not'
+    assert 'html' in fine, 'the stuck read finished, and the browser is free again'
+    assert len(built.sink.heard) == 2
 
 
 def test_two_reads_at_once_use_the_browser_one_after_the_other(harry):
@@ -690,15 +951,35 @@ async def test_a_captcha_is_reported_as_one(harry):
 
 
 @respx.mock
-async def test_a_login_step_harry_does_not_know_is_named(harry):
+async def test_a_step_after_the_password_harry_does_not_know_waits_six_hours(harry):
+    feeds_are_up()
+    built = harry()
+    built.script.pages = [LOGGED_OUT]
+    built.script.logins = [End('sent', PASSWORD_STEP, page('login-unexpected.html'))]
+
+    answer = await article(built)
+    built.clock.now = NOW + timedelta(hours=5)
+    await article(built)
+
+    assert answer['why'].startswith('Harry could not log in: after the password was sent, the login page did not show')
+    assert len(built.script.logged_in) == 1
+
+
+@respx.mock
+async def test_a_login_that_stalled_before_the_password_names_the_step_and_waits_fifteen_minutes(harry):
+    """A slow homepage at 06:30 must not cost De Tijd until noon."""
     feeds_are_up()
     built = harry()
     built.script.pages = [LOGGED_OUT]
     built.script.logins = [End('email', 'https://auth.mediafin.be/u/login/identifier', page('login-unexpected.html'))]
 
     answer = await article(built)
+    built.clock.now = NOW + timedelta(minutes=15, seconds=1)
+    await article(built)
 
     assert answer['why'].startswith('Harry could not log in: at the email step, the login page did not show')
+    assert answer['why'].endswith('Harry tries again in 15 minutes')
+    assert len(built.script.logged_in) == 2
 
 
 @respx.mock

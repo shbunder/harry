@@ -319,7 +319,7 @@ class News:
         # `summary` and `image` come along, so a story whose page will not load still has
         # something to print. The feed's own description was always going to be readable.
         known = {key: story[key] for key in ('id', 'title', 'source', 'published', 'link', 'summary', 'image')}
-        reader = next((reader for reader in self._readers if reader.handles(story['link'])), None)
+        reader = self._reader_for(story['link'])
         if reader is not None:
             return {**known, **self._read_through(reader, story)}
         try:
@@ -454,6 +454,23 @@ class News:
         response.raise_for_status()
         return _prose(response.text, str(response.url))
 
+    def _reader_for(self, link: str) -> Any:
+        """The connector that reads this link's pages, if one says it does.
+
+        Asked inside a guard: another connector's code runs here for every story, and one that
+        raises must not cost VRT NWS and the BBC their articles. It is passed over, and the link
+        is fetched like any other.
+        """
+        for reader in self._readers:
+            try:
+                if reader.handles(link):
+                    return reader
+            except Exception as error:  # noqa: BLE001 — another connector's fault is passed over
+                self._log.error(
+                    'a connector that reads pages could not say whether it reads a link: %s', type(error).__name__
+                )
+        return None
+
     def _read_through(self, reader: Any, story: dict) -> dict:
         """A page another connector fetched, turned into prose here like every other page.
 
@@ -466,9 +483,12 @@ class News:
         """
         try:
             answer = reader.read(story['link'])
+            if not isinstance(answer, dict) or ('why' not in answer and not {'url', 'html'} <= answer.keys()):
+                raise TypeError('an answer with neither a page nor a why')
         except Exception as error:  # noqa: BLE001 — another connector's fault costs this article, not the page
             why = f'the connector that reads {story["source"]} failed ({type(error).__name__})'
-            self._log.exception('no text for %s: %s', story['id'], why)
+            # No traceback: an error raised inside a browser can carry what it was typing.
+            self._log.error('no text for %s: %s', story['id'], why)
             self._alert(f'{story["source"]}: {why}', key=f'article:{story["feed"]}')
             return {'available': False, 'why': why}
         if 'why' in answer:

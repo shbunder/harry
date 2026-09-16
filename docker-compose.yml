@@ -19,6 +19,9 @@ services:
     image: harry:${HARRY_TAG:-latest}
     container_name: harry
     restart: unless-stopped
+    # A small init as PID 1, which reaps what a crashed Chromium leaves behind — `uv` does not,
+    # and a container running for months would collect them — and passes `docker stop` on.
+    init: true
     # Both files, in the same order and with the same meaning as everywhere else:
     # `.env` is committed and carries the defaults, `.env.local` is this NUC's and wins.
     # `required: false` because a machine with nothing to override needs no second file.
@@ -72,6 +75,7 @@ services:
     image: harry:latest
     container_name: harry-dev
     restart: unless-stopped
+    init: true
     env_file:
       - path: .env
         required: true

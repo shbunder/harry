@@ -78,7 +78,7 @@ def _in_dependency_order(found: list[Capability], kind: Kind) -> list[Capability
     nothing. A connector naming a connector is what it exists for.
 
     **A loop cannot be ordered, and must not stop Harry.** When everything still waiting names
-    something else still waiting, the loop nothing outside of it is waiting on goes next, its
+    something else still waiting, the loop that names nothing outside itself goes next, its
     members in the order they were found. A member naming a later one then finds nothing:
     handed nothing under `optional:`, skipped under `requires:` — the same answer as naming a
     connector that is broken. The lint refuses a loop; this is for one it never saw.

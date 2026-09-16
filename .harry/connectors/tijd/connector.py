@@ -25,11 +25,20 @@ Every sentence is fixed. None carries an exception's text, a URL, the email or t
 ## Why a failed login waits
 
 De Tijd's login service blocks an account after repeated failures. So after a refused
-password, a captcha, a login step Harry does not know, or a paywall that outlasted a login,
-no new login is tried for 6 hours; every article in that time gets the same answer. A login
-page that did not answer at all waits 15 minutes: nothing was refused, so nothing counts
-towards a lockout. The wait lives in memory — a restart clears it, and a restart is also how a
-corrected password takes effect.
+password, a captcha, a step after the password was sent that Harry does not know, or a paywall
+that outlasted a login, no new login is tried for 6 hours; every article in that time gets the
+same answer. A login that stopped before the password was sent — a homepage that did not
+answer, a field that did not come in time — waits 15 minutes: nothing was refused, so nothing
+counts towards a lockout. The wait lives in memory — a restart clears it, and a restart is also
+how a corrected password takes effect.
+
+## Why a read has a hard limit
+
+Playwright bounds what it waits for, but not everything it does: reading a page's content or
+saving the session take no timeout, and a renderer wedged in an ad script can hold one forever.
+Every read runs in a thread of its own and is given up on after 4 minutes, so the morning page
+waiting on it moves on with the feed's summary. A read still stuck holds the browser, and the
+next one waits at most as long again before saying so.
 """
 
 from __future__ import annotations
@@ -55,12 +64,15 @@ PAGE_SECONDS = 30.0
 """How long one article page may take to arrive."""
 
 LOGIN_SECONDS = 60.0
-"""How long a whole login may take, every step included. A read that logs in first is done
-within two pages and a login: about two minutes at the very worst."""
+"""How long a whole login may take, every step included. Two pages and a login are two
+minutes of waiting; starting the browser can add half a minute each time it starts."""
+
+READ_SECONDS = 240.0
+"""The hard limit on one read, whatever inside it did not come back."""
 
 WAIT_AFTER_FAILURE = timedelta(hours=6)
 WAIT_AFTER_SILENCE = timedelta(minutes=15)
-LOCKOUT_FREE = frozenset({'login-unreachable'})
+LOCKOUT_FREE = frozenset({'login-unreachable', 'login-stalled'})
 """Failures in which nothing was refused, so trying again sooner cannot lock the account."""
 
 STATE_FILE = 'storage-state.json'
@@ -76,8 +88,12 @@ WHY = {
         'captcha. Harry waits 6 hours before trying again'
     ),
     'login-page': (
-        'Harry could not log in: at {step}, the login page did not show what Harry expects, so De Tijd '
-        'may have changed it. Harry waits 6 hours before trying again'
+        'Harry could not log in: {step}, the login page did not show what Harry expects, so De Tijd '
+        'may have added a step, such as a code. Harry waits 6 hours before trying again'
+    ),
+    'login-stalled': (
+        'Harry could not log in: at {step}, the login page did not show what Harry expects in time. '
+        'It may be slow, or De Tijd may have changed it. Harry tries again in 15 minutes'
     ),
     'login-unreachable': "Harry could not log in: De Tijd's homepage did not answer. Harry tries again in 15 minutes",
     'blocked': (
@@ -89,6 +105,8 @@ WHY = {
     'page': 'De Tijd answered {status} for the article',
     'paywall': 'Harry logged in, but De Tijd still shows the paywall. Check that the subscription is active',
     'session': ('Harry could not save the De Tijd session in {where}, so every article will need a login until it can'),
+    'stuck': 'reading the article took longer than 4 minutes, so Harry stopped waiting for it',
+    'busy': 'an earlier De Tijd article was still being read after 4 minutes, so this one was not',
 }
 """Every sentence this connector can say. Fixed, so there is nothing in one to scrub."""
 
@@ -128,18 +146,57 @@ class Tijd:
         """`{"url", "html"}` for a page read in full, or `{"why", "said": True}`.
 
         `said` means the Slack line is already sent, so whoever asked has nothing to report.
-        One call at a time: two browsers writing one session file is how it gets corrupted.
+        One read at a time — two browsers writing one session file is how it gets corrupted —
+        and never longer than `READ_SECONDS`, whatever happens inside it.
         """
-        with self._one_at_a_time:
+        if not self._one_at_a_time.acquire(timeout=READ_SECONDS):
+            return self._fault('busy')
+        answer: dict[str, Any] = {}
+
+        def work() -> None:
             try:
-                with self._browser(self._saved_state()) as browser:
-                    return self._read_with(browser, link)
-            except Refused:
-                return self._fault('blocked')
-            except BrowserFailed:
-                return self._fault('browser')
-            except PageDidNotLoad:
-                return self._fault('timeout')
+                answer.update(self._read_now(link))
+            finally:
+                self._one_at_a_time.release()
+
+        worker = threading.Thread(target=work, name='tijd-read', daemon=True)
+        worker.start()
+        worker.join(READ_SECONDS)
+        if worker.is_alive():
+            return self._fault('stuck')
+        return answer
+
+    def _read_now(self, link: str) -> dict[str, Any]:
+        """One read, every way it can end turned into an answer — never an exception."""
+        try:
+            with contextlib.ExitStack() as closing:
+                return self._read_with(self._started(closing), link)
+        except Refused:
+            return self._fault('blocked')
+        except BrowserFailed:
+            return self._fault('browser')
+        except PageDidNotLoad:
+            return self._fault('timeout')
+        except Exception as error:  # noqa: BLE001 — a surprise costs this article, and is said
+            # The type only. An error from the browser can carry what was being typed.
+            self._log.error('reading a De Tijd article failed unexpectedly: %s', type(error).__name__)
+            return self._fault('browser')
+
+    def _started(self, closing: contextlib.ExitStack) -> Any:
+        """A browser carrying the saved session — or none, if the browser will not take it.
+
+        A session that is valid JSON can still be one the browser refuses to load, after an
+        upgrade changes its format. Without this, every read would say the browser could not
+        start, until somebody deleted the file by hand.
+        """
+        state = self._saved_state()
+        try:
+            return closing.enter_context(self._browser(state))
+        except BrowserFailed:
+            if state is None:
+                raise
+        self._log.warning('the browser would not start with the saved De Tijd session, so Harry starts without it')
+        return closing.enter_context(self._browser(None))
 
     # -- the rules ------------------------------------------------------------
 

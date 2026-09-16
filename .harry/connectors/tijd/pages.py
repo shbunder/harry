@@ -46,8 +46,23 @@ REFUSALS = ('error-element-password', 'error-element-username')
 
 CAPTCHA_FRAME = re.compile(r'captcha|challenges|arkoselabs', re.IGNORECASE)
 
-STEPS = {'open': 'opening the login page', 'email': 'the email step', 'password': 'the password step'}
-"""The steps a login can stop in, and how each is named to a person."""
+LOGIN_SERVICE = 'auth.mediafin.be'
+"""Where De Tijd's login form is, measured 2026-09-16. Nothing is typed anywhere else."""
+
+STEPS = {
+    'open': 'opening the login page',
+    'email': 'the email step',
+    'password': 'the password step',
+    'sent': 'after the password was sent',
+}
+"""The steps a login can stop in, and how each is named to a person. `sent` is everything
+after the password was submitted — the only point from which a failure can count towards De
+Tijd blocking the account."""
+
+
+def on_login_service(url: str) -> bool:
+    """Whether a page is De Tijd's login service, and so somewhere the email and password may go."""
+    return urlsplit(url).hostname == LOGIN_SERVICE
 
 
 def paywalled(html: str) -> bool:
@@ -67,23 +82,28 @@ class LoginEnd:
 def login_outcome(end: LoginEnd) -> str | None:
     """None when the login finished; otherwise the name of what stopped it.
 
-    - finished — the password step is done and the browser is back on www.tijd.be
+    - finished — the password was sent and the browser is back on www.tijd.be
     - `refused` — the login service put an error on the email or the password
     - `challenge` — the page carries a captcha, which nobody at Harry can answer
-    - `login-page` — anything else: a field that never came, or a step the table does not have,
-      such as a one-time code. The page moved, or grew a step, and a person has to look
+    - `login-stalled` — it stopped before the password was sent: a field that did not come in
+      time, or a page that was not the login service. Slow or changed, nobody can tell yet, and
+      nothing was refused, so it is tried again soon
+    - `login-page` — the password was sent and neither ending came: a step the table does not
+      have, such as a one-time code. A person has to look
 
     **A captcha is an element, not a word.** The ordinary login page mentions "captcha" 77
     times in its scripts — recorded 2026-09-16, with no captcha shown — so a page is only a
     challenge when an element carries Auth0's captcha attributes or a frame loads a captcha.
     """
-    if end.step == 'password' and urlsplit(end.url).hostname == 'www.tijd.be':
+    if end.step == 'sent' and urlsplit(end.url).hostname == 'www.tijd.be':
         return None
     elements = _Elements.of(end.html)
     if any(elements.ids.get(refusal, {}).get('data-error-code') for refusal in REFUSALS):
         return 'refused'
     if elements.captcha:
         return 'challenge'
+    if end.step != 'sent':
+        return 'login-stalled'
     return 'login-page'
 
 

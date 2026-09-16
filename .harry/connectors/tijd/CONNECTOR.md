@@ -77,20 +77,28 @@ One article at a time. The browser is started for each article and closed after 
 |---|---|---|
 | `De Tijd: Harry could not log in: De Tijd refused the email or password in .harry/connectors/tijd/.env.local…` | The login service said the email or password is wrong | Check both in `.env.local`, then restart Harry. **Harry does not try again for 6 hours**, because De Tijd blocks an account after repeated failures — a restart is how a corrected password takes effect at once |
 | `…the login page asked for a check Harry cannot answer, such as a captcha…` | De Tijd showed a captcha | Nothing Harry can do. If it keeps happening, full text needs a person to log in by hand, which is a change to this connector |
-| `…at the email step, the login page did not show what Harry expects…` (or another step) | A field Harry fills in was not there, or De Tijd added a step such as a one-time code | De Tijd changed its login page. The step named is where to start looking, in `pages.py` |
+| `…at the email step, the login page did not show what Harry expects in time…` (or another step before the password) | A field Harry fills in did not come in time, or the Log in click led somewhere that is not `auth.mediafin.be` — where Harry types nothing | Usually a slow page, and Harry tries again in 15 minutes. If it keeps saying so, De Tijd changed its login page; the step named is where to start looking, in `pages.py` |
+| `…after the password was sent, the login page did not show what Harry expects…` | The password went in, and the page neither came back to De Tijd nor refused it — most likely a new step, such as a one-time code | A person has to look. No new login for 6 hours |
 | `…De Tijd's homepage did not answer. Harry tries again in 15 minutes` | The network, or De Tijd, was down | Usually nothing. Nothing was refused, so the wait is short |
 | `De Tijd: De Tijd refused the browser (403)…` | De Tijd's bot filter turned the browser away | **Not the login** — logging in again will not help. The filter has tightened before; see how it reads a page, above |
-| `De Tijd: the browser Harry reads De Tijd with could not start, or stopped` | Chromium would not start, most often because there is no display — `make serve` on a machine without one | In the container the image starts the display. Outside it, this connector cannot work |
+| `De Tijd: the browser Harry reads De Tijd with could not start, or stopped` | Chromium would not start, most often because there is no display — `make serve` on a machine without one | In the container the image starts the display, and `make logs` says `with-display: Xvfb did not start` if it could not. Outside the container, this connector cannot work |
 | `De Tijd: the article page did not load within 30 seconds, or could not be reached` | Slow or down | Usually transient |
 | `De Tijd: De Tijd answered 404 for the article` | The article is gone | Nothing |
 | `De Tijd: Harry logged in, but De Tijd still shows the paywall…` | The login worked and the article is still withheld | Check the subscription. No new login for 6 hours |
 | `De Tijd: Harry could not save the De Tijd session in /data/tijd…` | The data volume is full or not writable | Fix the volume. Until then every article logs in again |
+| `De Tijd: reading the article took longer than 4 minutes…` | Something inside the browser never came back | Usually transient. The morning page moved on with the summary |
+| `De Tijd: an earlier De Tijd article was still being read after 4 minutes…` | The read above is still stuck, and holds the browser | If it repeats, restart Harry |
 
 **Every line is a fixed sentence.** None carries the email, the password, an error's text or
 a URL. The same reason twice in a day is one line; a different reason is a second line.
 
-**A saved session that is not a session** — cut short by a full disk, edited by hand — is set
-aside with a line in the log, and Harry logs in afresh.
+**A saved session that is not a session** — cut short by a full disk, edited by hand, or one
+the browser refuses after an upgrade — is set aside with a line in the log, and Harry logs in
+afresh.
+
+**No read takes longer than 4 minutes.** Two pages of 30 seconds and a login of 60 are the
+waits Harry sets; the 4 minutes is the limit on everything else, so one wedged page can never
+hold up the morning page.
 
 **Without this connector** — no `EMAIL` or `PASSWORD` — De Tijd's links are fetched like any
 other page, De Tijd answers 403, and the news connector's own line says `De Tijd: De Tijd

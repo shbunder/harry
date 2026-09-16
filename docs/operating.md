@@ -386,9 +386,10 @@ nothing anybody sees.
 
 **When Harry cannot log in**, De Tijd's stories print the feed's summary, the page still
 renders, and one line reaches Slack naming what happened. After a refused password, a captcha
-or a login page Harry does not recognise, **it does not try again for 6 hours**: De Tijd
-blocks an account after repeated failures, and one refused attempt a morning is safe where one
-per article is not.
+or a step after the password Harry does not recognise, **it does not try again for 6 hours**:
+De Tijd blocks an account after repeated failures, and one refused attempt a morning is safe
+where one per article is not. A login that stalled before the password was sent is tried again
+after 15 minutes.
 
 **Fix a refused password:**
 

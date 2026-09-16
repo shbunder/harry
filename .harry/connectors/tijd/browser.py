@@ -23,7 +23,18 @@ from typing import Any
 
 from playwright.sync_api import Error as PlaywrightError, TimeoutError as PlaywrightTimeout, sync_playwright
 
-from .pages import CONSENT_REFUSE, EMAIL_FIELD, HOME, LANDED, LOGIN_BUTTON, PASSWORD_FIELD, REFUSALS, SUBMIT, LoginEnd
+from .pages import (
+    CONSENT_REFUSE,
+    EMAIL_FIELD,
+    HOME,
+    LANDED,
+    LOGIN_BUTTON,
+    PASSWORD_FIELD,
+    REFUSALS,
+    SUBMIT,
+    LoginEnd,
+    on_login_service,
+)
 
 VIEWPORT = {'width': 1280, 'height': 900}
 
@@ -82,7 +93,7 @@ class Chromium:
             self._page = self._context.new_page()
         except PlaywrightError as error:
             self.__exit__(None, None, None)
-            raise BrowserFailed(type(error).__name__) from error
+            raise BrowserFailed(type(error).__name__) from None
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -106,12 +117,12 @@ class Chromium:
             try:
                 response = self._page.goto(link, wait_until='domcontentloaded', timeout=_left(deadline))
                 return Visit(response.status if response else None, self._page.url, self._page.content())
-            except PlaywrightTimeout as error:
-                raise PageDidNotLoad('timeout') from error
+            except PlaywrightTimeout:
+                raise PageDidNotLoad('timeout') from None
             except PlaywrightError as error:
                 if attempt == 1 and 'net::ERR_ABORTED' in str(error):
                     continue
-                raise self._why_it_failed(error) from error
+                raise self._why_it_failed(error) from None
         raise PageDidNotLoad('aborted')  # pragma: no cover — the loop always returns or raises
 
     def storage_state(self) -> dict[str, Any]:
@@ -119,19 +130,23 @@ class Chromium:
         try:
             return self._context.storage_state()
         except PlaywrightError as error:
-            raise BrowserFailed(type(error).__name__) from error
+            raise BrowserFailed(type(error).__name__) from None
 
     def log_in(self, email: str, password: str, seconds: float) -> LoginEnd:
         """The login, step by step, stopping at the first step that does not end as expected.
 
         | Step | Does | Expected ending |
         |---|---|---|
-        | open | answers the cookie dialog if shown, clicks Log in on the homepage | the email field |
-        | email | fills it, submits | the password field, or an error on the email |
-        | password | fills it, submits | back on www.tijd.be, or an error on the password |
+        | open | answers the cookie dialog if shown, clicks Log in on the homepage | the email field, on auth.mediafin.be |
+        | email | fills it, submits | the password field on auth.mediafin.be, or an error on the email |
+        | password | fills it, submits — and is `sent` from then on | back on www.tijd.be, or an error on the password |
 
-        The whole login shares one budget of `seconds`. Neither value is ever logged or put in
-        an error — a Playwright timeout names the selector it waited for, not what was typed.
+        The whole login shares one budget of `seconds`. **Nothing is typed anywhere but De Tijd's
+        login service**: a page the Log in click did not lead there does not get the email, let
+        alone the password.
+
+        Playwright's own errors are never chained onto what this raises. A failed `fill` puts
+        the value it was typing into its call log, and a traceback printed later would print it.
         """
         deadline = time.monotonic() + seconds
         page = self._page
@@ -141,35 +156,41 @@ class Chromium:
             # it is — which the second look at the article then says plainly.
             self._context.clear_cookies()
             response = page.goto(HOME, wait_until='domcontentloaded', timeout=_left(deadline))
-        except PlaywrightTimeout as error:
-            raise LoginUnreachable('timeout') from error
+        except PlaywrightTimeout:
+            raise LoginUnreachable('timeout') from None
         except PlaywrightError as error:
             failure = self._why_it_failed(error)
-            raise (LoginUnreachable(str(failure)) if isinstance(failure, PageDidNotLoad) else failure) from error
+            raise (LoginUnreachable('unreachable') if isinstance(failure, PageDidNotLoad) else failure) from None
         if response is not None and response.status == 403:
             raise Refused('403')
+        return self._stopped(self._steps(email, password, deadline))
 
+    def _steps(self, email: str, password: str, deadline: float) -> str:
+        """Walk the table in `log_in`, and answer the step it stopped in."""
+        page = self._page
         step = 'open'
         try:
             self._answer_cookies(deadline)
             page.locator(LOGIN_BUTTON).first.click(timeout=_left(deadline))
-            if not self._first_of(deadline, email_field=EMAIL_FIELD):
-                return self._stopped(step)
+            if self._first_of(deadline, email_field=EMAIL_FIELD) is None or not on_login_service(page.url):
+                return step
             step = 'email'
             page.locator(EMAIL_FIELD).fill(email, timeout=_left(deadline))
             page.locator(SUBMIT).first.click(timeout=_left(deadline))
-            if self._first_of(deadline, password_field=PASSWORD_FIELD, **_refusals()) != 'password_field':
-                return self._stopped(step)
+            arrived = self._first_of(deadline, password_field=PASSWORD_FIELD, **_refusals())
+            if arrived != 'password_field' or not on_login_service(page.url):
+                return step
             step = 'password'
             page.locator(PASSWORD_FIELD).fill(password, timeout=_left(deadline))
             page.locator(SUBMIT).first.click(timeout=_left(deadline))
+            step = 'sent'
             if self._first_of(deadline, landed=LANDED, **_refusals()) == 'landed':
                 page.wait_for_load_state('load', timeout=_left(deadline))
-            return self._stopped(step)
+            return step
         except PlaywrightTimeout:
-            return self._stopped(step)
+            return step
         except PlaywrightError as error:
-            raise self._why_it_failed(error) from error
+            raise self._why_it_failed(error) from None
 
     # -- the parts ------------------------------------------------------------
 
@@ -194,12 +215,19 @@ class Chromium:
         return None
 
     def _stopped(self, step: str) -> LoginEnd:
-        """The page the login stopped on. A page mid-navigation has no content yet; wait once."""
+        """The page the login stopped on. A page mid-navigation has no content yet; wait once.
+
+        A page that died meanwhile answers with no content rather than raising, so the step is
+        still reported for what it was.
+        """
         for _ in range(2):
             try:
                 return LoginEnd(step, self._page.url, self._page.content())
             except PlaywrightError:
-                self._page.wait_for_timeout(500)
+                try:
+                    self._page.wait_for_timeout(500)
+                except PlaywrightError:
+                    break
         return LoginEnd(step, self._page.url, '')
 
     @staticmethod
