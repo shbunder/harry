@@ -1,11 +1,18 @@
 {
-  "//": "Harry, as any Claude session reaches it: HTTP MCP on localhost, behind a bearer token. The same entry works for the probe today and for real Harry later, because both answer on HARRY_PORT at /mcp — which is the point of the port having exactly one owner.",
+  "//": "Harry, as any Claude session reaches it: HTTP MCP on localhost, behind a bearer token. The same entry works for the probe today and for real Harry later, because both answer on HARRY_PORT at /mcp — which is the point of the port having exactly one owner. harry-remote is the same server reached from outside the house, through its own Cloudflare tunnel, for a Claude cloud routine that cannot see localhost. Its header has NO fallback on purpose: a routine that fails to present its own token must be refused, or the test that it can present one cannot fail. On this branch it reaches the probe, not Harry.",
   "mcpServers": {
     "harry": {
       "type": "http",
       "url": "http://localhost:7430/mcp",
       "headers": {
         "Authorization": "Bearer ${HARRY_API_TOKEN:-probe-token-not-a-secret}"
+      }
+    },
+    "harry-remote": {
+      "type": "http",
+      "url": "https://harry.marcel-bot.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${HARRY_API_TOKEN}"
       }
     }
   }
