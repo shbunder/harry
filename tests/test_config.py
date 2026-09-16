@@ -7,6 +7,7 @@ tests make it happen rather than assert that it is configured.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -211,3 +212,92 @@ def test_every_key_the_committed_env_leaves_empty_resolves_to_empty(monkeypatch)
     assert settings.api_token.get_secret_value() == '', 'an unset token must authorise nobody'
     assert settings.public_url is None
     assert settings.capabilities_dir is None
+
+
+# ---------------------------------------------------------------------------
+# `export` in the committed file, and the one spelling of it that is a trap
+# ---------------------------------------------------------------------------
+
+
+def test_an_export_prefix_is_stripped_and_does_not_change_what_a_key_resolves_to(tmp_path):
+    """`.env` carries `export` so it can also be sourced by hand. Both readers drop it.
+
+    Asserted rather than believed, because the whole file's meaning rests on it: if the
+    prefix were kept, every key in the committed file would be named `export HARRY_…`
+    and every default would silently vanish.
+    """
+    plain = tmp_path / 'plain.env'
+    plain.write_text('HARRY_PORT=7455\nHARRY_LOG_LEVEL=DEBUG\n', encoding='utf-8')
+    exported = tmp_path / 'exported.env'
+    exported.write_text('export HARRY_PORT=7455\nexport HARRY_LOG_LEVEL=DEBUG\n', encoding='utf-8')
+
+    assert settings_from(exported).port == settings_from(plain).port == 7455
+    assert settings_from(exported).log_level == 'DEBUG'
+
+
+def test_no_key_make_worktree_overrides_is_exported():
+    """`export` beats `.env.local`, and `make worktree` writes straight into `.env.local`.
+
+    It gives every tree its own port and data directory so two stacks cannot collide.
+    Export the same keys in the committed file and sourcing it undoes that: measured, with
+    `.env.local` naming 7431, a sourced `.env` gives port 7430 and data `/data` — the
+    worktree published on one port, listening on another, writing where the real stack
+    writes. All three look healthy.
+
+    The list is read out of the Makefile rather than written down here, so a third key
+    added to `make worktree` is covered without anyone remembering this test exists.
+    """
+    repo = Path(__file__).parent.parent
+    makefile, env = repo / 'Makefile', repo / '.env'
+    if not (makefile.exists() and env.exists()):
+        pytest.skip('no Makefile or .env in this tree')
+
+    recipe = makefile.read_text(encoding='utf-8').partition('worktree:')[2].partition('\nworktree-prune:')[0]
+    overridden = set(re.findall(r'(HARRY_[A-Z_]+)=%s', recipe))
+    assert overridden, 'make worktree no longer writes any setting — this test is now checking nothing'
+
+    exported = {
+        line.split('=')[0].removeprefix('export ').strip()
+        for line in env.read_text(encoding='utf-8').splitlines()
+        if line.startswith('export ')
+    }
+
+    clashing = sorted(overridden & exported)
+    assert clashing == [], (
+        f'{clashing} are exported in .env and written by `make worktree` into .env.local. '
+        "Sourcing .env would silently put every worktree back on the real stack's port and data directory."
+    )
+
+
+def test_no_key_in_the_committed_env_is_exported_with_an_empty_value():
+    """The failure the two-file split was designed around, and the only way `export` causes it.
+
+    `export` puts a value in the **process environment**, which outranks `.env.local`. So
+    `export HARRY_API_TOKEN=` in this committed file, once anybody sources it, sets the
+    token to empty for every process downstream — and the real one in `.env.local` is
+    never read. It resolves to "nobody is authorised" and nothing says why.
+
+    A key with a real default is safe to export: sourcing it just reproduces the default.
+    An empty one is not, and that is the whole rule. `secrets-and-config.md` records this
+    happening in the repository Harry was adapted from.
+    """
+    repo = Path(__file__).parent.parent
+    if not (repo / '.env').exists():
+        pytest.skip('no committed .env in this tree')
+
+    def is_empty(value: str) -> bool:
+        # `""` and `''` are the same empty export and shadow `.env.local` identically.
+        # pydantic strips the quotes, so the resolved value is indistinguishable and a
+        # guard that only looked for a bare `=` would pass on both.
+        return not value.strip().strip('\'"').strip()
+
+    exported_empty = [
+        line.split('=')[0].removeprefix('export ').strip()
+        for line in (repo / '.env').read_text(encoding='utf-8').splitlines()
+        if line.startswith('export ') and is_empty(line.split('=', 1)[1])
+    ]
+
+    assert exported_empty == [], (
+        f'{exported_empty} are exported with no value, so sourcing .env would shadow .env.local. '
+        'Drop the `export` on those keys; keep it on the ones that carry a real default.'
+    )
