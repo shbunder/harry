@@ -110,8 +110,17 @@ def deployable(tmp_path):
         def calls(self) -> list[str]:
             return log.read_text(encoding='utf-8').splitlines() if log.exists() else []
 
+        def starts(self) -> list[str]:
+            """Every call that brings a stack up, however it is spelled.
+
+            Not `startswith('compose up')`: `up-dev` logs as `compose --profile dev up …`,
+            so that filter made the dev stack invisible to every test here — including the
+            one asserting that every start waits for healthy.
+            """
+            return [line for line in self.calls() if line.startswith('compose') and ' up ' in f' {line} ']
+
         def started_on(self) -> list[str]:
-            return [line.split('HARRY_TAG=')[1] for line in self.calls() if line.startswith('compose up')]
+            return [line.split('HARRY_TAG=')[1] for line in self.starts()]
 
         def fail_the_next_up(self) -> None:
             (stub_dir / 'fail').touch()
@@ -293,8 +302,36 @@ def test_every_start_waits_for_the_container_to_be_healthy(deployable):
     deployable.commit('one.txt')
     deployable.make('deploy')
     deployable.make('up')
+    deployable.make('up-dev')
+    deployable.make('rollback')
 
-    starts = [line for line in deployable.calls() if line.startswith('compose up')]
-    assert starts, 'nothing started the stack'
+    starts = deployable.starts()
+    assert len(starts) >= 3, f'not every target that starts a stack was exercised: {starts}'
+    assert any('--profile dev' in line for line in starts), 'the dev stack was never started'
     for line in starts:
         assert '--wait' in line, f'a start that does not wait for healthy: {line}'
+
+
+def test_stopping_a_stack_never_takes_its_data_with_it(deployable):
+    """`down -v` deletes the volume: every rendered page, the store, and the De Tijd
+    session. The recipes say so in a comment, and a comment is not a control.
+
+    Neither `down` target was exercised by anything before this, so rewriting either as
+    `docker compose down -v` left the whole suite green.
+    """
+    deployable.commit('one.txt')
+    deployable.make('deploy')
+    deployable.make('up-dev')
+
+    deployable.make('down')
+    deployable.make('down-dev')
+
+    stops = [
+        line
+        for line in deployable.calls()
+        if ' stop ' in f' {line} ' or ' down ' in f' {line} ' or ' rm ' in f' {line} '
+    ]
+    assert stops, 'neither stop target ran'
+    for line in stops:
+        assert ' -v' not in f' {line} ', f'a stop that deletes the data volume: {line}'
+        assert '--volumes' not in line, f'a stop that deletes the data volume: {line}'

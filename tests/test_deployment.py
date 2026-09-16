@@ -174,28 +174,78 @@ def test_the_committed_defaults_are_read_before_the_machine_s_own_file():
         assert len(paths) == 2, f'{name} reads {paths}, and only two files have a defined precedence'
 
 
-def test_a_new_dockerignore_pattern_actually_excludes_what_it_names():
-    """`.env.*.local` matches nothing on this machine, so the live image test cannot see it.
+def excluded_by(pattern: str, path: str) -> bool:
+    """Docker's `.dockerignore` matching, modelled segment by segment.
 
-    A glob that matches nothing looks exactly like a glob that matches everything it
-    should — this module's own docstring. These are the names a credential would arrive
-    under, checked against the patterns rather than against the filesystem.
+    Three things make it unlike `fnmatch` on the whole string, and the middle one is the
+    reason this function exists rather than a one-liner:
+
+    - patterns are rooted at the build context, so they are matched from the left
+    - **`*` does not cross a `/`, and a bare name does not match a nested one.** Measured:
+      a context whose `.dockerignore` holds only `.env.local` excludes the root file and
+      copies `sub/.env.local` straight in
+    - `**` matches any number of segments, including none
+
+    An earlier version of this test also matched each pattern against the path's basename,
+    which Docker never does — so `**/.env.local` could be deleted and this still passed,
+    while five real `.env.local` files sit in `.harry/` on the machine that builds.
     """
-    patterns = [
+    want, got = pattern.split('/'), path.split('/')
+
+    def walk(w: list[str], g: list[str]) -> bool:
+        if not w:
+            return not g
+        if w[0] == '**':
+            return any(walk(w[1:], g[i:]) for i in range(len(g) + 1))
+        return bool(g) and fnmatch(g[0], w[0]) and walk(w[1:], g[1:])
+
+    return walk(want, got)
+
+
+def dockerignore() -> list[str]:
+    return [
         line.strip()
         for line in (REPO / '.dockerignore').read_text(encoding='utf-8').splitlines()
         if line.strip() and not line.startswith('#')
     ]
 
+
+def test_the_matcher_this_file_checks_dockerignore_with_is_the_one_docker_uses():
+    """The model is under test before anything is tested with it.
+
+    Every case below was checked against a real `docker build` rather than reasoned about.
+    Without this, a matcher that said yes to everything would make the test beneath it
+    pass while proving nothing.
+    """
+    assert excluded_by('.env.local', '.env.local')
+    assert not excluded_by('.env.local', 'sub/.env.local'), 'a bare name must not match a nested file'
+    assert excluded_by('**/.env.local', 'sub/deeper/.env.local')
+    assert excluded_by('**/.env.local', '.env.local'), '`**` matches no segments too'
+    assert excluded_by('.env.*.local', '.env.dev.local')
+    assert not excluded_by('.env.*.local', 'sub/.env.dev.local')
+    assert not excluded_by('*.local', 'sub/x.local'), '`*` does not cross a slash'
+
+
+def test_every_credential_path_on_this_machine_is_excluded_from_the_image():
+    """The five nested `.env.local` files in `.harry/` are real, and one of them holds a
+    token that can rewrite every document on the tablet.
+
+    `make deploy` builds from the primary checkout, which has them. `**/.env.local` is what
+    keeps them out — not `.env.local`, which only covers the one at the root.
+    """
+    patterns = dockerignore()
+
     for name in (
         '.env.local',
         '.env.dev.local',
+        '.harry/connectors/remarkable/.env.local',
         '.harry/connectors/icloud/.env.local',
-        '.harry/connectors/icloud/.env.dev.local',
+        '.harry/connectors/slack/.env.dev.local',
+        '.harry/tools/digest_build/.env.local',
         'storage-state.json',
         '.deployed-tags',
     ):
-        assert any(fnmatch(name, pattern) or fnmatch(Path(name).name, pattern) for pattern in patterns), (
+        assert any(excluded_by(pattern, name) for pattern in patterns), (
             f'{name} matches no .dockerignore pattern, so it would be copied into the image'
         )
 
@@ -205,8 +255,17 @@ def test_the_image_installs_a_virtual_display():
 
     A dependency nothing imports is easy to drop, and the guard against dropping it was
     behind `live`, which nobody runs on a Tuesday.
+
+    The install line, not the word: `'xvfb' in dockerfile` passes when the `apt-get` line
+    is gone and only the comment explaining it survives — which is exactly the shape of
+    "dropping xvfb, nothing uses it".
     """
-    assert 'xvfb' in (REPO / 'Dockerfile').read_text(encoding='utf-8')
+    # Continuations joined first, so a package on its own indented line is part of the
+    # install it belongs to rather than a line of its own.
+    dockerfile = (REPO / 'Dockerfile').read_text(encoding='utf-8').replace('\\\n', ' ')
+    installs = re.findall(r'apt-get install[^\n]*', dockerfile)
+
+    assert any('xvfb' in block for block in installs), 'xvfb is mentioned but never installed'
 
 
 def test_each_stack_pins_its_own_port_and_data_directory_on_the_service():
@@ -358,10 +417,12 @@ def test_a_virtual_display_is_in_the_image_before_anything_needs_one(built_image
 
 @pytest.fixture
 def running_stack():
-    """The real stack, up. Skips unless it is — nothing here starts or stops it.
+    """The real stack, up and running the code in this tree. Skips otherwise.
 
-    `make up` is a deliberate act with a data volume behind it, so a test does not do it
-    on somebody's behalf.
+    Two skips rather than one. `make up` is a deliberate act with a data volume behind it,
+    so nothing here starts the stack. And a container left on an older deployed tag — which
+    this feature makes an ordinary state, because `make rollback` exists — would answer
+    about code that is not in this tree, so the test says so instead of reporting on it.
     """
     if shutil.which('docker') is None:
         pytest.skip('docker is not installed here')
@@ -374,9 +435,24 @@ def running_stack():
     if 'harry' not in up.stdout.split():
         pytest.skip('the real stack is not running — `make up` first')
 
-    def run(*command: str, stdin: str | None = None) -> str:
+    # And running THIS tree. `make rollback` exists, so a container on an older tag is an
+    # ordinary state here rather than a mistake — and a live test that reported on it would
+    # be answering about code nobody has in front of them. `built_image` says the same
+    # thing about a stale image; this is the running half of it.
+    running = subprocess.run(
+        ['docker', 'inspect', 'harry', '--format', '{{.Config.Image}}'], capture_output=True, text=True
+    ).stdout.strip()
+    head = subprocess.run(
+        ['git', 'rev-parse', '--short', 'HEAD'], cwd=REPO, capture_output=True, text=True
+    ).stdout.strip()
+    tag = running.partition(':')[2]
+    if tag not in ('latest', '', head):
+        pytest.skip(f'the stack is on {running} and this tree is {head} — `make deploy` or `make up` first')
+
+    def run(*command: str, stdin: str | None = None, env: dict[str, str] | None = None) -> str:
+        passed = [arg for key, value in (env or {}).items() for arg in ('-e', f'{key}={value}')]
         done = subprocess.run(
-            ['docker', 'compose', 'exec', '-T', 'harry', *command],
+            ['docker', 'compose', 'exec', '-T', *passed, 'harry', *command],
             cwd=REPO,
             input=stdin,
             capture_output=True,
@@ -398,30 +474,61 @@ def test_a_page_is_built_inside_the_container_and_stays_on_the_volume(running_st
     before anything has been configured — a weather panel and headlines and no agenda.
 
     `scripts/call_tool.py`, not `make`: the image has no `make` and the `Makefile` is not
-    copied into it. This was a manual run recorded on the board; a note is not a control,
-    and the artefact it described was deleted with the volume it lived on.
+    copied into it.
+
+    **It writes to `/data/suite`, never `/data/digest`.** `OUT_DIR` defaults to the latter,
+    which is where the real morning page lives under today's date — so an earlier version
+    of this test, run on the NUC at any time after 06:30, replaced that morning's page on
+    disk with one whose intro says it came from the suite. The volume is what the criterion
+    is about; the folder is not.
     """
-    candidates = json.loads(running_stack('uv', 'run', 'python', 'scripts/call_tool.py', 'digest_list_candidates'))
+    somewhere_else = '/data/suite'
+    # What the real morning page folder holds now, content and all. On the NUC that is a
+    # real page under today's date, so "is it still exactly there afterwards" is the
+    # question — not "is the folder empty", which is only true on a machine that has never
+    # built one.
+    before = running_stack('sh', '-c', 'md5sum /data/digest/* 2>/dev/null | sort || true')
 
-    assert candidates['weather']['available'] is True, candidates['weather']
-    assert candidates['agenda']['available'] is False, 'no calendar is configured, so the agenda must say so'
-    assert candidates['agenda']['why'], 'the agenda is unavailable without saying why'
-    assert len(candidates['headlines']) >= 10, f'only {len(candidates["headlines"])} headlines came back'
+    running_stack('sh', '-c', f'rm -rf {somewhere_else} && mkdir -p {somewhere_else}')
+    try:
+        candidates = json.loads(running_stack('uv', 'run', 'python', 'scripts/call_tool.py', 'digest_list_candidates'))
 
-    picks = {
-        'intro': 'Built by the suite, from the feeds, with nothing configured.',
-        'deliver': False,
-        'picks': [{'id': candidates['headlines'][0]['id'], 'note': 'The first one, unchosen.', 'topic': 'world'}],
-        'more': [],
-    }
-    running_stack('sh', '-c', 'cat > /data/suite-picks.json', stdin=json.dumps(picks))
-    answer = json.loads(
-        running_stack(
-            'uv', 'run', 'python', 'scripts/call_tool.py', 'digest_build', '--args', '@/data/suite-picks.json'
+        assert candidates['weather']['available'] is True, candidates['weather']
+        assert candidates['agenda']['available'] is False, 'no calendar is configured, so the agenda must say so'
+        assert candidates['agenda']['why'], 'the agenda is unavailable without saying why'
+        assert len(candidates['headlines']) >= 10, f'only {len(candidates["headlines"])} headlines came back'
+
+        picks = {
+            'intro': 'Built by the suite, from the feeds, with nothing configured.',
+            'deliver': False,
+            'picks': [{'id': candidates['headlines'][0]['id'], 'note': 'The first one, unchosen.', 'topic': 'world'}],
+            'more': [],
+        }
+        running_stack('sh', '-c', f'cat > {somewhere_else}/picks.json', stdin=json.dumps(picks))
+        answer = json.loads(
+            running_stack(
+                'uv',
+                'run',
+                'python',
+                'scripts/call_tool.py',
+                'digest_build',
+                '--args',
+                f'@{somewhere_else}/picks.json',
+                env={'HARRY_DIGEST_BUILD_OUT_DIR': somewhere_else},
+            )
         )
-    )
 
-    assert answer['delivered']['pushed'] is False, 'deliver=false still pushed to the tablet'
-    assert answer['page']['path'].startswith('/data/'), f'the page landed at {answer["page"]["path"]}, off the volume'
-    assert running_stack('sh', '-c', f'test -s {answer["page"]["path"]} && echo yes').strip() == 'yes'
-    assert answer['page']['pages'] >= 2, answer['page']
+        assert answer['delivered']['pushed'] is False, 'deliver=false still pushed to the tablet'
+        assert answer['page']['path'].startswith('/data/'), (
+            f'the page landed at {answer["page"]["path"]}, off the volume'
+        )
+        assert answer['page']['path'].startswith(somewhere_else), (
+            f'the page landed at {answer["page"]["path"]} — that is where a real morning page lives'
+        )
+        assert running_stack('sh', '-c', f'test -s {answer["page"]["path"]} && echo yes').strip() == 'yes'
+        assert answer['page']['pages'] >= 2, answer['page']
+
+        after = running_stack('sh', '-c', 'md5sum /data/digest/* 2>/dev/null | sort || true')
+        assert after == before, 'the suite changed the folder the real morning page lives in'
+    finally:
+        running_stack('sh', '-c', f'rm -rf {somewhere_else}')

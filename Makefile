@@ -204,7 +204,13 @@ logs:  ## Follow Harry's logs
 # /health by exec-ing in and following $HARRY_PORT would answer the same question the
 # image's healthcheck does — and that question was reported healthy while nothing on the
 # host could reach Harry at all, because both followed the variable to the same wrong
-# place. `docker compose port` is compose's own answer, so nothing here owns the number.
+# place. `docker compose port` gives the published address, so the host side is compose's
+# answer rather than a second copy of it.
+#
+# The CONTAINER port below is the one number these two recipes own, and it has to move
+# with `docker-compose.yml`. If it stops matching, the lookup comes back empty and the
+# target says "not running" about a Harry that is — the same misleading-message failure
+# this recipe was rewritten to stop telling.
 health:  ## What loaded, what did not, and why — asked from the host, the way a caller would
 	@ADDR=$$(docker compose port harry 7430 2>/dev/null | head -1); \
 	 test -n "$$ADDR" || { echo -e "$(WARN) harry is not running."; exit 1; }; \
