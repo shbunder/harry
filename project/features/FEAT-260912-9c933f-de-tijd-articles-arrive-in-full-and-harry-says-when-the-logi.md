@@ -1,33 +1,57 @@
 ---
 id: FEAT-260912-9c933f
-title: De Tijd articles arrive in full, and Harry says when the login lapses
+title: De Tijd articles arrive in full, because Harry logs in by itself — and says when it cannot
 track: full
 created: 2026-09-12
-touches: [connectors/tijd]
-stories: []
-decisions: []
+touches: [connectors/tijd, connectors/news, core, compose, Dockerfile, docs/sources, docs/operating, docs/capabilities, rules]
+stories: [STORY-260916-f048f5, STORY-260916-ebeb3f, STORY-260916-daf947, STORY-260916-133f51, STORY-260916-c04a3c, STORY-260916-969f41]
+decisions: [ADR-260916-b26785, ADR-260916-bcbd69, ADR-260916-d4acc6]
 ---
 
-# FEAT-260912-9c933f — De Tijd articles arrive in full, and Harry says when the login lapses
+# FEAT-260912-9c933f — De Tijd articles arrive in full, because Harry logs in by itself — and says when it cannot
 
 ## Summary
 
-The fragile source. De Tijd returns 403 to any non-browser client, even for free articles, so this reads it through a real browser carrying a real login. That session expires every few weeks, and the alert is the feature: without it the page quietly loses its best source and you notice in three weeks.
+De Tijd is the source most worth having, and its articles are only readable by a logged-in
+subscriber in a real browser window. This reads them through a headed Chromium on a virtual
+display, with a session Harry saves and renews by itself: **Harry logs in with the account's
+email and password** whenever the session has lapsed. When it cannot — a refused password, a
+captcha, a browser De Tijd refuses — the story prints the feed's summary and one Slack line
+says which.
+
+Two changes underneath make that possible. The real stack now reads each connector's own
+`.env.local`, through a read-only mount, so the De Tijd login lives in one file beside its
+connector. And a connector can name another connector, so news can hand De Tijd's pages to
+the tijd connector without importing it.
+
+**Start with the first story.** It measures an automated login from the NUC before anything is
+built on it. If De Tijd refuses a scripted login, [[ADR-260916-b26785]] is revisited first.
 
 ## Acceptance criteria
 
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] A De Tijd article's full text is extracted through a browser session saved on disk
-- [ ] A redirect stub link resolves to the real article before extraction
-- [ ] When the session has expired the article falls back to its RSS summary and the page still renders
-- [ ] An expired session puts one message in Slack naming De Tijd — one, not one per article
-- [ ] The saved session is read from the data volume and never written into the repo
+- [ ] On the real stack, a connector's own `.env.local` is read through a read-only mount of `.harry/`, and an environment variable still wins over it
+- [ ] The dev stack reads no connector's `.env.local` — only `.env.dev.local`
+- [ ] A connector declaring `optional:` or `requires:` is loaded after the connectors it names, and `make lint` refuses unknown names and loops
+- [ ] With a saved session, a De Tijd article comes back with its whole text — more than 1,000 characters where a logged-out reader gets 263 — and no login is attempted
+- [ ] With no session, or a lapsed one, Harry logs in, saves the session to `/data/tijd/storage-state.json` with mode 600, and returns the whole article in the same call
+- [ ] A refused login makes five De Tijd articles print their summary, after one login attempt, with no retry for 6 hours and one Slack line naming De Tijd
+- [ ] A 403 from De Tijd is reported as the browser being refused, and never leads to a login
+- [ ] A captcha, a code, or a changed login page stops within 60 seconds and is reported for what it is
+- [ ] A browser that cannot start costs De Tijd's text and nothing else, and says so in Slack
+- [ ] On the NUC, a page built with a De Tijd story, deliver=false, carries its whole article, and the session exists only on the data volume
 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
+- [ ] [[STORY-260916-f048f5]] — Harry logs in to De Tijd from the NUC, measured before anything is built on it
+- [ ] [[STORY-260916-ebeb3f]] — A connector's own .env.local reaches the real stack
+- [ ] [[STORY-260916-daf947]] — A connector can use another connector, and they load in that order
+- [ ] [[STORY-260916-133f51]] — A De Tijd article comes back in full through a saved session
+- [ ] [[STORY-260916-c04a3c]] — Harry logs in to De Tijd by itself, once, and says when it cannot
+- [ ] [[STORY-260916-969f41]] — On the NUC, a page carries a De Tijd story in full
 
 ## Notes
 
@@ -40,3 +64,7 @@ The fragile source. De Tijd returns 403 to any non-browser client, even for free
 ## Links
 
 - Requirements: [[FEAT-260912-9c933f]]
+- Decision: [[ADR-260916-b26785]] — Harry logs in to De Tijd by itself, with the account's email and password
+- Decision: [[ADR-260916-bcbd69]] — The real stack reads each connector's own .env.local through a read-only mount
+- Decision: [[ADR-260916-d4acc6]] — A connector can name another connector, and connectors load in that order
+
