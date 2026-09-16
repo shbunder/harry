@@ -73,8 +73,10 @@ external trigger cannot report its own absence.
 
 The **reMarkable device token** grants complete read and write access to every document on
 the tablet — no scopes, no read-only mode. The **iCloud app-specific password** gives full
-calendar access. The **De Tijd storage state** is a live logged-in session.
+calendar access. The **De Tijd password** can change the account as well as read it, and the
+session Harry saves with it is a live login.
 
-All three live only in the NUC's `.env.local` and its data volume — never in `.env`,
-which is committed. Two of them expire on their own schedule and Harry alerts when they
-do — see [docs/operating.md](docs/operating.md).
+All three live only on the NUC, each in its own connector's `.env.local`, and the De Tijd
+session on the data volume — never in `.env`, which is committed. Harry renews the De Tijd
+session by itself, and says in Slack when any of them stops working — see
+[docs/operating.md](docs/operating.md).

@@ -79,8 +79,8 @@ The standard every change is held to, and the name every review finding cites.
   `harry.sdk` and never reach into core. See
   [.claude/rules/capability-shape.md](.claude/rules/capability-shape.md).
 - **Degrading** *(over all-or-nothing)* — every section of the morning page fails on its
-  own. A dead feed prints "unavailable" and the rest renders. De Tijd's login expiring
-  costs you full article text for that source, not the page. See
+  own. A dead feed prints "unavailable" and the rest renders. De Tijd refusing Harry's
+  login costs you full article text for that source, not the page. See
   [.claude/rules/external-sources.md](.claude/rules/external-sources.md).
 - **Alerting** *(over silent)* — a degraded source, a lapsed credential, a push that
   failed twice: it reaches Slack. A fire-and-forget job on a reverse-engineered protocol
@@ -88,8 +88,9 @@ The standard every change is held to, and the name every review finding cites.
   2026 and needed a patched client — that is the shape of failure to design for.
 - **Bounded** *(over trusting)* — three secrets here are all-or-nothing. The reMarkable
   device token grants complete read and write access to every document on the tablet,
-  with no scopes. The iCloud app password gives full calendar access. The De Tijd storage
-  state is a live logged-in session. All three live only in the NUC's `.env.local` and
+  with no scopes. The iCloud app password gives full calendar access. The De Tijd
+  password can change the account as well as read it, and the session Harry saves with it
+  is a live login. All three live only in their connectors' `.env.local` on the NUC and in
   the data volume — never in the committed `.env`. See
   [.claude/rules/secrets-and-config.md](.claude/rules/secrets-and-config.md).
 - **Explainable** *(over clever)* — the morning page is read at arm's length over coffee

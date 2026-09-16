@@ -201,9 +201,11 @@ HARRY_SLACK_CHANNEL=#harry-dev
 | remarkable `DEVICE_TOKEN` | `make remarkable-pair CODE=…`, code from my.remarkable.com/device/desktop/connect | no — but revoking the device kills it |
 | slack `BOT_TOKEN` | api.slack.com/apps → OAuth & Permissions. Needs `chat:write`, and the bot invited to the channel | no |
 | slack `CHANNEL` | A channel id like `C0123456789`, or `#harry` | — |
+| tijd `EMAIL`, `PASSWORD` | The De Tijd account, if it signs in with an email and a password — not Google or Apple | when you change the password at De Tijd |
 
-The De Tijd browser session is the exception: it is a file, not a string, and it lives in
-the data volume at mode 600. See the renewal steps further down.
+De Tijd's login goes in its connector's `.env.local` like every other credential. The session
+Harry keeps with it is a file on the data volume, `/data/tijd/storage-state.json`, mode 600,
+and Harry renews it by itself — see [The De Tijd login](#the-de-tijd-login) below.
 
 ### Building a page by hand, before anything is scheduled
 
@@ -354,11 +356,12 @@ if you ever need them: a per-server `timeout` in `.mcp.json`, or
 This is the part worth reading before you need it. These degrade Harry without breaking it,
 which is exactly why they need an alert rather than a health check.
 
-Three, and they fail in different ways:
+They fail in different ways:
 
 | Credential | How it dies | What you see | Can you rotate it? | Where the steps are |
 |---|---|---|---|---|
-| The De Tijd browser session | On its own, after a few weeks | Articles fall back to their RSS summary | Yes — log in again | Below |
+| The De Tijd session | On its own, after an unmeasured number of weeks | Nothing: Harry logs in again by itself, and the log says how long the old one lasted | Nothing to rotate | Below |
+| The De Tijd password | The day you change it at De Tijd | De Tijd stories print their summary, and `De Tijd: Harry could not log in: De Tijd refused the email or password…` in Slack | Yes — put the new one in `.env.local` and restart | Below |
 | The iCloud app-specific password | The day you change your Apple ID password, which revokes every one at once | `Agenda unavailable`, and `Calendar: the password was refused` in Slack | Yes — generate a new one | [sources.md § The calendar](sources.md) |
 | A published calendar link | When the calendar is republished, or the sharer withdraws it | `Agenda unavailable`, and the link's name in Slack | **Only if the calendar is yours.** Otherwise it is theirs to reissue | [sources.md § A calendar your work publishes](sources.md) |
 | The reMarkable device token | Only if you revoke the device at my.remarkable.com | A failed push, and `reMarkable: the tablet refused the token` in Slack | Yes — remove the device and pair again | [sources.md § The tablet](sources.md) |
@@ -374,25 +377,36 @@ republishing it, which only its owner can do. If such a link leaks, it stays lea
 they reissue it, and they may never need to. Every other credential in Harry has an
 owner-side revocation; this one does not.
 
-### The De Tijd browser session
+### The De Tijd login
 
-**Symptom.** De Tijd articles stop arriving with full text and fall back to their RSS
-summary. The page still renders. Slack gets *"De Tijd login needs refreshing"*.
+**Harry logs in to De Tijd by itself.** A De Tijd article whose page shows the paywall makes
+Harry log in with the email and password in `.harry/connectors/tijd/.env.local`, save the new
+session to `/data/tijd`, and read the article again — in the same call. A lapsed session costs
+nothing anybody sees.
 
-**Why.** De Tijd returns 403 to any non-browser client, even for free articles, so Harry
-reads it through a real browser using a saved logged-in session. That session expires every
-few weeks.
+**When Harry cannot log in**, De Tijd's stories print the feed's summary, the page still
+renders, and one line reaches Slack naming what happened. After a refused password, a captcha
+or a login page Harry does not recognise, **it does not try again for 6 hours**: De Tijd
+blocks an account after repeated failures, and one refused attempt a morning is safe where one
+per article is not.
 
-**Fix.** Log in by hand in a headed browser and save the session again:
+**Fix a refused password:**
 
 ```bash
-make spike S=tijd-login            # headed, logs in, writes the storage state
+$EDITOR .harry/connectors/tijd/.env.local      # the new PASSWORD
+docker compose restart harry                    # clears the 6-hour wait, and reads the new one
 ```
 
-Then copy the file to the NUC's data volume at the path `TIJD_STORAGE_STATE` names.
+**A 403 is not the login.** `De Tijd refused the browser (403)` means De Tijd's bot filter
+turned the browser away. Logging in again will not help, and the password is fine.
 
-This is personal use of a subscription you pay for, on your own device. The storage state
-is never shared and never committed.
+Every line Slack can get, and what to do about each, is in
+[the tijd connector's page](../.harry/connectors/tijd/CONNECTOR.md). How long a session lasts
+is not known yet: each login logs `the previous session lasted N days`, so the answer builds
+up in `make logs`.
+
+This is personal use of a subscription you pay for, on your own device. The password and the
+saved session are never shared and never committed.
 
 ## When no page arrives at all
 

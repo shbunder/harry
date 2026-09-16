@@ -2,6 +2,7 @@
 name: news
 description: Headlines from public news feeds, and the full text of a story you pick
 provides: [news_search, news_article]
+optional: [tijd]
 expires: never
 enabled: true
 config:
@@ -65,6 +66,22 @@ A `FEEDS` entry that is not `slug=Name=url` is skipped with a line in the log, a
 still load. `FEEDS` empty altogether disables the connector, because a news source with
 nothing to read is not degraded, it is misconfigured.
 
+## De Tijd
+
+De Tijd's feed is public — `tijd=De Tijd=https://www.tijd.be/rss/nieuws.xml` — and reads
+like any other. Its articles are not: De Tijd refuses anything but a real browser, and gives
+the whole article only to a logged-in subscriber. So **every article link on tijd.be is
+handed to the [tijd connector](../tijd/CONNECTOR.md)**, which holds the login, when it is
+loaded. This connector names it in `optional:` and never imports it.
+
+Which way a link goes is decided by its host alone. VRT NWS and BBC News never touch the
+browser.
+
+**The tijd connector says its own faults in Slack**, because it holds the credential and its
+lines name the thing to fix. This connector says nothing more about them, so one fault is one
+line. Without the tijd connector, De Tijd's links are fetched like any other page and answered
+with a 403, which is this connector's own line below.
+
 ## Fetching
 
 Each feed is downloaded at most once every 5 minutes and reused in between. Building one
@@ -84,6 +101,8 @@ ages is worse than a short one, because nothing on the page says how old it is.
 | A feed answers HTML — a consent wall, an error page | `the document is not XML`, in `unavailable` | The URL is probably now a web page, not a feed |
 | A feed is XML but not RSS 2.0 or Atom | `the document is XML but not a feed`, with its root element | Harry reads RSS 2.0 and Atom. A third format is one unavailable source, not a parser to add — swap the feed, or add the branch in `connector.py` |
 | A feed declares its own entities | `the document declares its own entities` | Nothing is wrong with Harry. Refusing it is deliberate — that is how an XML parser is made to eat all the memory on the machine |
-| An article page answers 403 | `available: false` with why; one Slack line | The site started blocking scripted clients. It needs a browser session, like De Tijd |
+| An article page answers 403 | `available: false` with why; one Slack line | The site started blocking scripted clients. It needs a browser session, like De Tijd's. For De Tijd itself, the tijd connector is not loaded — see its page |
+| A De Tijd article could not be read | `available: false`, the feed's summary, and the tijd connector's own line in Slack | Its [page](../tijd/CONNECTOR.md) has a row for each line |
+| The connector that reads a site's pages raised instead of answering | `the connector that reads De Tijd failed (RuntimeError)`; one Slack line | A bug in that connector. The log has the traceback |
 | An article page loads but has no prose | `there was no article text in it` | Usually a video or a live blog. Nothing to do |
 | Slack is quiet but a source is clearly dead | Check the log | An alert is sent once per source per 24 hours. The second failure today is silent on purpose |

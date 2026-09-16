@@ -324,6 +324,36 @@ def test_the_image_installs_a_virtual_display():
     assert 'xauth' in installs, 'xvfb is installed without xauth, so `xvfb-run` fails on its first call'
 
 
+def test_the_image_starts_the_display_before_harry_and_hands_harry_the_signals():
+    """The display De Tijd's browser draws on is the image's, started by its entrypoint.
+
+    Four things, each the way it breaks:
+
+    - **No entrypoint, or no `DISPLAY`.** Harry starts healthy and every De Tijd article answers
+      "the browser could not start", which is a real alert about a missing line here.
+    - **Xvfb in the foreground.** The shell waits on it forever and Harry never starts.
+    - **No `exec`.** The shell stays PID 1 and swallows `docker stop`, so every stop and every
+      deploy waits out Docker's ten seconds and kills Harry mid-write.
+    - **No stale-lock removal.** A container restarted in place keeps `/tmp`, and Xvfb refuses
+      the display its last run locked.
+    """
+    dockerfile = (REPO / 'Dockerfile').read_text(encoding='utf-8')
+    entrypoint = re.search(r'^ENTRYPOINT\s+(\[.*\])\s*$', dockerfile, re.MULTILINE)
+    assert entrypoint, 'the image has no entrypoint, so nothing starts a display'
+    assert json.loads(entrypoint.group(1)) == ['/app/scripts/with-display.sh']
+    assert re.search(r'^ENV DISPLAY=:\d+\s*$', dockerfile, re.MULTILINE), 'DISPLAY is not set in the image'
+
+    script = REPO / 'scripts' / 'with-display.sh'
+    assert script.stat().st_mode & 0o111, 'the entrypoint is not executable, so the container cannot start'
+    lines = [line.strip() for line in script.read_text(encoding='utf-8').splitlines()]
+    code = [line for line in lines if line and not line.startswith('#')]
+    started = next((index for index, line in enumerate(code) if line.startswith('Xvfb "$DISPLAY"')), None)
+    assert started is not None, 'nothing starts Xvfb on $DISPLAY'
+    assert code[started].endswith('&'), 'Xvfb runs in the foreground, so Harry never starts'
+    assert any(line.startswith('rm -f') and '-lock' in line for line in code[:started]), 'a stale lock would stop Xvfb'
+    assert code[-1] == 'exec "$@"', 'the shell stays PID 1 and swallows docker stop'
+
+
 def test_each_stack_pins_its_own_port_and_data_directory_on_the_service():
     """`environment:` outranks `env_file:`, and that is what makes the published port true.
 
@@ -512,6 +542,37 @@ def test_in_the_image_a_connector_loads_from_a_mounted_settings_directory(built_
     mount = ['-v', f'{tmp_path / "settings"}:/settings:ro']
     assert slack_status(*mount, '-e', 'HARRY_CAPABILITY_SETTINGS_DIR=/settings') == 'loaded'
     assert slack_status(*mount) == 'skipped'
+
+
+@pytest.mark.live
+def test_in_the_image_a_headed_browser_starts_on_the_entrypoint_s_display(built_image):
+    """No `xvfb-run` here: the display has to be the one the image starts by itself.
+
+    And PID 1 has to be the command rather than the entrypoint's shell, which is what `exec`
+    buys — measured by asking PID 1 what it is.
+    """
+    probe = (
+        'from playwright.sync_api import sync_playwright\n'
+        'with sync_playwright() as p:\n'
+        "    b = p.chromium.launch(headless=False, channel='chromium')\n"
+        '    page = b.new_page()\n'
+        "    page.goto('data:text/html,<title>display</title>')\n"
+        '    print(page.title())\n'
+        '    b.close()\n'
+    )
+    started = subprocess.run(
+        ['docker', 'run', '--rm', IMAGE, 'uv', 'run', 'python', '-c', probe],
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert started.returncode == 0, started.stderr[-2000:]
+    assert started.stdout.strip().splitlines()[-1] == 'display'
+
+    first = subprocess.run(
+        ['docker', 'run', '--rm', IMAGE, 'cat', '/proc/1/cmdline'], capture_output=True, text=True, timeout=60
+    )
+    assert first.stdout.replace('\0', ' ').strip() == 'cat /proc/1/cmdline', 'the entrypoint shell is still PID 1'
 
 
 @pytest.fixture

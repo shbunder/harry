@@ -13,7 +13,7 @@ Nowhere else.
 
 ## Where a setting lives
 
-**Core's settings** — six of them — are in the repository-root pair. **Everything else
+**Core's settings** are in the repository-root pair. **Everything else
 belongs to a capability**, in its own folder, in its own pair:
 
 ```
@@ -112,13 +112,14 @@ Named here because they are not ordinary secrets and nothing about them is scope
 |---|---|
 | `REMARKABLE_DEVICE_TOKEN` | **Complete read and write access to every document on the tablet.** No scopes, no read-only mode. Anything holding it can do anything. |
 | `ICLOUD_APP_PASSWORD` | Full calendar and reminders access on the Apple account |
-| `TIJD_STORAGE_STATE` | A live logged-in De Tijd session — a file, not a string, and a valid login for anyone who has it |
+| `TIJD_PASSWORD` | The De Tijd account itself — it can change the account and the subscription, not only read articles. Harry logs in with it whenever the saved session has lapsed, and that session, `/data/tijd/storage-state.json`, is a valid login for anyone who has the file |
 
-All three live only in the NUC's `.env` and its data volume. Never the repo, never a log,
-never a span, never an error response, never a Slack message.
+All three live only on the NUC, in their connectors' `.env.local`, and the De Tijd session on
+the data volume. Never the repo, never a log, never a span, never an error response, never a
+Slack message.
 
 This is personal use of a subscription you pay for, on your own device. No redistribution,
-no sharing the storage state.
+no sharing the password or the session.
 
 ## Never
 
@@ -148,9 +149,10 @@ no sharing the storage state.
 - Leave a value empty in `.env` only when it is a secret, when it is account-specific so
   any default would be wrong, or when empty is itself the setting
 - Type secrets `SecretStr` and reach them with `.get_secret_value()` at the point of use
-- **Alert when a credential lapses.** The De Tijd session and, on subscription billing, the
-  Claude Code token on the NUC both expire quietly. Each needs a "this has lapsed" message
-  in Slack, or the digest degrades without saying so
+- **Alert when a credential lapses.** A refused De Tijd password, an iCloud app password
+  revoked by an Apple ID change: each needs a "this stopped working" message in Slack, or
+  the digest degrades without saying so. The De Tijd session lapses too, and Harry renews it
+  by logging in — which is exactly why a login it cannot finish has to be said out loud
 
 ## Why
 

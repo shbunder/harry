@@ -12,6 +12,7 @@ Everything the news connector is tested against. No test here reaches a URL.
 | `vrt-empty.xml` | The same VRT URL at 19:00 the same day — **200, valid Atom, zero entries**, 555 bytes. Recorded because it is the shape that slipped past the unavailable check | Nothing |
 | `vrt-article.html` | The article behind the first VRT entry, after the `vrtnws.be/p.oL1bKEomY` redirect | Nothing |
 | `bbc-article.html` | `www.bbc.co.uk/news/articles/cy5zg41dkqwo` | Nothing |
+| `tijd-nieuws.xml` | `www.tijd.be/rss/nieuws.xml`, recorded 16 September 2026 — RSS 2.0, 10 items, links are `tijd.be/r/t/1/id/…` redirect stubs, no pictures | Nothing |
 
 **The two BBC files overlap on purpose.** Both carry `cy5zg41dkqwo`, `cx2z5gjj838o`,
 `cwyzp47py48o` and `c0qx5d79kdeo`. `cx2z5gjj838o` is the useful one: the same story under

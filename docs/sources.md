@@ -10,8 +10,7 @@ remember exists. This page is the index and the part that is true of all of them
 | [news](../.harry/connectors/news/CONNECTOR.md) | nothing | the headlines, and the articles chosen from them |
 | [remarkable](../.harry/connectors/remarkable/CONNECTOR.md) | a device token | the delivery — the page is still written to disk |
 | [icloud](../.harry/connectors/icloud/CONNECTOR.md) | an Apple app-specific password, plus any published calendar links | the agenda line |
-
-*(De Tijd arrives as its own feature.)*
+| [tijd](../.harry/connectors/tijd/CONNECTOR.md) | a De Tijd subscription's email and password, and De Tijd's feed added to news | De Tijd's full article text — its stories print the feed's summary |
 
 ## What every source promises
 
@@ -212,8 +211,9 @@ ages is worse than a short one, because nothing on the page says how old it is.
 
 An article page that blocks Harry or has no prose in it answers
 `{"available": false, "why": …}` and puts one line in Slack the same way. Usually that is a
-site that started blocking scripted clients — the De Tijd problem, which needs a browser
-session — or an id pointing at a video.
+site that started blocking scripted clients — the De Tijd problem, which the tijd connector
+solves with a logged-in browser — or an id pointing at a video. A De Tijd article the tijd
+connector could not read answers the same way, and the line in Slack is the tijd connector's.
 
 **A feed is refused unread if it declares its own entities.** That is deliberate: it is how
 an XML parser is made to allocate all the memory on the machine, and a news feed has no
