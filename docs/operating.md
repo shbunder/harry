@@ -291,8 +291,24 @@ Three exit states, and the third matters: `PASS`, `FAIL`, and `UNKNOWN` for a se
 could not be reached at all. A refused connection is not a finding — reporting it as one
 is how "the tunnel was down" becomes "blocking calls do not work".
 
-**Before exposing it anywhere public**, set `HARRY_API_TOKEN` in `.env.local`. Without one
-the probe falls back to a token committed in the repo, which guards nothing.
+**The probe takes its token from Harry's settings, so on a machine with a real
+`HARRY_API_TOKEN` it serves the real one.** That is right for checking Harry's own setup on
+localhost, and wrong for putting the probe anywhere public — it would guard a throwaway
+server with the token that guards the tablet, and `call` would send that token over the
+internet by default. To expose the probe, pass a throwaway in the environment, which
+outranks `.env.local`:
+
+```bash
+export HARRY_API_TOKEN=$(openssl rand -hex 32)      # export, or the probe never sees it
+make probe ARGS="serve --port 7440"
+printf %s "$HARRY_API_TOKEN" | sha256sum | cut -c1-12
+```
+
+`serve` prints `bearer token: sha256:<twelve hex digits> (from …)` — a fingerprint, never
+the token. **Compare it with the last line before exposing anything.** If they differ, the
+probe is serving some other token, most likely the real one from `.env.local`. With no
+token set anywhere it says it has fallen back to the committed default, which guards
+nothing.
 
 ### What it has already settled
 

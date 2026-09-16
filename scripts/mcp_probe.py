@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime as dt
+import hashlib
 import json
 import os
 import sys
@@ -60,6 +61,20 @@ def token() -> str:
     the hardcoded default below and never known.
     """
     return get_settings().api_token.get_secret_value() or DEFAULT_TOKEN
+
+
+def fingerprint(secret: str) -> str:
+    """Which token this is, without the token: the first twelve hex digits of its SHA-256.
+
+    What `serve` prints instead of the value. It printed the value until 2026-09-16, which
+    on a machine with a real token in `.env.local` put that token on the terminal and in
+    the transcript of any agent that ran `make probe` — a bearer token that guards a
+    service holding the tablet's credentials.
+
+    Twelve digits is enough to tell two tokens apart and is not enough to be used as one.
+    Compare against a token you hold with: printf %s "$TOKEN" | sha256sum | cut -c1-12
+    """
+    return hashlib.sha256(secret.encode()).hexdigest()[:12]
 
 
 def port() -> int:
@@ -194,7 +209,9 @@ def cmd_serve(args: argparse.Namespace) -> int:
         server.run(transport='stdio')
         return 0
     print(f'listening on http://{args.host}:{args.port}/mcp', file=sys.stderr)
-    print(f'bearer token: {token()}', file=sys.stderr)
+    secret = token()
+    source = 'the committed default, not a secret' if secret == DEFAULT_TOKEN else "Harry's settings"
+    print(f'bearer token: sha256:{fingerprint(secret)} (from {source})', file=sys.stderr)
     print(f'calls logged to: {log_path()}', file=sys.stderr)
     server.run(transport='http', host=args.host, port=args.port)
     return 0
