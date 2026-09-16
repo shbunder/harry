@@ -263,9 +263,12 @@ def test_the_image_installs_a_virtual_display():
     # Continuations joined first, so a package on its own indented line is part of the
     # install it belongs to rather than a line of its own.
     dockerfile = (REPO / 'Dockerfile').read_text(encoding='utf-8').replace('\\\n', ' ')
-    installs = re.findall(r'apt-get install[^\n]*', dockerfile)
+    installs = ' '.join(re.findall(r'apt-get install[^\n]*', dockerfile)).split()
 
-    assert any('xvfb' in block for block in installs), 'xvfb is mentioned but never installed'
+    assert 'xvfb' in installs, 'xvfb is mentioned but never installed'
+    # `xvfb-run` refuses to start without it. With `xvfb` alone the image passed this test
+    # and a headed browser still could not be launched the way anyone would launch one.
+    assert 'xauth' in installs, 'xvfb is installed without xauth, so `xvfb-run` fails on its first call'
 
 
 def test_each_stack_pins_its_own_port_and_data_directory_on_the_service():
@@ -403,16 +406,30 @@ def test_the_image_is_handed_no_configuration_beyond_a_port_and_a_path(built_ima
 
 
 @pytest.mark.live
-def test_a_virtual_display_is_in_the_image_before_anything_needs_one(built_image):
-    """De Tijd's edge refuses every headless browser, and a NUC has no screen for a headed
-    one. Putting `xvfb` in now costs a few megabytes and means the feature that needs it is
-    a code change rather than an image rebuild and a re-deploy.
+def test_a_headed_browser_starts_in_the_image_before_anything_needs_one(built_image):
+    """De Tijd's edge refuses every headless browser, and a NUC has no screen for a headed one.
 
-    Nothing uses it yet. That is the point of the test: it is easy to drop a dependency
-    that nothing imports, and the next person would not find out until a build they were
-    hoping to avoid.
+    Measured from this image on 2026-09-16 against De Tijd's public homepage:
+    chrome-headless-shell 403, full Chromium headless 403, headed Chromium under Xvfb 200.
+
+    **A browser actually starting, not a binary being present.** The first version of this
+    test asserted `command -v Xvfb` and passed while `xvfb-run` failed with "xauth command
+    not found" — so the criterion "the De Tijd feature does not have to rebuild the image"
+    was ticked and false. This launches a headed browser the conventional way and loads a
+    page that needs no network, so it answers about the display and nothing else.
     """
-    assert in_the_image('command -v Xvfb || true').strip(), 'Xvfb is not in the image'
+    probe = (
+        'from playwright.sync_api import sync_playwright\n'
+        'with sync_playwright() as p:\n'
+        "    b = p.chromium.launch(headless=False, channel='chromium')\n"
+        '    page = b.new_page()\n'
+        "    page.goto('data:text/html,<title>display</title>')\n"
+        '    print(page.title())\n'
+        '    b.close()\n'
+    )
+    started = in_the_image(f'xvfb-run -a uv run python -c "{probe}"')
+
+    assert started.strip().splitlines()[-1] == 'display', started
 
 
 @pytest.fixture
