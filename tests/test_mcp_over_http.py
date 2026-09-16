@@ -177,3 +177,47 @@ async def test_an_async_tool_is_handed_the_caller_too(serving):
 
     assert result.data == {'id': 'owner', 'name': 'the owner', 'awaited': True}
     assert 'principal' not in published.input_schema.get('properties', {})
+
+
+INITIALIZE = {
+    'jsonrpc': '2.0',
+    'id': 1,
+    'method': 'initialize',
+    'params': {
+        'protocolVersion': '2025-06-18',
+        'capabilities': {},
+        'clientInfo': {'name': 'connector', 'version': '0'},
+    },
+}
+
+
+@pytest.mark.parametrize('path', ['/mcp', '/mcp/'])
+async def test_the_endpoint_answers_on_either_spelling_without_redirecting(serving, path):
+    """A claude.ai custom connector sends `POST /mcp` and does not follow a redirect.
+
+    Harry answered `/mcp` with 307 to `/mcp/`, and behind `cloudflared` it built that
+    redirect as `http://` — so the connector, holding a correct token, reported
+    "Couldn't reach harry" and went looking for OAuth. Measured with the real connector on
+    2026-09-16: the token matched byte for byte and the path had no trailing slash.
+
+    FastMCP's own client follows the redirect on localhost, which is why every other test
+    here passed throughout. This one refuses redirects, the way that connector does, and
+    says it is behind an https proxy, the way the tunnel does.
+    """
+    import httpx
+
+    url = serving('connectors/weather', 'tools/weather_forecast').removesuffix('/mcp') + path
+    headers = {
+        'Accept': 'application/json, text/event-stream',
+        'Content-Type': 'application/json',
+        'X-Forwarded-Proto': 'https',
+    }
+
+    async with httpx.AsyncClient(follow_redirects=False) as http:
+        stranger = await http.post(url, json=INITIALIZE, headers=headers)
+        owner = await http.post(url, json=INITIALIZE, headers=headers | {'Authorization': f'Bearer {TOKEN}'})
+
+    assert stranger.status_code == 401, (
+        f'POST {path} answered {stranger.status_code} {stranger.headers.get("location", "")}'
+    )
+    assert owner.status_code == 200, f'POST {path} answered {owner.status_code} {owner.headers.get("location", "")}'
