@@ -105,7 +105,7 @@ class Script:
         self.pause = 0.0
         self.busy = 0
         self.most_at_once = 0
-        self.errors: Any = None
+        self.page_budgets: list[float] = []
 
     def __call__(self, state: Path | None) -> Script:
         self.opened_with.append(state)
@@ -129,6 +129,7 @@ class Script:
         return entry
 
     def visit(self, link: str, seconds: float) -> Any:
+        self.page_budgets.append(seconds)
         self.busy += 1
         self.most_at_once = max(self.most_at_once, self.busy)
         try:
@@ -503,6 +504,7 @@ async def test_nothing_harry_says_carries_the_email_or_the_password(harry):
 
     for text in [*said, *built.sink.heard]:
         assert PASSWORD not in text and EMAIL not in text, text
+        assert 'net::ERR' not in text, f"an exception's own text reached a person: {text}"
 
 
 @respx.mock
@@ -595,6 +597,9 @@ async def test_a_paywalled_page_logs_in_once_and_reads_the_article_again(harry):
     assert len(answer['text']) > 1000, 'the 263-character lead was never handed over as the story'
     assert built.script.logged_in == [(EMAIL, PASSWORD, 60.0)]
     assert built.script.visited == [STUB, STUB]
+    assert built.script.page_budgets == [30.0, 30.0], (
+        'two pages of 30 seconds and a 60-second login: two minutes at most'
+    )
     assert (built.session / 'logged-in-at').read_text() == NOW.isoformat()
     assert built.sink.heard == []
 
@@ -621,16 +626,19 @@ async def test_a_refused_login_is_one_attempt_and_one_line_for_five_articles(har
     built.script.pages = [LOGGED_OUT]
     built.script.logins = [REFUSED]
 
+    stories = built.news.search(source='tijd', limit=5, detail='full')['candidates']
+    assert len({story['id'] for story in stories}) == 5
+
     answers = []
-    for minutes in range(5):
+    for minutes, story in enumerate(stories):
         built.clock.now = NOW + timedelta(minutes=12 * minutes)
-        answers.append(await article(built))
+        answers.append(await article(built, story['id']))
 
     assert len(built.script.logged_in) == 1
     assert all(answer['available'] is False for answer in answers)
     assert len({answer['why'] for answer in answers}) == 1, 'every article in the wait gets the same answer'
     assert 'refused the email or password' in answers[0]['why']
-    assert all(answer['summary'].startswith('Ursula von der Leyen') for answer in answers)
+    assert [answer['summary'] for answer in answers] == [story['summary'] for story in stories], 'each prints its own'
     assert built.sink.heard == [f'De Tijd: {answers[0]["why"]}']
 
 
