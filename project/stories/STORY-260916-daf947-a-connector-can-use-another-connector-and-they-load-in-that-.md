@@ -25,7 +25,7 @@ order and "news" sorts first — see [[ADR-260916-d4acc6]].
 - [x] A loop that reaches `load()` is logged, naming its members
 - [x] A connector whose declaration cannot be read, or whose `optional:` or `requires:` is not a list, is skipped with its reason, and the other connectors still load in dependency order
 - [x] `make lint` refuses a connector naming a connector that does not exist, a list that is not a list, and a loop of any length — including a connector naming itself
-- [x] `docs/capabilities.md` says a connector may name connectors, which list to use, and what happens in a loop
+- [x] by inspection: prose — `docs/capabilities.md` says a connector may name connectors, which list to use, and what happens in a loop
 
 ## Subtasks
 

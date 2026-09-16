@@ -2,7 +2,7 @@
 id: STORY-260916-c04a3c
 title: Harry logs in to De Tijd by itself, once, and says when it cannot
 feature: FEAT-260912-9c933f
-status: In Progress
+status: Done
 created: 2026-09-16
 ---
 
@@ -27,6 +27,7 @@ De Tijd's login service blocks an account after repeated failures.
 - [x] The whole login gives up within 60 seconds
 - [x] After `refused`, `challenge` or `login-page`, no further attempt is made for 6 hours: five articles in an hour cause one login attempt and each gets the same why — and an article asked for after 6 hours tries once more
 - [x] After a login page that did not answer, the wait is 15 minutes, not 6 hours
+- [x] A login the browser or the network ends part-way waits 15 minutes if the password had not been sent, and 6 hours if it had
 - [x] A page that still shows the paywall after a successful login answers the `paywall` why, and does not log in again
 - [x] A 403 never leads to a login attempt
 - [x] Through `news_article` over MCP, five De Tijd stories failing for one reason put exactly one line in Slack, naming De Tijd and containing neither the email nor the password

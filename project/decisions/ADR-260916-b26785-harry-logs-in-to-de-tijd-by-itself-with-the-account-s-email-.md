@@ -113,6 +113,13 @@ open a remote browser. What option 3 costs in **Bounded** is paid for with rules
   revisited — option 1 is the fallback, and it needs an image change.
 - **A login page redesign breaks full text** until the selectors are updated. The Slack line
   names the field Harry could not find, so the fix starts in the right place.
+- **The browser runs as root, without Chromium's sandbox, beside every credential.** It renders
+  De Tijd's pages and the advertising scripts on them, in the container that mounts each
+  connector's `.env.local` — the tablet token, the iCloud and Slack credentials and this
+  password. One exploit in the renderer would reach all of them. Accepted for now, knowingly:
+  running the browser as an unprivileged user with its sandbox means changing the container's
+  user and the data volume's ownership, which is a change to how Harry is deployed rather than
+  to this connector, and belongs in a feature of its own.
 - **The 6-hour wait lives in memory.** A restart clears it. A container stuck restarting with a
   wrong password would try once per start; `restart: unless-stopped` makes that rare, but it
   is not impossible.

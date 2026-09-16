@@ -2,7 +2,7 @@
 id: STORY-260916-133f51
 title: A De Tijd article comes back in full through a saved session
 feature: FEAT-260912-9c933f
-status: In Progress
+status: Done
 created: 2026-09-16
 ---
 
@@ -43,9 +43,10 @@ nothing. tijd raises its own lines so that its own context scrubs `EMAIL` and `P
 - [x] A saved session that is not valid JSON is treated as no session and logged
 - [x] A session that cannot be written answers the article anyway and says so in Slack
 - [x] Two article calls at once use the browser one after the other, never together
+- [x] No read takes longer than 150 seconds, and once one is known stuck every later De Tijd article is answered at once rather than queued behind it
 - [x] The image starts a virtual display before Harry, `DISPLAY` is set, and Harry is still the process that receives `docker stop`
 - [x] The paywall and refusal rules are tested against recorded pages in `tests/fixtures/` — the logged-out page as recorded, a logged-in page reduced to its markers with placeholder prose
-- [x] `.harry/connectors/tijd/CONNECTOR.md` says what it needs, how to set it up, what each failure looks like and what to do about it; `.harry/connectors/news/CONNECTOR.md` says a page on tijd.be is read by the tijd connector, which says its own faults
+- [x] by inspection: prose, read against the behaviour it describes — `.harry/connectors/tijd/CONNECTOR.md` says what it needs, how to set it up, what each failure looks like and what to do about it; `.harry/connectors/news/CONNECTOR.md` says a page on tijd.be is read by the tijd connector, which says its own faults
 
 ## Subtasks
 

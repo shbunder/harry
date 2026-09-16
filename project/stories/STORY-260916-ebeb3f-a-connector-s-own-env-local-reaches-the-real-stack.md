@@ -32,9 +32,9 @@ and iCloud. The deploy is confirmed with the owner before it happens.
 - [x] `docker-compose.yml` mounts `./.harry` read-only on the `harry` service at the path its `HARRY_CAPABILITY_SETTINGS_DIR` names; `harry-dev` mounts nothing but its volume and sets nothing
 - [x] `tests/test_deployment.py::test_each_stack_keeps_its_data_on_a_named_volume_of_its_own` is narrowed, not deleted: data still lives on a named volume of each stack's own, and a new test proves the only other mount is `./.harry`, read-only, on the real stack
 - [x] In the built image, a container with a `.harry`-shaped directory mounted read-only and the setting pointing at it loads a connector from it (live)
-- [x] `docs/operating.md` says where a credential goes on the NUC, in the present tense; that each connector's `.env.local` should be mode 600; and that the dev stack still reads `.env.dev.local`
+- [x] by inspection: prose — `docs/operating.md` says where a credential goes on the NUC, in the present tense; that each connector's `.env.local` should be mode 600; and that the dev stack still reads `.env.dev.local`
 - [ ] The connector `.env.local` files on this NUC are mode 600 before the real stack is deployed with the mount — by inspection: they are this machine's files, not the repository's
-- [x] `.claude/rules/secrets-and-config.md` states the new precedence
+- [x] by inspection: prose — `.claude/rules/secrets-and-config.md` states the new precedence
 
 ## Subtasks
 
