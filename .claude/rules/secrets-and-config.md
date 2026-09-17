@@ -59,7 +59,9 @@ told twice.
 
 ### `export` is allowed on a key with a value, and never on an empty one
 
-The root `.env` carries `export` prefixes so it can be `source`d by hand. Both readers
+The root `.env` carries `export` prefixes so it can be `source`d by hand, and an operator may
+write a capability's `.env.local` the same way. Every reader strips them — Harry's own reader
+of a capability's files as well as the two below. The two readers of the root pair
 strip them — pydantic's dotenv parser and Docker Compose's `env_file` — so they change
 nothing about the order above. **A capability's generated `.env` carries none**, because
 those are written by `make env-template` and never sourced; hand-adding one there makes

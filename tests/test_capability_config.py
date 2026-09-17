@@ -116,6 +116,23 @@ def test_a_missing_required_setting_simply_is_not_there(capability):
     assert 'app_password' not in resolved
 
 
+def test_an_exported_key_in_this_machine_s_file_is_read_like_a_plain_one(capability):
+    """`export KEY=value` is how an operator writes a file they also `source` by hand, and both
+    readers of the root pair strip it. This reader did not: every connector on the NUC written
+    that way resolved to its defaults, and a credential that was right there read as missing."""
+    folder = capability('URL=https://committed.test\n', local='export URL=https://mine.test\nexport  USERNAME="me"\n')
+    resolved = resolve(folder)
+    assert resolved['url'] == 'https://mine.test'
+    assert resolved['username'] == 'me'
+
+
+def test_a_key_that_merely_starts_with_export_is_not_mistaken_for_one(capability):
+    """Only `export` followed by whitespace is the prefix. `exporturl` is a key of its own, and
+    stripping six characters from it would set `url` to a value nobody wrote."""
+    folder = capability('exporturl=https://not-a-prefix.test\n')
+    assert resolve(folder)['url'] == 'https://caldav.icloud.com'
+
+
 def test_the_pair_is_read_in_the_documented_order(tmp_path):
     """Reversing this tuple is the one edit that silently makes .env.local do nothing."""
     assert [p.name for p in capability_env_files(tmp_path)] == ['.env', '.env.local']
