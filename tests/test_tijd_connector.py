@@ -1386,6 +1386,7 @@ async def test_a_browser_container_that_is_not_there_costs_de_tijd_and_nothing_e
     assert tijd['why'] == 'the browser Harry reads De Tijd with could not start, or stopped'
     assert bbc['available'] is True
     assert built.sink.heard == [f'De Tijd: {tijd["why"]}']
+    assert playwright.launched == [], 'Harry started a browser of its own, beside every credential'
 
 
 def test_the_connector_is_handed_the_endpoint_its_settings_name(harry, monkeypatch):
@@ -1472,50 +1473,63 @@ def test_harry_s_own_login_reads_a_de_tijd_article_in_full_from_the_image(built_
     )
 
 
-@pytest.mark.live
-def test_harry_s_own_browser_wrapper_drives_the_browser_container(built_image):
-    """`Chromium` against a real browser container, with no account needed: De Tijd's homepage is
-    public, and answering 200 is the whole claim — headed, sandboxed, and reached over the network.
+def shipped_browser_flags() -> tuple[list[str], list[str]]:
+    """What `docker-compose.yml` gives the browser container, as `docker run` arguments.
 
-    A headless browser gets 403 here, so this fails if the launch options stop being stated.
+    Read from the compose file rather than repeated here: a live test that proved a configuration
+    nobody deploys would be worth nothing, and `--unsafe` is exactly the kind of argument that
+    would otherwise be in one place and not the other.
     """
-    network, browser = 'tijd-public-net', 'tijd-public-browser'
+    import yaml
+
+    service = yaml.safe_load((REPO / 'docker-compose.yml').read_text(encoding='utf-8'))['services']['harry-browser']
+    flags = ['--user', service['user'], '--read-only', '--pids-limit', str(service['pids_limit'])]
+    for option in service.get('security_opt') or []:
+        flags += ['--security-opt', option.replace(':', '=', 1)]
+    for capability in service.get('cap_drop') or []:
+        flags += ['--cap-drop', capability]
+    for mount in service.get('tmpfs') or []:
+        flags += ['--tmpfs', mount]
+    for key, value in (service.get('environment') or {}).items():
+        flags += ['--env', f'{key}={value}']
+    return flags, list(service['command'])
+
+
+def running_processes(container: str) -> str:
+    """Every process in a container, by its command line.
+
+    `ps` is not in this image. An earlier version of this test asked for it anyway, got an empty
+    string back, and passed against a browser that was running with no sandbox at all.
+    """
+    read = subprocess.run(
+        ['docker', 'exec', container, 'sh', '-c', 'for p in /proc/[0-9]*; do tr "\\0" " " < $p/cmdline; echo; done'],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert read.returncode == 0, read.stderr[-500:]
+    assert read.stdout.strip(), 'nothing came back, so this proves nothing'
+    return read.stdout
+
+
+@pytest.mark.live
+def test_harry_s_own_browser_wrapper_drives_a_sandboxed_browser_in_its_own_container(built_image):
+    """The whole arrangement as it ships, against the real site, with no account needed.
+
+    De Tijd's homepage answers 403 to a headless browser, so 200 proves headed. The sandbox is
+    read from the browser's own processes **while a page is open** — measured 2026-09-17: the
+    server drops the sandbox the connect URL asks for unless it was started with `--unsafe`, and
+    11 of 13 Chromium processes then carry `--no-sandbox`.
+    """
+    flags, command = shipped_browser_flags()
+    assert '--unsafe' in command, 'without it the server silently ignores the sandbox it is asked for'
+    network, browser, holder = 'tijd-public-net', 'tijd-public-browser', 'tijd-public-holder'
     subprocess.run(['docker', 'network', 'create', network], capture_output=True)
-    subprocess.run(['docker', 'rm', '-f', browser], capture_output=True)
+    for name in (browser, holder):
+        subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
     try:
         started = subprocess.run(
-            [
-                'docker',
-                'run',
-                '-d',
-                '--name',
-                browser,
-                '--network',
-                network,
-                '--user',
-                '1000:1000',
-                '--cap-drop',
-                'ALL',
-                # Exactly what docker-compose.yml gives it, so this proves what ships.
-                '--security-opt',
-                'seccomp=unconfined',
-                '--security-opt',
-                'no-new-privileges',
-                '--read-only',
-                '--tmpfs',
-                '/tmp',
-                '--env',
-                'HOME=/tmp',
-                '--pids-limit',
-                '512',
-                IMAGE,
-                '/app/.venv/bin/playwright',
-                'run-server',
-                '--port',
-                '3000',
-                '--host',
-                '0.0.0.0',
-            ],
+            ['docker', 'run', '-d', '--name', browser, '--network', network, *flags, IMAGE, *command],
             capture_output=True,
             text=True,
             timeout=120,
@@ -1526,26 +1540,28 @@ def test_harry_s_own_browser_wrapper_drives_the_browser_container(built_image):
                 break
             time.sleep(1)
 
-        probe = (
-            'import json, sys\n'
-            'sys.path.insert(0, "/app/.harry/connectors")\n'
-            'from importlib import import_module\n'
+        # A page held open, so the browser exists while its processes are read — and opened by
+        # Harry's own wrapper, so the launch options under test are the ones the connector states.
+        holding = (
+            'import sys, time\n'
             'import importlib.util\n'
             'spec = importlib.util.spec_from_file_location("t", "/app/.harry/connectors/tijd/connector.py", '
             'submodule_search_locations=["/app/.harry/connectors/tijd"])\n'
             'module = importlib.util.module_from_spec(spec)\n'
             'sys.modules["t"] = module\n'
             'spec.loader.exec_module(module)\n'
-            'browser = module.Chromium(None, sys.argv[1])\n'
-            'with browser as open_browser:\n'
-            '    visit = open_browser.visit("https://www.tijd.be/", 45)\n'
-            'print(json.dumps({"status": visit.status, "paywall_markup": len(visit.html) > 10000}))\n'
+            'with module.Chromium(None, sys.argv[1]) as browser:\n'
+            '    visit = browser.visit("https://www.tijd.be/", 45)\n'
+            '    print(visit.status, flush=True)\n'
+            '    time.sleep(45)\n'
         )
-        ran = subprocess.run(
+        subprocess.run(
             [
                 'docker',
                 'run',
-                '--rm',
+                '-d',
+                '--name',
+                holder,
                 '--network',
                 network,
                 IMAGE,
@@ -1553,26 +1569,33 @@ def test_harry_s_own_browser_wrapper_drives_the_browser_container(built_image):
                 'run',
                 'python',
                 '-c',
-                probe,
+                holding,
                 f'ws://{browser}:3000/',
             ],
             capture_output=True,
             text=True,
-            timeout=300,
+            timeout=120,
+            check=True,
         )
-        assert ran.returncode == 0, ran.stderr[-2000:]
-        answer = json.loads(ran.stdout.strip().splitlines()[-1])
-        assert answer['status'] == 200, answer
-        assert answer['paywall_markup'], answer
+        for _ in range(60):
+            if subprocess.run(['docker', 'logs', holder], capture_output=True, text=True).stdout.strip():
+                break
+            time.sleep(1)
+        answered = subprocess.run(['docker', 'logs', holder], capture_output=True, text=True).stdout.strip()
+        assert answered == '200', f'De Tijd answered {answered!r}, which is what it does to a headless browser'
 
-        processes = subprocess.run(
-            ['docker', 'exec', browser, 'sh', '-c', 'ps -o args= -A'], capture_output=True, text=True
-        )
-        assert '--no-sandbox' not in processes.stdout, 'the browser was launched without its sandbox'
+        processes = running_processes(browser)
+        chromium = [line for line in processes.splitlines() if 'chrome' in line]
+        assert len(chromium) > 1, f'no browser was running to inspect: {processes[:400]}'
+        assert [line for line in chromium if '--type=renderer' in line], 'no renderer among them'
+        unsandboxed = [line for line in chromium if '--no-sandbox' in line]
+        assert unsandboxed == [], f'{len(unsandboxed)} of {len(chromium)} browser processes run with no sandbox'
+
         settings = subprocess.run(['docker', 'exec', browser, 'ls', '/settings'], capture_output=True, text=True)
         assert settings.returncode != 0, 'the browser container can see a settings directory'
     finally:
-        subprocess.run(['docker', 'rm', '-f', browser], capture_output=True)
+        for name in (holder, browser):
+            subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
         subprocess.run(['docker', 'network', 'rm', network], capture_output=True)
 
 
@@ -1591,39 +1614,9 @@ def test_de_tijd_reads_through_a_browser_container_that_holds_no_credential(buil
     subprocess.run(['docker', 'network', 'create', network], capture_output=True)
     subprocess.run(['docker', 'rm', '-f', browser], capture_output=True)
     try:
+        flags, command = shipped_browser_flags()
         started = subprocess.run(
-            [
-                'docker',
-                'run',
-                '-d',
-                '--name',
-                browser,
-                '--network',
-                network,
-                '--user',
-                '1000:1000',
-                '--cap-drop',
-                'ALL',
-                # Exactly what docker-compose.yml gives it, so this proves what ships.
-                '--security-opt',
-                'seccomp=unconfined',
-                '--security-opt',
-                'no-new-privileges',
-                '--read-only',
-                '--tmpfs',
-                '/tmp',
-                '--env',
-                'HOME=/tmp',
-                '--pids-limit',
-                '512',
-                IMAGE,
-                '/app/.venv/bin/playwright',
-                'run-server',
-                '--port',
-                '3000',
-                '--host',
-                '0.0.0.0',
-            ],
+            ['docker', 'run', '-d', '--name', browser, '--network', network, *flags, IMAGE, *command],
             capture_output=True,
             text=True,
             timeout=120,
@@ -1680,11 +1673,6 @@ def test_de_tijd_reads_through_a_browser_container_that_holds_no_credential(buil
         assert answer['why'] is None, answer
         assert answer['chars'] > 1000, answer
 
-        # The sandbox really is on: Chromium says so about its own process when it is.
-        processes = subprocess.run(
-            ['docker', 'exec', browser, 'sh', '-c', 'ps -o args= -A'], capture_output=True, text=True
-        )
-        assert '--no-sandbox' not in processes.stdout, 'the browser was launched without its sandbox'
     finally:
         subprocess.run(['docker', 'rm', '-f', browser], capture_output=True)
         subprocess.run(['docker', 'network', 'rm', network], capture_output=True)

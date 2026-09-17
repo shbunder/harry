@@ -92,7 +92,9 @@ services:
       - no-new-privileges:true
     read_only: true
     tmpfs:
-      - /tmp
+      # Sized, because read_only and pids_limit cap the disk and the forks but not the RAM a
+      # renderer can write into a tmpfs. Half a gigabyte is far beyond a browser profile.
+      - /tmp:size=512m
     pids_limit: 512
     # Its own, because the image's asks Harry's port for /health and nothing here answers that —
     # a container that is permanently unhealthy is one nobody reads the health of.
@@ -110,7 +112,15 @@ services:
     # Reachable on the compose network by name, never published.
     # The installed binary, not `uv run`: uv rewrites the editable install on start, and this
     # container's filesystem is read-only. Nothing here needs a resolver.
-    command: ["/app/.venv/bin/playwright", "run-server", "--port", "3000", "--host", "0.0.0.0"]
+    #
+    # `--unsafe` is what makes the sandbox real. Measured on 2026-09-17: without it the server
+    # discards the sandbox the connect URL asks for, and Chromium's renderers run with
+    # --no-sandbox; with it, no process does. What it opens is that a client may also name the
+    # binary and the arguments this container runs — acceptable only because of what this container
+    # is: no credential, no volume, a read-only filesystem, no published port, and reachable on
+    # the compose network alone, where the only peer is Harry.
+    command:
+      ["/app/.venv/bin/playwright", "run-server", "--port", "3000", "--host", "0.0.0.0", "--unsafe"]
 
   # The stack a change is tried on. Same image, same code, different everything else.
   # `profiles:` is what keeps it out of a plain `make up` — compose ignores a profiled

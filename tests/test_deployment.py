@@ -409,7 +409,9 @@ def test_the_browser_container_cannot_keep_what_a_renderer_leaves():
 
     assert 'no-new-privileges:true' in (browser.get('security_opt') or [])
     assert browser.get('read_only') is True, 'the browser container can write its own filesystem'
-    assert set(browser.get('tmpfs') or []) >= {'/tmp'}, 'a read-only browser needs somewhere to work'
+    # A tmpfs entry may carry options after the mount point, as `/tmp:size=512m` does.
+    mounted = {entry.split(':', 1)[0] for entry in browser.get('tmpfs') or []}
+    assert mounted >= {'/tmp'}, 'a read-only browser needs somewhere to work'
     assert browser.get('pids_limit'), 'nothing caps the processes a renderer can fork'
 
 

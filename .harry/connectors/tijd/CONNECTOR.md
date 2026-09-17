@@ -73,6 +73,15 @@ keeps nothing when the container restarts.
 Harry connects to it and states what the browser must be — headed, full Chromium, sandboxed — on
 every connect. A browser container asked for nothing launches headless, and De Tijd answers 403.
 
+**Asking is not enough for the sandbox, and that asymmetry is worth knowing.** Headed and
+full Chromium are honoured from the connect URL; the sandbox is not. `playwright run-server`
+drops `chromiumSandbox` unless the server itself was started with `--unsafe`, and it drops it
+silently — the browser comes up, De Tijd is read, and the renderers carry `--no-sandbox`. So
+the flag lives in the browser service's `command:` in `docker-compose.yml`, and the live test
+that covers this reads the container's `/proc` while a page is open rather than trusting either
+end. That test exists because an earlier one asked the image for `ps`, which is not installed,
+and passed on the empty string it got back.
+
 The session stays Harry's: it is read from `/data/tijd` on Harry's side and handed to the browser
 for the call, never written inside the browser container.
 

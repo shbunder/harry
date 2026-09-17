@@ -125,10 +125,35 @@ the morning page is using.
 `.env.local`, no root `.env.local`, no data volume, no published port. It renders a commercial
 news site, advertising scripts and all, which is why it is kept empty and why it is the one
 container here allowed to run with Docker's syscall filtering relaxed — that is what lets
-Chromium's own sandbox start, measured on this machine. Against that it runs as an unprivileged
-user, drops every Linux capability, may gain no privileges, caps its processes, and has a
-**read-only filesystem** with a tmpfs for the browser's scratch: it keeps nothing between
-restarts, because there is nowhere to keep it.
+Chromium's own sandbox start. Against that it runs as an unprivileged user, drops every Linux
+capability, may gain no privileges, caps its processes, and has a **read-only filesystem** with
+a tmpfs for the browser's scratch: it keeps nothing between restarts, because there is nowhere
+to keep it.
+
+**Two things have to hold for the sandbox to actually be on, and neither announces itself.**
+Harry asks for it on every connect, and the browser server honours the request only when it was
+started with `--unsafe` — without that flag it drops the request without a word and Chromium's
+renderers run with `--no-sandbox`. So the flag is part of `command:` in `docker-compose.yml`, and
+editing that line is how the sandbox would silently come off. What proves it is on is a live test
+that opens a page and reads the browser container's own `/proc`:
+
+```bash
+make test-live                     # the live suite; one test stands the container up and checks this
+```
+
+To check it by hand, look while a page is actually open — Chromium only runs when Harry is
+reading something, and a container with no browser in it reports no `--no-sandbox` for the
+boring reason:
+
+```bash
+docker exec harry-browser sh -c \
+  'for p in /proc/[0-9]*; do tr "\0" " " < $p/cmdline; echo; done' \
+  | grep -i chrome | grep -c -- --no-sandbox   # how many renderers lost the sandbox
+```
+
+Run that during an article and read both numbers together: `grep -i chrome` has to find
+processes at all, and none of them may carry `--no-sandbox`. Zero matches out of zero Chromium
+processes proves nothing.
 
 ```bash
 docker compose logs -f harry-browser     # what the browser server is doing

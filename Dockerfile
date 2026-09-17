@@ -56,8 +56,10 @@ RUN uv sync --frozen --no-dev
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN uv run playwright install --with-deps chromium && chmod -R a+rX /ms-playwright
 
-# The user the browser container runs as. Harry's own container still runs as root, and owning
-# /app costs it nothing: root reads and writes it either way.
+# A home and a name for uid 1000, which is what compose runs the browser container as. Docker
+# would run that uid without this, so what this really buys is an owned /app and a passwd entry
+# for anything that looks one up. Harry's own container still runs as root, and owning /app costs
+# it nothing: root reads and writes it either way.
 RUN useradd --uid 1000 --create-home harry && chown -R harry:harry /app
 
 # `.harry/` holds every connector and job — the product, not configuration. It is
