@@ -2,7 +2,7 @@
 id: STORY-260917-e9ca02
 title: The browser moves to its own container, and Harry connects to it
 feature: FEAT-260917-250f5a
-status: In Progress
+status: Done
 created: 2026-09-17
 ---
 
@@ -33,8 +33,8 @@ container that is not there, and that is the `browser` fault the connector alrea
 - [x] A browser container that cannot be reached is the existing `browser` fault: the summary prints, one Slack line, and no quiet fall back to a browser started beside the credentials
 - [x] A browser that comes up without its sandbox is not detectable from Harry's side — it reads De Tijd exactly as well — so it is prevented instead: `--unsafe` is in the shipped command, a gate test fails if it goes, and a live test reads the container's own processes
 - [x] A browser container that is down costs De Tijd's text only, and VRT NWS and BBC News are read in the same Harry
-- [ ] Through the running stack: a De Tijd article comes back with more than 1,000 characters, and the browser container's process is not root and asked for the sandbox (live)
-- [ ] The saved session is still Harry's: read from `/data/tijd`, renewed, and never written inside the browser container (live)
+- [x] Through the running stack: a De Tijd article comes back with more than 1,000 characters, and the browser container's process is not root and asked for the sandbox (live)
+- [x] The saved session is still Harry's: read from `/data/tijd`, renewed, and never written inside the browser container (live)
 - [x] `.harry/connectors/tijd/CONNECTOR.md` and `docs/operating.md` say what the browser container is, what it is deliberately not given, and what a person sees when it is down
 
 ## Subtasks
