@@ -24,6 +24,9 @@ What is known, so this starts from facts rather than a guess:
 
 - **A non-root user alone does not turn the sandbox on.** Playwright 1.62 passes `--no-sandbox`
   unless `launch(chromium_sandbox=True)` is given.
+- **Asking for the sandbox over a connection is not the same as getting it.** `playwright
+  run-server` drops `chromiumSandbox` from the connect URL unless it was started with `--unsafe`,
+  and reports nothing. Check the running processes, never the request.
 - **Docker's default seccomp profile usually blocks what the sandbox needs.** Playwright's own
   guidance for Docker is a seccomp profile that allows it, or running as a non-root user with
   one. Measure it on the NUC before choosing.
@@ -59,7 +62,8 @@ Decided in [[ADR-260916-b26785]], where the accepted risk is recorded.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
-- **2026-09-17** — The browser container is built and proven without an account: a live test stands one up — unprivileged, capabilities dropped, seccomp relaxed — and drives it with the connector's own Chromium wrapper. De Tijd's public homepage answers 200 through it, the container has no /settings, and no Chromium process carries --no-sandbox. 13 mutations of the new controls each go red. The two live tests that need the De Tijd account skip in this worktree, because the account lives in the main checkout; they run from there after the merge, with the deploy.
+- **2026-09-17** — The browser container is built and proven without an account: a live test stands one up — unprivileged, capabilities dropped, seccomp relaxed — and drives it with the connector's own Chromium wrapper. De Tijd's public homepage answers 200 through it, and the container has no /settings. 13 mutations of the new controls each go red. The two live tests that need the De Tijd account skip in this worktree, because the account lives in the main checkout; they run from there after the merge, with the deploy.
+- **2026-09-17** — The sandbox was off, and the test that said otherwise could not have found out. It asked the image for `ps`, which is not installed, and asserted `--no-sandbox` was absent from the empty string that came back. The cause underneath: `playwright run-server` discards the `chromiumSandbox` the connect URL asks for unless the server was started with `--unsafe`, and says nothing. Measured on the shipped flags: without `--unsafe`, most Chromium processes run with `--no-sandbox`; with it, none do. `--unsafe` is now in the browser service's command, and the test holds a page open and reads the container's `/proc` — so what is checked is what is running, not what was requested.
 
 ## Links
 

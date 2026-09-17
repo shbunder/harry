@@ -33,11 +33,16 @@ Measured the same day, from `harry:6220e5c` on the NUC:
 - The chrome seccomp profile everyone links to is **too old for runc 29.1.3**: the container will
   not start at all with it. Nobody here is going to maintain a 36 KB syscall list.
 - `playwright run-server` in one container, driven by `chromium.connect()` from another, gives a
-  headed sandboxed browser, De Tijd answers 200, and the session's cookies come back to the
-  caller. The calling container has no `/settings`.
+  headed browser, De Tijd answers 200, and the session's cookies come back to the caller. The
+  calling container has no `/settings`.
+- **The server discards `chromiumSandbox` from the connect URL unless it was started with
+  `--unsafe`.** Found while building this, after the reading above had been taken as proof the
+  sandbox was on: it is not, and nothing says so. Without the flag Chromium's renderers run with
+  `--no-sandbox`; with it, no process does. `--unsafe` also lets a client name the binary and the
+  arguments the server runs, which is a cost this container can pay and Harry's cannot.
 
-So the sandbox is only available on terms that weaken the container it runs in. That settles
-which container it should be.
+So the sandbox is only available on terms that weaken the container it runs in — twice over, at
+the seccomp profile and at the server's own flag. That settles which container it should be.
 
 ## Decision drivers
 
@@ -102,6 +107,12 @@ nothing.
 The tijd connector connects to `ws://harry-browser:3000/` and states its launch options every
 time: headed, full Chromium, sandbox on. A browser container that cannot give that is a failure
 Harry reports, never a quiet fall back to an unsandboxed browser.
+
+**Two of those three are honoured from the connect URL, and the sandbox is not** — it needs
+`--unsafe` on the server as well. So it is checked where it is true rather than where it is
+asked for: a live test opens a page and reads the browser container's `/proc`. The version of
+that test which asked for `ps` instead passed against a browser with no sandbox at all, because
+`ps` is not in the image and an empty string contains no `--no-sandbox` either.
 
 **With no endpoint configured, the connector starts a browser of its own, as it does today.**
 That is what a laptop does, and what the live tests do, so the code that drives a browser stays
