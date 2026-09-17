@@ -193,9 +193,9 @@ up:  ## Start the real stack on whatever tag is deployed here
 # This service by name, not `docker compose down`: that takes the project's network with
 # it and prints "Resource is still in use" whenever the dev stack is up — a line that reads
 # like a failure, exits 0 and means nothing.
-down:  ## Stop Harry. The data volume is not touched — that needs `docker compose down -v`
-	docker compose stop harry
-	docker compose rm -f harry
+down:  ## Stop Harry and its browser. The data volume is not touched — that needs `docker compose down -v`
+	docker compose stop harry harry-browser
+	docker compose rm -f harry harry-browser
 
 logs:  ## Follow Harry's logs
 	docker compose logs -f harry
@@ -245,6 +245,9 @@ health-dev:  ## What the dev stack loaded. `jobs.enabled` is false here, and tru
 # Neither of these touches a volume. The data outlives every deploy and every rollback,
 # because the only thing either one changes is which image the container is made from.
 
+# `up -d --wait` waits on every service, the browser included: a deploy that cannot start the
+# browser stops here rather than shipping a Harry whose De Tijd is silently summaries. A browser
+# that dies *later* is the degraded path, and costs De Tijd's text only.
 deploy:  ## Build this commit, tag it, and put the real stack on it
 	@test -z "$(DIRTY)" || { \
 	  echo -e "$(WARN) The tree is not clean, so this build could not be rebuilt from git."; \

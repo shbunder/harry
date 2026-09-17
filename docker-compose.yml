@@ -19,6 +19,11 @@ services:
     image: harry:${HARRY_TAG:-latest}
     container_name: harry
     restart: unless-stopped
+    depends_on:
+      # Healthy, not merely started: the browser server takes a moment to listen, and Harry
+      # reaching it before then costs the first article after every restart.
+      harry-browser:
+        condition: service_healthy
     # A small init as PID 1, which reaps what a crashed Chromium leaves behind — `uv` does not,
     # and a container running for months would collect them — and passes `docker stop` on.
     init: true
@@ -59,9 +64,66 @@ services:
       HARRY_DATA_DIR: /data
       # The real stack keeps the clock. Only one Harry on this machine may.
       HARRY_SCHEDULER_ENABLED: "true"
+      # Where the browser lives. Set here rather than in the connector's file because it is
+      # deployment, not a credential: on a laptop it is empty and the connector starts a browser
+      # of its own. A wrong value reads as a browser that could not start, and says so.
+      HARRY_TIJD_BROWSER_ENDPOINT: ws://harry-browser:3000/
       # Where the mount above lands. Set here rather than in a file for the same reason as
       # the port: a stray value in `.env.local` must not be able to point it elsewhere.
       HARRY_CAPABILITY_SETTINGS_DIR: /settings
+
+  # The browser De Tijd is read with, and nothing else. It renders a commercial news site, ads
+  # and all, so it is the one container here that meets hostile input — and it is given nothing:
+  # no `.harry/` mount, no root `.env.local`, no data volume, no published port. An exploited
+  # renderer lands somewhere empty. Decided in project/decisions/, the day De Tijd shipped.
+  harry-browser:
+    image: harry:${HARRY_TAG:-latest}
+    container_name: harry-browser
+    restart: unless-stopped
+    init: true
+    # Unprivileged, and with Chromium's own sandbox on — which needs Docker's syscall filtering
+    # relaxed, measured. That relaxation is safe to make HERE and nowhere else: this container
+    # holds nothing. Anything added to it has to revisit that.
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt:
+      - seccomp:unconfined
+      # The sandbox needs the syscall filtering above relaxed, which widens what an escape from
+      # this container could try next. These three are the cheap half of that back: no process
+      # here may gain privileges, the filesystem is a tmpfs it cannot keep anything in, and a
+      # fork bomb in a renderer stops at 512.
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      # Sized, because read_only and pids_limit cap the disk and the forks but not the RAM a
+      # renderer can write into a tmpfs. Half a gigabyte is far beyond a browser profile.
+      - /tmp:size=512m
+    pids_limit: 512
+    # Its own, because the image's asks Harry's port for /health and nothing here answers that —
+    # a container that is permanently unhealthy is one nobody reads the health of.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 3000), 2).close()"]
+      interval: 60s
+      timeout: 5s
+      start_period: 20s
+    # No env_file and no volumes, on purpose. Both are checked by the suite.
+    environment:
+      TZ: Europe/Brussels
+      # Its filesystem is read-only, so what it scratches goes to the tmpfs that dies with it.
+      # Not configuration Harry reads — it keeps the browser off disk.
+      HOME: /tmp
+    # Reachable on the compose network by name, never published.
+    # The installed binary, not `uv run`: uv rewrites the editable install on start, and this
+    # container's filesystem is read-only. Nothing here needs a resolver.
+    #
+    # `--unsafe` is what makes the sandbox real. Measured on 2026-09-17: without it the server
+    # discards the sandbox the connect URL asks for, and Chromium's renderers run with
+    # --no-sandbox; with it, no process does. What it opens is that a client may also name the
+    # binary and the arguments this container runs — acceptable only because of what this container
+    # is: no credential, no volume, a read-only filesystem, no published port, and reachable on
+    # the compose network alone, where the only peer is Harry.
+    command:
+      ["/app/.venv/bin/playwright", "run-server", "--port", "3000", "--host", "0.0.0.0", "--unsafe"]
 
   # The stack a change is tried on. Same image, same code, different everything else.
   # `profiles:` is what keeps it out of a plain `make up` — compose ignores a profiled

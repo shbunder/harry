@@ -178,6 +178,8 @@ class Harry:
     script: Script
     clock: Clock
     session: Path
+    factory: Any = None
+    """What `register()` bound the settings into, before the stand-in took its place."""
 
     @property
     def tijd(self) -> Any:
@@ -222,6 +224,7 @@ def harry(tmp_path, monkeypatch):
         script, clock = Script(), Clock()
         built = Harry(root, catalogue, sink, script, clock, session)
         if with_tijd:
+            built.factory = built.tijd._browser  # noqa: SLF001 — the real Chromium, as configured
             built.tijd._browser = script  # noqa: SLF001 — the one thing replaced: Chromium
             built.tijd._now = clock  # noqa: SLF001
         return built
@@ -986,9 +989,13 @@ def test_a_read_arriving_while_another_hangs_waits_no_longer_than_the_limit(harr
 
 
 def test_the_hard_limit_is_the_sum_of_the_waits_harry_sets(harry):
-    """Starting the browser (Playwright's own 30 seconds), two pages and a login."""
-    module = harry().failures()
-    assert module.READ_SECONDS == 30 + 2 * module.PAGE_SECONDS + module.LOGIN_SECONDS == 150
+    """Reaching the browser, two pages and a login. The first term is the wait on the browser
+    container, so raising that must raise this or a read can outlast the limit that catches it."""
+    built = harry()
+    module = built.failures()
+    reaching = chromium_module(built).CONNECT_SECONDS
+
+    assert module.READ_SECONDS == reaching + 2 * module.PAGE_SECONDS + module.LOGIN_SECONDS == 150
 
 
 @respx.mock
@@ -1260,6 +1267,143 @@ async def test_still_paywalled_after_a_login_points_at_the_subscription_and_does
 
 
 # ---------------------------------------------------------------------------
+# Where the browser runs
+# ---------------------------------------------------------------------------
+
+ENDPOINT = 'ws://harry-browser:3000/'
+
+
+class Elsewhere:
+    """Playwright, with the browser somewhere else. Records how it was asked for one."""
+
+    def __init__(self, refuse: Exception | None = None) -> None:
+        self.connected: list[tuple[str, float | None]] = []
+        self.launched: list[dict] = []
+        self.refuse = refuse
+
+    def start(self) -> Elsewhere:
+        return self
+
+    def stop(self) -> None:
+        return None
+
+    @property
+    def chromium(self) -> Elsewhere:
+        return self
+
+    def connect(self, url: str, timeout: float | None = None) -> Elsewhere:
+        self.connected.append((url, timeout))
+        if self.refuse is not None:
+            raise self.refuse
+        return self
+
+    def launch(self, **options: Any) -> Elsewhere:
+        self.launched.append(options)
+        return self
+
+    def new_context(self, **_: Any) -> Elsewhere:
+        return self
+
+    def new_page(self) -> Elsewhere:
+        return self
+
+    def close(self) -> None:
+        return None
+
+
+def chromium_module(built: Harry) -> Any:
+    return sys.modules[type(built.tijd).__module__ + '.browser']
+
+
+def opened(built: Harry, endpoint: str, monkeypatch, refuse: Exception | None = None) -> Elsewhere:
+    module = chromium_module(built)
+    playwright = Elsewhere(refuse)
+    monkeypatch.setattr(module, 'sync_playwright', lambda: playwright)
+    browser = module.Chromium(None, endpoint)
+    if refuse is None:
+        with browser:
+            pass
+    else:
+        with pytest.raises(built.failures().BrowserFailed), browser:
+            pass
+    return playwright
+
+
+def test_with_an_endpoint_the_browser_is_the_one_in_its_own_container(harry, monkeypatch):
+    """The container that holds no credential. Harry starts none of its own beside the keys."""
+    built = harry()
+
+    playwright = opened(built, ENDPOINT, monkeypatch)
+
+    assert playwright.launched == [], 'a browser was started inside Harry anyway'
+    assert len(playwright.connected) == 1
+    url, timeout = playwright.connected[0]
+    assert url.startswith(ENDPOINT)
+    assert timeout == 30_000
+
+
+def test_the_connect_url_asks_for_a_headed_sandboxed_full_chromium_every_time(harry):
+    """Measured: a browser container asked for nothing launches headless, and De Tijd answers 403.
+    The sandbox is the point of the separate container, and the headless shell is refused outright."""
+    from urllib.parse import parse_qs, urlsplit
+
+    module = chromium_module(harry())
+    asked = json.loads(parse_qs(urlsplit(module.connect_to(ENDPOINT)).query)['launch-options'][0])
+
+    assert asked == {'headless': False, 'channel': 'chromium', 'chromiumSandbox': True}
+
+
+def test_with_no_endpoint_harry_starts_a_browser_itself(harry, monkeypatch):
+    """A laptop, `make serve`, the live tests. Unsandboxed, because Chromium's sandbox will not
+    start under Docker's default seccomp and relaxing that beside the credentials is the thing
+    the browser container exists to avoid."""
+    built = harry()
+
+    playwright = opened(built, '', monkeypatch)
+
+    assert playwright.connected == []
+    assert playwright.launched == [{'headless': False, 'channel': 'chromium', 'chromium_sandbox': False}]
+
+
+@respx.mock
+async def test_a_browser_container_that_is_not_there_costs_de_tijd_and_nothing_else(harry, monkeypatch):
+    feeds_are_up()
+    respx.get(url__startswith=TRAIN).mock(
+        return_value=httpx.Response(200, text=(FEEDS / 'bbc-article.html').read_text())
+    )
+    built = harry()
+    module = chromium_module(built)
+    from playwright.sync_api import Error
+
+    playwright = Elsewhere(Error('connect: WebSocket error'))
+    monkeypatch.setattr(module, 'sync_playwright', lambda: playwright)
+    built.tijd._browser = lambda state: module.Chromium(state, ENDPOINT)  # noqa: SLF001 — the real one, pointed elsewhere
+
+    tijd = await article(built)
+    bbc = await article(built, TRAIN_ID)
+
+    assert tijd['available'] is False
+    assert tijd['why'] == 'the browser Harry reads De Tijd with could not start, or stopped'
+    assert bbc['available'] is True
+    assert built.sink.heard == [f'De Tijd: {tijd["why"]}']
+    assert playwright.launched == [], 'Harry started a browser of its own, beside every credential'
+
+
+def test_the_connector_is_handed_the_endpoint_its_settings_name(harry, monkeypatch):
+    """Through `load()`: the setting reaches the browser the connector opens, or nothing does."""
+    monkeypatch.setenv('HARRY_TIJD_BROWSER_ENDPOINT', ENDPOINT)
+    built = harry()
+    module = chromium_module(built)
+    playwright = Elsewhere()
+    monkeypatch.setattr(module, 'sync_playwright', lambda: playwright)
+
+    with built.factory(None):
+        pass
+
+    assert [url for url, _ in playwright.connected] == [module.connect_to(ENDPOINT)]
+
+
+# ---------------------------------------------------------------------------
 # The image, and the real site
 # ---------------------------------------------------------------------------
 
@@ -1327,6 +1471,235 @@ def test_harry_s_own_login_reads_a_de_tijd_article_in_full_from_the_image(built_
     assert answer['session'] == ['logged-in-at', 'storage-state.json'], (
         'it logged in, from nothing, and kept the session'
     )
+
+
+def shipped_browser_flags() -> tuple[list[str], list[str]]:
+    """What `docker-compose.yml` gives the browser container, as `docker run` arguments.
+
+    Read from the compose file rather than repeated here: a live test that proved a configuration
+    nobody deploys would be worth nothing, and `--unsafe` is exactly the kind of argument that
+    would otherwise be in one place and not the other.
+    """
+    import yaml
+
+    service = yaml.safe_load((REPO / 'docker-compose.yml').read_text(encoding='utf-8'))['services']['harry-browser']
+    flags = ['--user', service['user'], '--read-only', '--pids-limit', str(service['pids_limit'])]
+    for option in service.get('security_opt') or []:
+        flags += ['--security-opt', option.replace(':', '=', 1)]
+    for capability in service.get('cap_drop') or []:
+        flags += ['--cap-drop', capability]
+    for mount in service.get('tmpfs') or []:
+        flags += ['--tmpfs', mount]
+    for key, value in (service.get('environment') or {}).items():
+        flags += ['--env', f'{key}={value}']
+    return flags, list(service['command'])
+
+
+def running_processes(container: str) -> str:
+    """Every process in a container, by its command line.
+
+    `ps` is not in this image. An earlier version of this test asked for it anyway, got an empty
+    string back, and passed against a browser that was running with no sandbox at all.
+    """
+    read = subprocess.run(
+        ['docker', 'exec', container, 'sh', '-c', 'for p in /proc/[0-9]*; do tr "\\0" " " < $p/cmdline; echo; done'],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert read.returncode == 0, read.stderr[-500:]
+    assert read.stdout.strip(), 'nothing came back, so this proves nothing'
+    return read.stdout
+
+
+@pytest.mark.live
+def test_harry_s_own_browser_wrapper_drives_a_sandboxed_browser_in_its_own_container(built_image):
+    """The whole arrangement as it ships, against the real site, with no account needed.
+
+    De Tijd's homepage answers 403 to a headless browser, so 200 proves headed. The sandbox is
+    read from the browser's own processes **while a page is open** — measured 2026-09-17: the
+    server drops the sandbox the connect URL asks for unless it was started with `--unsafe`, and
+    most Chromium processes then carry `--no-sandbox`; with the flag, none does. How many
+    processes there are varies with the page, so the count is not the claim.
+    """
+    flags, command = shipped_browser_flags()
+    assert '--unsafe' in command, 'without it the server silently ignores the sandbox it is asked for'
+    network, browser, holder = 'tijd-public-net', 'tijd-public-browser', 'tijd-public-holder'
+    subprocess.run(['docker', 'network', 'create', network], capture_output=True)
+    for name in (browser, holder):
+        subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
+    try:
+        started = subprocess.run(
+            ['docker', 'run', '-d', '--name', browser, '--network', network, *flags, IMAGE, *command],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert started.returncode == 0, started.stderr[-2000:]
+        for _ in range(30):
+            if 'Listening on' in subprocess.run(['docker', 'logs', browser], capture_output=True, text=True).stdout:
+                break
+            time.sleep(1)
+
+        # A page held open, so the browser exists while its processes are read — and opened by
+        # Harry's own wrapper, so the launch options under test are the ones the connector states.
+        holding = (
+            'import sys, time\n'
+            'import importlib.util\n'
+            'spec = importlib.util.spec_from_file_location("t", "/app/.harry/connectors/tijd/connector.py", '
+            'submodule_search_locations=["/app/.harry/connectors/tijd"])\n'
+            'module = importlib.util.module_from_spec(spec)\n'
+            'sys.modules["t"] = module\n'
+            'spec.loader.exec_module(module)\n'
+            'with module.Chromium(None, sys.argv[1]) as browser:\n'
+            '    visit = browser.visit("https://www.tijd.be/", 45)\n'
+            '    print(visit.status, len(visit.html), flush=True)\n'
+            '    time.sleep(45)\n'
+        )
+        subprocess.run(
+            [
+                'docker',
+                'run',
+                '-d',
+                '--name',
+                holder,
+                '--network',
+                network,
+                IMAGE,
+                'uv',
+                'run',
+                'python',
+                '-c',
+                holding,
+                f'ws://{browser}:3000/',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=True,
+        )
+        for _ in range(60):
+            if subprocess.run(['docker', 'logs', holder], capture_output=True, text=True).stdout.strip():
+                break
+            time.sleep(1)
+        answered = subprocess.run(['docker', 'logs', holder], capture_output=True, text=True).stdout.strip()
+        status, _, length = answered.partition(' ')
+        assert status == '200', f'De Tijd answered {status!r}, which is what it does to a headless browser'
+        # A 200 with an empty body would otherwise pass for a rendered page.
+        assert int(length or 0) > 10000, f'De Tijd answered 200 with {length} characters of markup'
+
+        processes = running_processes(browser)
+        chromium = [line for line in processes.splitlines() if 'chrome' in line]
+        assert len(chromium) > 1, f'no browser was running to inspect: {processes[:400]}'
+        assert [line for line in chromium if '--type=renderer' in line], 'no renderer among them'
+        unsandboxed = [line for line in chromium if '--no-sandbox' in line]
+        assert unsandboxed == [], f'{len(unsandboxed)} of {len(chromium)} browser processes run with no sandbox'
+
+        settings = subprocess.run(['docker', 'exec', browser, 'ls', '/settings'], capture_output=True, text=True)
+        assert settings.returncode != 0, 'the browser container can see a settings directory'
+    finally:
+        for name in (holder, browser):
+            subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
+        subprocess.run(['docker', 'network', 'rm', network], capture_output=True)
+
+
+@pytest.mark.live
+def test_de_tijd_reads_through_a_browser_container_that_holds_no_credential(built_image, tmp_path):
+    """The whole arrangement, in two containers, against the real site.
+
+    A browser container with nothing mounted, unprivileged and sandboxed, and a second container
+    holding only this machine's De Tijd login. Depends on a built image, a De Tijd account and
+    tijd.be. It logs in once.
+    """
+    credentials = REPO / '.harry' / 'connectors' / 'tijd' / '.env.local'
+    if not credentials.exists():
+        pytest.skip('no De Tijd account in .harry/connectors/tijd/.env.local on this machine')
+    network, browser = 'tijd-live-net', 'tijd-live-browser'
+    subprocess.run(['docker', 'network', 'create', network], capture_output=True)
+    subprocess.run(['docker', 'rm', '-f', browser], capture_output=True)
+    try:
+        flags, command = shipped_browser_flags()
+        started = subprocess.run(
+            ['docker', 'run', '-d', '--name', browser, '--network', network, *flags, IMAGE, *command],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert started.returncode == 0, started.stderr[-2000:]
+        for _ in range(30):
+            if 'Listening on' in subprocess.run(['docker', 'logs', browser], capture_output=True, text=True).stdout:
+                break
+            time.sleep(1)
+
+        who = subprocess.run(['docker', 'exec', browser, 'id', '-u'], capture_output=True, text=True, timeout=60)
+        assert who.stdout.strip() == '1000', f'the browser container runs as {who.stdout.strip()}'
+        settings = subprocess.run(['docker', 'exec', browser, 'ls', '/settings'], capture_output=True, text=True)
+        assert settings.returncode != 0, 'the browser container can see a settings directory'
+
+        probe = (
+            'import json, pathlib, sys, trafilatura\n'
+            'from harry.loader import load\n'
+            'found = load().get("connector", "tijd")\n'
+            'assert found.status == "loaded", found.reason\n'
+            'answer = found.target.read(sys.argv[1])\n'
+            'text = trafilatura.extract(answer.get("html", ""), url=answer.get("url"), favor_precision=True) or ""\n'
+            'session = sorted(p.name for p in pathlib.Path("/tmp/tijd").glob("*"))\n'
+            'print(json.dumps({"why": answer.get("why"), "chars": len(text), "session": session}))\n'
+        )
+        ran = subprocess.run(
+            [
+                'docker',
+                'run',
+                '--rm',
+                '--network',
+                network,
+                '-v',
+                f'{credentials}:/settings/connectors/tijd/.env.local:ro',
+                '-e',
+                'HARRY_CAPABILITY_SETTINGS_DIR=/settings',
+                '-e',
+                'HARRY_TIJD_SESSION_DIR=/tmp/tijd',
+                '-e',
+                f'HARRY_TIJD_BROWSER_ENDPOINT=ws://{browser}:3000/',
+                IMAGE,
+                'uv',
+                'run',
+                'python',
+                '-c',
+                probe,
+                feed_link(),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        assert ran.returncode == 0, ran.stderr[-2000:]
+        answer = json.loads(ran.stdout.strip().splitlines()[-1])
+        assert answer['why'] is None, answer
+        assert answer['chars'] > 1000, answer
+        assert 'storage-state.json' in answer['session'], f"the session was not saved on Harry's side: {answer}"
+
+        # The session is a live De Tijd login. It is Harry's, handed over for the call only, so a
+        # copy inside the browser container would outlive the read and sit where the renderer is.
+        left = subprocess.run(
+            [
+                'docker',
+                'exec',
+                browser,
+                'sh',
+                '-c',
+                'find / -xdev -name "*storage-state*" -o -xdev -name "Cookies" 2>/dev/null',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert left.returncode == 0, left.stderr[-500:]
+        assert not left.stdout.strip(), f'the browser container kept the session: {left.stdout[:400]}'
+
+    finally:
+        subprocess.run(['docker', 'rm', '-f', browser], capture_output=True)
+        subprocess.run(['docker', 'network', 'rm', network], capture_output=True)
 
 
 def feed_link() -> str:

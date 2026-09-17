@@ -86,6 +86,10 @@ make logs      make logs-dev      # follow
 make health    make health-dev    # what loaded, and whether the clock is on
 ```
 
+**Three containers, two stacks.** `harry` and `harry-dev` are the stacks; `harry-browser` is the
+browser the real stack reads De Tijd through, and it belongs to neither — see
+[The browser container](#the-browser-container) below.
+
 | | Real | Dev |
 |---|---|---|
 | Port | 7430 | 7431 |
@@ -114,6 +118,53 @@ it. So dev schedules nothing, registers no watchdog, and never starts its schedu
 Dev has its own volume, so `docker compose down -v` on dev cannot take the real store with
 it, and its own credentials file, so a token pasted in to try something is never the token
 the morning page is using.
+
+### The browser container
+
+`harry-browser` runs the browser De Tijd is read with, and **holds nothing**: no connector's
+`.env.local`, no root `.env.local`, no data volume, no published port. It renders a commercial
+news site, advertising scripts and all, which is why it is kept empty and why it is the one
+container here allowed to run with Docker's syscall filtering relaxed — that is what lets
+Chromium's own sandbox start. Against that it runs as an unprivileged user, drops every Linux
+capability, may gain no privileges, caps its processes, and has a **read-only filesystem** with
+a tmpfs for the browser's scratch: it keeps nothing between restarts, because there is nowhere
+to keep it.
+
+**Two things have to hold for the sandbox to actually be on, and neither announces itself.**
+Harry asks for it on every connect, and the browser server honours the request only when it was
+started with `--unsafe` — without that flag it drops the request without a word and Chromium's
+renderers run with `--no-sandbox`. So the flag is part of `command:` in `docker-compose.yml`, and
+editing that line is how the sandbox would silently come off. What proves it is on is a live test
+that opens a page and reads the browser container's own `/proc`:
+
+```bash
+make test-live                     # the live suite; one test stands the container up and checks this
+```
+
+To check it by hand, look while a page is actually open — Chromium only runs when Harry is
+reading something, and a container with no browser in it reports no `--no-sandbox` for the
+boring reason:
+
+```bash
+docker exec harry-browser sh -c \
+  'for p in /proc/[0-9]*; do tr "\0" " " < $p/cmdline; echo; done' \
+  | grep -i chrome | grep -c -- --no-sandbox   # how many renderers lost the sandbox
+```
+
+Run that during an article and read both numbers together: `grep -i chrome` has to find
+processes at all, and none of them may carry `--no-sandbox`. Zero matches out of zero Chromium
+processes proves nothing.
+
+```bash
+docker compose logs -f harry-browser     # what the browser server is doing
+docker compose restart harry-browser     # when De Tijd says the browser could not start
+```
+
+**It comes from the same image as Harry**, so a deploy replaces both. In the seconds between,
+Harry may reach a browser of the other version and report that the browser could not start; the
+next article is fine. De Tijd's stories print their summaries meanwhile.
+
+The dev stack has no browser: it has no De Tijd credentials, so it never opens one.
 
 ### Why the port is set on the service and not left to a file
 

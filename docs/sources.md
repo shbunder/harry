@@ -10,7 +10,7 @@ remember exists. This page is the index and the part that is true of all of them
 | [news](../.harry/connectors/news/CONNECTOR.md) | nothing | the headlines, and the articles chosen from them |
 | [remarkable](../.harry/connectors/remarkable/CONNECTOR.md) | a device token | the delivery — the page is still written to disk |
 | [icloud](../.harry/connectors/icloud/CONNECTOR.md) | an Apple app-specific password, plus any published calendar links | the agenda line |
-| [tijd](../.harry/connectors/tijd/CONNECTOR.md) | a De Tijd subscription's email and password, and De Tijd's feed added to news | De Tijd's full article text — its stories print the feed's summary |
+| [tijd](../.harry/connectors/tijd/CONNECTOR.md) | a De Tijd subscription's email and password, De Tijd's feed added to news, and on the real stack the `harry-browser` container | De Tijd's full article text — its stories print the feed's summary |
 
 ## What every source promises
 
