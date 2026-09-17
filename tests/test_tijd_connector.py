@@ -1681,6 +1681,8 @@ def test_de_tijd_reads_through_a_browser_container_that_holds_no_credential(buil
 
         # The session is a live De Tijd login. It is Harry's, handed over for the call only, so a
         # copy inside the browser container would outlive the read and sit where the renderer is.
+        # Only /tmp can hold one: the rest of the filesystem is read-only, and the image itself
+        # ships a `storage-state.md` in Playwright's own docs that a whole-disk search would find.
         left = subprocess.run(
             [
                 'docker',
@@ -1688,7 +1690,7 @@ def test_de_tijd_reads_through_a_browser_container_that_holds_no_credential(buil
                 browser,
                 'sh',
                 '-c',
-                'find / -xdev -name "*storage-state*" -o -xdev -name "Cookies" 2>/dev/null',
+                'find /tmp \\( -name "*storage-state*" -o -name "Cookies" \\) -print',
             ],
             capture_output=True,
             text=True,
@@ -1696,6 +1698,15 @@ def test_de_tijd_reads_through_a_browser_container_that_holds_no_credential(buil
         )
         assert left.returncode == 0, left.stderr[-500:]
         assert not left.stdout.strip(), f'the browser container kept the session: {left.stdout[:400]}'
+        # …and the search had somewhere to look. `HOME` is the tmpfs, so a Chromium that really ran
+        # here leaves its own directories behind; without them an empty result would only mean the
+        # browser never started, which is the shape of mistake this test was rewritten to stop.
+        left_behind = subprocess.run(
+            ['docker', 'exec', browser, 'sh', '-c', 'ls -A /tmp'], capture_output=True, text=True, timeout=60
+        )
+        assert '.config' in left_behind.stdout, (
+            f'no browser had run in /tmp, so this proves nothing: {left_behind.stdout!r}'
+        )
 
     finally:
         subprocess.run(['docker', 'rm', '-f', browser], capture_output=True)
