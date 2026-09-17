@@ -2,7 +2,7 @@
 id: STORY-260916-ebeb3f
 title: A connector's own .env.local reaches the real stack
 feature: FEAT-260912-9c933f
-status: Backlog
+status: In Progress
 created: 2026-09-16
 ---
 
@@ -22,16 +22,19 @@ and iCloud. The deploy is confirmed with the owner before it happens.
 
 ## Acceptance criteria
 
-- [ ] `HARRY_CAPABILITY_SETTINGS_DIR` is a core setting, empty by default, in `Settings` and the root `.env`, with a comment saying what mounts it
-- [ ] When it is set, a capability's `.env.local` under `<dir>/<kind>/<name>/` is read, and wins over the `.env.local` beside the capability
-- [ ] The environment variable still wins over the mounted file, and a principal's own file still wins over both
-- [ ] When it is empty, nothing changes: a test proves a laptop resolves exactly as before
-- [ ] Nothing but `.env.local` is read from the mounted directory — a `.env` placed there is ignored
-- [ ] `docker-compose.yml` mounts `./.harry` read-only on the `harry` service and sets the setting there; `harry-dev` mounts nothing and sets nothing
-- [ ] A test in the gate reads `docker-compose.yml` and fails if the mount stops being read-only, or if dev gains it
-- [ ] With a connector's `.env.local` in the mounted tree and nothing in the root `.env.local`, a started container lists that connector as loaded (live)
-- [ ] `docs/operating.md` says where a credential goes on the NUC, in the present tense, and says the dev stack still reads `.env.dev.local`
-- [ ] `.claude/rules/secrets-and-config.md` states the new precedence
+- [x] `HARRY_CAPABILITY_SETTINGS_DIR` is a core setting, empty by default, in `Settings` and the root `.env`, with a comment saying what mounts it
+- [x] When it is set, a capability's `.env.local` at `<dir>/connectors/<name>/.env.local` — the kind's folder name, plural, as under `.harry/` — is read, and wins over the `.env.local` beside the capability
+- [x] A connector and a tool with the same name read different mounted files
+- [x] The environment variable still wins over the mounted file, and a principal's own file still wins over both
+- [x] When it is empty, nothing changes: a file at the would-be mounted path is not read
+- [x] Nothing but `.env.local` is read from the mounted directory — a `.env` placed there is ignored
+- [x] Through `load()`, a connector whose required settings are only in the mounted directory loads, and is skipped when the setting is empty
+- [x] `docker-compose.yml` mounts `./.harry` read-only on the `harry` service at the path its `HARRY_CAPABILITY_SETTINGS_DIR` names; `harry-dev` mounts nothing but its volume and sets nothing
+- [x] `tests/test_deployment.py::test_each_stack_keeps_its_data_on_a_named_volume_of_its_own` is narrowed, not deleted: data still lives on a named volume of each stack's own, and a new test proves the only other mount is `./.harry`, read-only, on the real stack
+- [x] In the built image, a container with a `.harry`-shaped directory mounted read-only and the setting pointing at it loads a connector from it (live)
+- [x] by inspection: prose — `docs/operating.md` says where a credential goes on the NUC, in the present tense; that each connector's `.env.local` should be mode 600; and that the dev stack still reads `.env.dev.local`
+- [ ] The connector `.env.local` files on this NUC are mode 600 before the real stack is deployed with the mount — by inspection: they are this machine's files, not the repository's
+- [x] by inspection: prose — `.claude/rules/secrets-and-config.md` states the new precedence
 
 ## Subtasks
 

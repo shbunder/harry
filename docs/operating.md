@@ -91,7 +91,7 @@ make health    make health-dev    # what loaded, and whether the clock is on
 | Port | 7430 | 7431 |
 | Container | `harry` | `harry-dev` |
 | Volume | `harry-data` | `harry-dev-data` |
-| Credentials | `.env.local` | `.env.dev.local` |
+| Credentials | each connector's own `.env.local`, through a read-only mount | `.env.dev.local`, prefixed names |
 | Clock | **on** | **off** |
 
 **How to tell them apart from outside**, with no access to either one's settings: ask
@@ -127,30 +127,51 @@ being fixed: `/data` empty, the store written to a path that dies with the conta
 
 ## Putting a credential on the NUC
 
-Harry's secrets arrive as **environment variables**, one file per stack, and never as a file
-inside the image. The names are `HARRY_<CAPABILITY>_<SETTING>` — the prefixed spelling of a
-capability's own setting, which exists for exactly this: a container has no folders.
+**A credential goes in its connector's own folder**, on the NUC exactly as on a laptop:
+
+```
+.harry/connectors/icloud/.env.local       USERNAME, APP_PASSWORD
+.harry/connectors/remarkable/.env.local   DEVICE_TOKEN
+.harry/connectors/slack/.env.local        BOT_TOKEN, CHANNEL
+```
+
+Keys are bare, because the folder is the namespace. Each folder's committed `.env` lists
+every key that connector reads, with a comment saying where to get it.
 
 ```bash
-install -m 600 /dev/null .env.local        # if it does not exist yet. 600, before anything goes in it
-$EDITOR .env.local
+install -m 600 /dev/null .harry/connectors/icloud/.env.local   # 600, before anything goes in it
+$EDITOR .harry/connectors/icloud/.env.local
 ```
 
 ```ini
-# .env.local — the real stack. Gitignored, mode 600, never leaves this machine.
-HARRY_ICLOUD_USERNAME=you@example.com
-HARRY_ICLOUD_APP_PASSWORD=abcd-efgh-ijkl-mnop
-HARRY_REMARKABLE_DEVICE_TOKEN=<the long token from pairing>
-HARRY_SLACK_BOT_TOKEN=xoxb-…
-HARRY_SLACK_CHANNEL=#harry
+# .harry/connectors/icloud/.env.local — gitignored, mode 600, never leaves this machine.
+USERNAME=you@example.com
+APP_PASSWORD=abcd-efgh-ijkl-mnop
 ```
 
-Then `make up`. **No rebuild** — the image carries no configuration, so a credential added
-here reaches Harry on the next start. Watch it land:
+**How the container sees it.** The image carries no `.env.local` — `.dockerignore` keeps
+every one out. So the real stack mounts the checkout's `.harry/` read-only at `/settings`,
+and `HARRY_CAPABILITY_SETTINGS_DIR=/settings` tells Harry to read each capability's
+`.env.local` from there. Only `.env.local` is read from the mount. The code, and the
+committed `.env` beside it, are still the image's.
+
+**Mode 600, every one.** The mount makes these files the credential route, and a file mode
+of 664 — what an editor usually leaves — lets every user on the NUC read them. Check with:
 
 ```bash
+find .harry -name .env.local -printf '%m %p\n'    # every line should start with 600
+chmod 600 .harry/*/*/.env.local
+```
+
+Then restart. **No rebuild** — the image carries no configuration, and settings are read once,
+at start-up, so a changed file reaches Harry on the next start:
+
+```bash
+docker compose restart harry
 make health | grep -A1 icloud     # skipped → loaded
 ```
+
+`make up` alone does not restart a running container whose compose file did not change.
 
 **Use an editor, not `echo >>`.** A secret typed on a command line is in `~/.bash_history`
 and in the process list while it runs, and neither is somewhere you can take it back from.
@@ -159,20 +180,32 @@ and in the process list while it runs, and neither is somewhere you can take it 
 — start there, then iCloud, then the tablet, checking `make health` after each. A credential
 that does not work is much easier to find when it is the only one that changed.
 
-The dev stack reads `.env.dev.local` instead, with the same names. Give it its own
-throwaway values where you can: the reMarkable token especially, because there is no
-read-only variant and the dev stack pushing to the real tablet is a thing that happens once.
+**An environment variable still wins.** `HARRY_ICLOUD_APP_PASSWORD` in the root `.env.local`
+overrules the connector's own file, so a stale one left there from before this mount existed
+is the value Harry uses. Remove it rather than keeping two.
+
+**The dev stack is different, on purpose.** It mounts nothing, because every `.env.local`
+under `.harry/` is the real one — the tablet token, which has no read-only variant, among
+them. Dev reads `.env.dev.local` in the repository root, under the prefixed names:
+
+```ini
+# .env.dev.local — the dev stack only. Throwaway values wherever you can get them.
+HARRY_SLACK_BOT_TOKEN=xoxb-…
+HARRY_SLACK_CHANNEL=#harry-dev
+```
 
 | Setting | Where to get it | Expires |
 |---|---|---|
-| `HARRY_ICLOUD_USERNAME` | The Apple ID itself | no |
-| `HARRY_ICLOUD_APP_PASSWORD` | account.apple.com → Sign-In and Security → App-Specific Passwords. Shown once | when the Apple ID password changes |
-| `HARRY_REMARKABLE_DEVICE_TOKEN` | `make remarkable-pair CODE=…`, code from my.remarkable.com/device/desktop/connect | no — but revoking the device kills it |
-| `HARRY_SLACK_BOT_TOKEN` | api.slack.com/apps → OAuth & Permissions. Needs `chat:write`, and the bot invited to the channel | no |
-| `HARRY_SLACK_CHANNEL` | A channel id like `C0123456789`, or `#harry` | — |
+| icloud `USERNAME` | The Apple ID itself | no |
+| icloud `APP_PASSWORD` | account.apple.com → Sign-In and Security → App-Specific Passwords. Shown once | when the Apple ID password changes |
+| remarkable `DEVICE_TOKEN` | `make remarkable-pair CODE=…`, code from my.remarkable.com/device/desktop/connect | no — but revoking the device kills it |
+| slack `BOT_TOKEN` | api.slack.com/apps → OAuth & Permissions. Needs `chat:write`, and the bot invited to the channel | no |
+| slack `CHANNEL` | A channel id like `C0123456789`, or `#harry` | — |
+| tijd `EMAIL`, `PASSWORD` | The De Tijd account, if it signs in with an email and a password — not Google or Apple | when you change the password at De Tijd |
 
-The De Tijd browser session is the exception: it is a file, not a string, and it lives in
-the data volume at mode 600. See the renewal steps further down.
+De Tijd's login goes in its connector's `.env.local` like every other credential. The session
+Harry keeps with it is a file on the data volume, `/data/tijd/storage-state.json`, mode 600,
+and Harry renews it by itself — see [The De Tijd login](#the-de-tijd-login) below.
 
 ### Building a page by hand, before anything is scheduled
 
@@ -251,15 +284,14 @@ Two files, and `.env.local` wins:
 | File | Committed? | On the NUC it holds |
 |---|---|---|
 | `.env` | Yes — it arrives with the checkout | Every key with its working default, secrets empty |
-| `.env.local` | No | The three credentials, and anything that differs on this machine |
+| `.env.local` | No | Core's settings that differ on this machine. Credentials are in each connector's own folder |
 
 A capability's own settings live in its own folder, beside a committed `.env` that
 `make env-template` generates — `.harry/connectors/slack/.env.local` holds the Slack bot
-token. **That is the route on a laptop.** In the container it does not exist:
-`.dockerignore` keeps every `.env.local` out of the image and nothing mounts one, so on the
-NUC the same setting arrives as `HARRY_SLACK_BOT_TOKEN` in the root `.env.local`, which
-compose injects as a real environment variable. Same setting, same precedence order, two
-spellings — see [Putting a credential on the NUC](#putting-a-credential-on-the-nuc) above.
+token. **That is the route on the NUC too.** The real stack mounts `.harry/` read-only and
+reads each `.env.local` through `HARRY_CAPABILITY_SETTINGS_DIR` — see
+[Putting a credential on the NUC](#putting-a-credential-on-the-nuc) above. The root
+`.env.local` holds core's settings only.
 See also [alerting.md](alerting.md) and [capabilities.md](capabilities.md).
 
 You never copy `.env`. You create `.env.local` beside it with only what differs, so a key
@@ -324,11 +356,12 @@ if you ever need them: a per-server `timeout` in `.mcp.json`, or
 This is the part worth reading before you need it. These degrade Harry without breaking it,
 which is exactly why they need an alert rather than a health check.
 
-Three, and they fail in different ways:
+They fail in different ways:
 
 | Credential | How it dies | What you see | Can you rotate it? | Where the steps are |
 |---|---|---|---|---|
-| The De Tijd browser session | On its own, after a few weeks | Articles fall back to their RSS summary | Yes — log in again | Below |
+| The De Tijd session | On its own, after an unmeasured number of weeks | Nothing: Harry logs in again by itself, and the log says how long the old one lasted | Nothing to rotate | Below |
+| The De Tijd password | The day you change it at De Tijd | De Tijd stories print their summary, and `De Tijd: Harry could not log in: De Tijd refused the email or password…` in Slack | Yes — put the new one in `.env.local` and restart | Below |
 | The iCloud app-specific password | The day you change your Apple ID password, which revokes every one at once | `Agenda unavailable`, and `Calendar: the password was refused` in Slack | Yes — generate a new one | [sources.md § The calendar](sources.md) |
 | A published calendar link | When the calendar is republished, or the sharer withdraws it | `Agenda unavailable`, and the link's name in Slack | **Only if the calendar is yours.** Otherwise it is theirs to reissue | [sources.md § A calendar your work publishes](sources.md) |
 | The reMarkable device token | Only if you revoke the device at my.remarkable.com | A failed push, and `reMarkable: the tablet refused the token` in Slack | Yes — remove the device and pair again | [sources.md § The tablet](sources.md) |
@@ -344,25 +377,39 @@ republishing it, which only its owner can do. If such a link leaks, it stays lea
 they reissue it, and they may never need to. Every other credential in Harry has an
 owner-side revocation; this one does not.
 
-### The De Tijd browser session
+### The De Tijd login
 
-**Symptom.** De Tijd articles stop arriving with full text and fall back to their RSS
-summary. The page still renders. Slack gets *"De Tijd login needs refreshing"*.
+**Harry logs in to De Tijd by itself.** A De Tijd article whose page shows the paywall makes
+Harry log in with the email and password in `.harry/connectors/tijd/.env.local`, save the new
+session to `/data/tijd`, and read the article again — in the same call. A lapsed session costs
+nothing anybody sees.
 
-**Why.** De Tijd returns 403 to any non-browser client, even for free articles, so Harry
-reads it through a real browser using a saved logged-in session. That session expires every
-few weeks.
+**When Harry cannot log in**, De Tijd's stories print the feed's summary, the page still
+renders, and one line reaches Slack naming what happened. **It does not try again for 6
+hours** after anything that might have been a refusal: a refused password, a captcha, a step
+after the password Harry does not recognise, a browser lost between sending the password and
+coming back to De Tijd, or a paywall that is still there after a login. De Tijd blocks an
+account after repeated failures, and one refused attempt a morning is safe where one per
+article is not. A login that stopped before the password was sent — slow, unreachable, or a
+browser that gave out — is tried again after 15 minutes.
 
-**Fix.** Log in by hand in a headed browser and save the session again:
+**Fix a refused password:**
 
 ```bash
-make spike S=tijd-login            # headed, logs in, writes the storage state
+$EDITOR .harry/connectors/tijd/.env.local      # the new PASSWORD
+docker compose restart harry                    # clears the 6-hour wait, and reads the new one
 ```
 
-Then copy the file to the NUC's data volume at the path `TIJD_STORAGE_STATE` names.
+**A 403 is not the login.** `De Tijd refused the browser (403)` means De Tijd's bot filter
+turned the browser away. Logging in again will not help, and the password is fine.
 
-This is personal use of a subscription you pay for, on your own device. The storage state
-is never shared and never committed.
+Every line Slack can get, and what to do about each, is in
+[the tijd connector's page](../.harry/connectors/tijd/CONNECTOR.md). How long a session lasts
+is not known yet: each login logs `the previous session lasted N days`, so the answer builds
+up in `make logs`.
+
+This is personal use of a subscription you pay for, on your own device. The password and the
+saved session are never shared and never committed.
 
 ## When no page arrives at all
 

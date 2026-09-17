@@ -17,6 +17,9 @@ The order of the work:
    out loud: silently replacing code is worse than replacing it loudly.
 2. **Load, connectors first.** A tool or a job naming a connector in `requires:` can only
    be told its connector is missing once the connectors have had their turn.
+3. **Within a kind, after whatever it names.** A connector may name another connector — one
+   that fetches pages handing a paywalled site's pages to one holding its login — and it can
+   only be handed one that has already loaded. Folder names decide nothing beyond a tie.
 
 Every reason ends up in `/health`, so every reason is written for somebody who is not
 debugging this — **Explainable**.
@@ -62,10 +65,87 @@ def load(roots: Sequence[Path] | None = None, alerts: Any = None) -> Catalogue:
     searched = list(roots) if roots is not None else capability_roots()
     catalogue = Catalogue(roots=searched)
     for kind in KINDS:
-        for capability in _winners(kind, searched, catalogue):
+        for capability in _in_dependency_order(_winners(kind, searched, catalogue), kind):
             _load_one(capability, catalogue, alerts)
     _say_what_happened(catalogue)
     return catalogue
+
+
+def _in_dependency_order(found: list[Capability], kind: Kind) -> list[Capability]:
+    """Each capability after the ones of its own kind it names, and otherwise as found.
+
+    A tool or a job names connectors, which are all loaded before it, so for them this changes
+    nothing. A connector naming a connector is what it exists for.
+
+    **A loop cannot be ordered, and must not stop Harry.** When everything still waiting names
+    something else still waiting, the loop that names nothing outside itself goes next, its
+    members in the order they were found. A member naming a later one then finds nothing:
+    handed nothing under `optional:`, skipped under `requires:` — the same answer as naming a
+    connector that is broken. The lint refuses a loop; this is for one it never saw.
+    """
+    waiting = list(found)
+    here = {capability.name for capability in waiting}
+    names = {capability.name: _named(capability, kind) & here for capability in waiting}
+    ordered: list[Capability] = []
+
+    while waiting:
+        placed = {capability.name for capability in ordered}
+        ready = next((c for c in waiting if names[c.name] <= placed), None)
+        batch = [ready] if ready is not None else _first_loop(waiting, names, placed)
+        if ready is None:
+            LOG.warning(
+                '%s %s name each other, so they load in the order they were found, and a name later in that order is not there yet',
+                kind.folder,
+                ', '.join(c.name for c in batch),
+            )
+        for capability in batch:
+            ordered.append(capability)
+            waiting.remove(capability)
+    return ordered
+
+
+def _named(capability: Capability, kind: Kind) -> set[str]:
+    """What a declaration names under `requires:` and `optional:`, for ordering alone.
+
+    Deliberately forgiving: this runs before any capability's own try/except, so a
+    declaration that cannot be read, or a list that is not a list, counts as naming nothing
+    here. Its own turn in `_load_one` is where it is skipped, with a reason.
+    """
+    try:
+        fields = read_frontmatter(capability.folder / kind.declaration)
+    except Exception:  # noqa: BLE001 — ordering must never be what takes Harry down
+        return set()
+    named: set[str] = set()
+    for key in ('requires', 'optional'):
+        value = fields.get(key)
+        if isinstance(value, list):
+            named.update(str(name) for name in value)
+    return named
+
+
+def _first_loop(waiting: list[Capability], names: dict[str, set[str]], placed: set[str]) -> list[Capability]:
+    """The members of a loop that waits on nothing but itself, in the order they were found.
+
+    Everything still waiting names something else still waiting, so following those names
+    from any one of them must come back round. Of the loops found that way, the one whose
+    members reach nothing outside it goes first; its earliest-found member picks among ties.
+    """
+    order = {capability.name: index for index, capability in enumerate(waiting)}
+
+    def reach(start: str) -> set[str]:
+        seen, stack = set(), [start]
+        while stack:
+            for name in names[stack.pop()] - placed:
+                if name not in seen:
+                    seen.add(name)
+                    stack.append(name)
+        return seen
+
+    reaches = {name: reach(name) for name in order}
+    loops = [{name} | {other for other in reaches[name] if name in reaches[other]} for name in order]
+    closed = [loop for loop in loops if all(reaches[member] <= loop for member in loop)]
+    chosen = min(closed, key=lambda loop: min(order[member] for member in loop))
+    return sorted((c for c in waiting if c.name in chosen), key=lambda c: order[c.name])
 
 
 def _winners(kind: Kind, roots: Iterable[Path], catalogue: Catalogue) -> list[Capability]:
@@ -185,6 +265,11 @@ def _connectors_for(fields: dict[str, Any], catalogue: Catalogue) -> Connectors:
     `context.connectors`. The morning page is why: a lapsed calendar password should cost
     the agenda column, not the whole page.
     """
+    for key in ('requires', 'optional'):
+        if not isinstance(fields.get(key) or [], list):
+            # A bare `optional: tijd` would otherwise be iterated letter by letter and reported
+            # as needing connectors called t, i, j and d.
+            raise Skip(f'`{key}:` must be a list of connector names, like `{key}: [name]`')
     wanted = [str(name) for name in fields.get('requires') or []]
 
     missing = sorted(

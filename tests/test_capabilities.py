@@ -539,3 +539,58 @@ def test_an_optional_that_is_not_a_list_is_refused(harry, capsys):
 
     assert cap.main([]) == 1
     assert '`optional` must be a list' in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# A connector naming connectors
+# ---------------------------------------------------------------------------
+
+
+def named(name: str, lists: str = '') -> str:
+    return f'---\nname: {name}\ndescription: {name}\nexpires: never\nenabled: true\n{lists}---\n\nBody.\n'
+
+
+def test_a_connector_may_name_another_connector(harry, capsys):
+    harry('connectors', 'news', named('news', 'optional: [tijd]\n'))
+    harry('connectors', 'tijd', named('tijd'))
+    assert cap.main([]) == 0, capsys.readouterr().err
+
+
+def test_a_connector_naming_a_connector_that_does_not_exist_is_caught(harry, capsys):
+    """Under `optional:` the typo is silent forever: the name is simply never handed over."""
+    harry('connectors', 'news', named('news', 'optional: [tidj]\n'))
+    harry('connectors', 'tijd', named('tijd'))
+    assert cap.main([]) == 1
+    assert 'optionally names connectors that do not exist: tidj' in capsys.readouterr().err
+
+
+def test_a_connector_s_list_written_as_one_name_is_caught(harry, capsys):
+    harry('connectors', 'news', named('news', 'requires: tijd\n'))
+    harry('connectors', 'tijd', named('tijd'))
+    assert cap.main([]) == 1
+    assert '`requires` must be a list of connector names' in capsys.readouterr().err
+
+
+def test_two_connectors_naming_each_other_are_caught(harry, capsys):
+    harry('connectors', 'news', named('news', 'optional: [tijd]\n'))
+    harry('connectors', 'tijd', named('tijd', 'requires: [news]\n'))
+    assert cap.main([]) == 1
+    assert 'connectors news and tijd name each other' in capsys.readouterr().err
+
+
+def test_a_longer_loop_is_caught_once(harry, capsys):
+    harry('connectors', 'alpha', named('alpha', 'optional: [bravo]\n'))
+    harry('connectors', 'bravo', named('bravo', 'optional: [charlie]\n'))
+    harry('connectors', 'charlie', named('charlie', 'optional: [alpha]\n'))
+    harry('connectors', 'delta', named('delta', 'optional: [alpha]\n'))
+    assert cap.main([]) == 1
+    err = capsys.readouterr().err
+    assert err.count('name each other') == 1, err
+    assert 'connectors alpha, bravo and charlie name each other' in err
+    assert 'delta' not in err.split('name each other')[0], 'delta waits on the loop; it is not part of it'
+
+
+def test_a_connector_naming_itself_is_caught(harry, capsys):
+    harry('connectors', 'news', named('news', 'optional: [news]\n'))
+    assert cap.main([]) == 1
+    assert 'connector news names itself' in capsys.readouterr().err

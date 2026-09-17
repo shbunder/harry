@@ -82,11 +82,16 @@ work for an account that signs in with Google or Apple.
 **Degrading** decided it: the page no longer waits for a person to notice a Slack line and
 open a remote browser. What option 3 costs in **Bounded** is paid for with rules:
 
-- `PASSWORD` is declared `secret: true`, so it is scrubbed from every alert and never logged.
-  It lives only in the connector's `.env.local` on the NUC, readable by its owner.
+- `EMAIL` and `PASSWORD` are declared `secret: true`. The tijd connector raises its own Slack
+  lines, so its own context scrubs both from every line it sends — a line raised by the news
+  connector would scrub news's secrets, and news has none. Every reason it gives is a fixed
+  sentence with no exception text in it, so there is nothing to scrub in the first place.
+- The password lives only in the connector's `.env.local` on the NUC, mode 600.
 - The session is saved to `/data/tijd/storage-state.json`, mode 600, on the data volume. Never
   in the repository and never in the image.
-- After a failed login, Harry does not try again for 6 hours. One attempt, then a Slack line.
+- After a refused password, a captcha or a login step Harry does not know, it does not try
+  again for 6 hours. One attempt, then a Slack line. A login page that did not answer waits 15
+  minutes instead: nothing was refused, so nothing counts towards a lockout.
 - A 403 is never answered with a login. It is the browser that was refused, and saying "log in
   again" would send the owner to fix the wrong thing.
 
@@ -97,8 +102,8 @@ open a remote browser. What option 3 costs in **Bounded** is paid for with rules
 - A lapsed session is renewed within the call that finds it. The page carries the article.
 - A Slack line about De Tijd now means something a person has to do: the password changed, a
   captcha appeared, or the login page moved.
-- Every login logs how long the previous session lasted. The open question from the
-  2026-09-13 spike answers itself over time.
+- Every login writes its time to `/data/tijd/logged-in-at`, and logs how long the previous
+  session lasted. The open question from the 2026-09-13 spike answers itself over time.
 
 **Bad:**
 
@@ -108,6 +113,16 @@ open a remote browser. What option 3 costs in **Bounded** is paid for with rules
   revisited — option 1 is the fallback, and it needs an image change.
 - **A login page redesign breaks full text** until the selectors are updated. The Slack line
   names the field Harry could not find, so the fix starts in the right place.
+- **The browser runs as root, without Chromium's sandbox, beside every credential.** It renders
+  De Tijd's pages and the advertising scripts on them in the container that can read each
+  connector's `.env.local` through `/settings` (the tablet token, the iCloud and Slack
+  credentials, this password), the root `.env.local` with the MCP bearer token, and the saved
+  session on `/data`. One exploit in the renderer would reach all of them. **The owner accepted
+  this on 2026-09-17**, to have De Tijd running, with the fix as the next feature:
+  [[FEAT-260917-250f5a]]. That fix is more than a user change — Playwright passes `--no-sandbox`
+  unless `chromium_sandbox=True` is given, Docker's default seccomp profile usually blocks the
+  sandbox, the data volume's ownership has to change, and Chromium's patch level only moves when
+  the locked Playwright version does.
 - **The 6-hour wait lives in memory.** A restart clears it. A container stuck restarting with a
   wrong password would try once per start; `restart: unless-stopped` makes that rare, but it
   is not impossible.

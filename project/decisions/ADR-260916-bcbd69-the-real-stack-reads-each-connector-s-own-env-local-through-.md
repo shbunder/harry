@@ -68,13 +68,14 @@ A make target writes `HARRY_<NAME>_<KEY>` lines into a gitignored file that comp
 
 Compose mounts `./.harry` at `/settings`, read-only, on the real service only. A new core
 setting, `HARRY_CAPABILITY_SETTINGS_DIR`, names that directory. When it is set, Harry reads a
-capability's `.env.local` from `<dir>/<kind>/<name>/.env.local` as well as beside the
-capability.
+capability's `.env.local` from `<dir>/connectors/<name>/.env.local` — the kind's folder name,
+as under `.harry/` — as well as beside the capability.
 
 **For:** one file per credential. The image, the code and the tag are unchanged. Nothing but
 `.env.local` is read from the mount. The environment still wins.
 **Against:** a core setting and a change to `config.py`. The whole `.harry/` tree is visible
-inside the container, code included — read by nothing, but there.
+inside the container, code included — read by nothing but Harry's settings, but there to
+anything else that runs in the container.
 
 ## Decision outcome
 
@@ -111,6 +112,9 @@ deliberate act, and in the container the one beside it never exists. **Bounded**
 - **A mount's source is resolved against the compose file.** `make up` from a worktree mounts
   that worktree's `.harry/`, whose `.env.local` files are not seeded. The real stack is
   deployed from the main checkout.
+- **Every credential is now readable from inside the container, by whatever runs there.** That
+  includes the headed Chromium De Tijd is read with, which runs as root without its sandbox.
+  [[ADR-260916-b26785]] records that risk and why it is accepted for now.
 - **Editing a connector's `.env.local` still needs a restart.** Settings are read once, at
   start-up. That is unchanged, but it now surprises in a new place, because the file on the
   host changed and the container did not notice.

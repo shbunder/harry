@@ -32,6 +32,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -279,8 +280,12 @@ class News:
         alert: Callable[..., bool],
         log: logging.Logger,
         now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+        readers: Iterable[Any] = (),
     ) -> None:
         self._feeds = list(feeds)
+        self._readers = list(readers)
+        """Connectors that read some sites' pages better than a plain request can — De Tijd's,
+        through a logged-in browser. Each says which links are its own with `handles(link)`."""
         self._zone = zone
         self._alert = alert
         self._log = log
@@ -314,6 +319,9 @@ class News:
         # `summary` and `image` come along, so a story whose page will not load still has
         # something to print. The feed's own description was always going to be readable.
         known = {key: story[key] for key in ('id', 'title', 'source', 'published', 'link', 'summary', 'image')}
+        reader = self._reader_for(story['link'])
+        if reader is not None:
+            return {**known, **self._read_through(reader, story)}
         try:
             text = self._read(story['link'])
         except (httpx.HTTPError, Unreadable) as error:
@@ -444,10 +452,64 @@ class News:
             headers={'User-Agent': USER_AGENT},
         )
         response.raise_for_status()
-        text = trafilatura.extract(response.text, url=str(response.url), favor_precision=True) or ''
-        if len(text.strip()) < MINIMUM_TEXT:
-            raise Unreadable('the page loaded but there was no article text in it')
-        return text.strip()
+        return _prose(response.text, str(response.url))
+
+    def _reader_for(self, link: str) -> Any:
+        """The connector that reads this link's pages, if one says it does.
+
+        Asked inside a guard: another connector's code runs here for every story, and one that
+        raises must not cost VRT NWS and the BBC their articles. It is passed over, and the link
+        is fetched like any other.
+        """
+        for reader in self._readers:
+            try:
+                if reader.handles(link):
+                    return reader
+            except Exception as error:  # noqa: BLE001 — another connector's fault is passed over
+                self._log.error(
+                    'a connector that reads pages could not say whether it reads a link: %s', type(error).__name__
+                )
+        return None
+
+    def _read_through(self, reader: Any, story: dict) -> dict:
+        """A page another connector fetched, turned into prose here like every other page.
+
+        The reader answers `{"url", "html"}`, or `{"why", "said"}` when it could not. `said`
+        means it has already put its own line in Slack — it holds the credential, so its line
+        names the thing to fix — and saying it again here would be two lines for one fault.
+
+        A reader that raises instead of answering costs this one article and is reported under
+        this connector's own key, as any page that would not load is.
+        """
+        try:
+            answer = reader.read(story['link'])
+            if not isinstance(answer, dict) or ('why' not in answer and not {'url', 'html'} <= answer.keys()):
+                raise TypeError('an answer with neither a page nor a why')
+        except Exception as error:  # noqa: BLE001 — another connector's fault costs this article, not the page
+            why = f'the connector that reads {story["source"]} failed ({type(error).__name__})'
+            # No traceback: an error raised inside a browser can carry what it was typing.
+            self._log.error('no text for %s: %s', story['id'], why)
+            self._alert(f'{story["source"]}: {why}', key=f'article:{story["feed"]}')
+            return {'available': False, 'why': why}
+        if 'why' in answer:
+            if not answer.get('said'):
+                self._alert(f'{story["source"]}: {answer["why"]}', key=f'article:{story["feed"]}')
+            return {'available': False, 'why': answer['why']}
+        try:
+            return {'available': True, 'text': _prose(answer['html'], answer['url'])}
+        except Unreadable as error:
+            why = _why(error, story['source'], ARTICLE_TIMEOUT)
+            self._log.warning('no text for %s: %s', story['id'], why)
+            self._alert(f'{story["source"]}: {why}', key=f'article:{story["feed"]}')
+            return {'available': False, 'why': why}
+
+
+def _prose(html: str, url: str) -> str:
+    """The article in a page, without the navigation, the related links or the cookie banner."""
+    text = trafilatura.extract(html, url=url, favor_precision=True) or ''
+    if len(text.strip()) < MINIMUM_TEXT:
+        raise Unreadable('the page loaded but there was no article text in it')
+    return text.strip()
 
 
 def _concise(candidate: dict) -> dict:
@@ -487,4 +549,7 @@ def register(registry: Registry, context: Context) -> None:
     except (ZoneInfoNotFoundError, ValueError):
         context.log.warning('no zone called %r; filing stories under UTC instead', wanted)
         zone = ZoneInfo('UTC')
-    registry.connector(News(feeds, zone, context.alert, context.log))
+    # Declared `optional:`, so a missing or broken tijd connector costs De Tijd's full text and
+    # nothing else: its links are then fetched like any other page, and answered with a 403.
+    readers = [reader for reader in (context.connectors.get('tijd'),) if reader is not None]
+    registry.connector(News(feeds, zone, context.alert, context.log, readers=readers))

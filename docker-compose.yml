@@ -19,6 +19,9 @@ services:
     image: harry:${HARRY_TAG:-latest}
     container_name: harry
     restart: unless-stopped
+    # A small init as PID 1, which reaps what a crashed Chromium leaves behind — `uv` does not,
+    # and a container running for months would collect them — and passes `docker stop` on.
+    init: true
     # Both files, in the same order and with the same meaning as everywhere else:
     # `.env` is committed and carries the defaults, `.env.local` is this NUC's and wins.
     # `required: false` because a machine with nothing to override needs no second file.
@@ -30,10 +33,19 @@ services:
     ports:
       - "7430:7430"
     volumes:
-      # SQLite, rendered pages, cached articles, and the De Tijd storage state.
-      # All three of Harry's dangerous credentials live in here or in .env.local.
+      # SQLite, rendered pages, cached articles, and the De Tijd session.
       - harry-data:/data
-      # Nothing of yours is mounted here. Harry never calls a model, so it needs no
+      # Each capability's own `.env.local`, where the operator keeps its credentials —
+      # `.harry/connectors/icloud/.env.local` and so on. The image carries none, so the real
+      # stack reads them from the checkout, read-only, and nothing but `.env.local` is read
+      # from here: the code that runs is still the image's. A mount rather than a second copy
+      # of every credential under its prefixed name in the root `.env.local`, because two
+      # copies of a password disagree the first time only one of them is changed.
+      - type: bind
+        source: ./.harry
+        target: /settings
+        read_only: true
+      # Nothing else of yours is mounted here. Harry never calls a model, so it needs no
       # provider credential — see .claude/rules/no-model-calls.md.
     environment:
       # Europe/Brussels matters: the 06:30 job is a local time, not a UTC one.
@@ -47,6 +59,9 @@ services:
       HARRY_DATA_DIR: /data
       # The real stack keeps the clock. Only one Harry on this machine may.
       HARRY_SCHEDULER_ENABLED: "true"
+      # Where the mount above lands. Set here rather than in a file for the same reason as
+      # the port: a stray value in `.env.local` must not be able to point it elsewhere.
+      HARRY_CAPABILITY_SETTINGS_DIR: /settings
 
   # The stack a change is tried on. Same image, same code, different everything else.
   # `profiles:` is what keeps it out of a plain `make up` — compose ignores a profiled
@@ -60,11 +75,14 @@ services:
     image: harry:latest
     container_name: harry-dev
     restart: unless-stopped
+    init: true
     env_file:
       - path: .env
         required: true
       # NOT .env.local. The dev stack has its own credentials, so that a token pasted here
-      # to try something cannot be the one the morning page is using.
+      # to try something cannot be the one the morning page is using. For the same reason it
+      # does not mount `.harry/` the way the real stack does: every connector's `.env.local`
+      # there is the real one. Dev's go in this file, under their prefixed names.
       - path: .env.dev.local
         required: false
     ports:

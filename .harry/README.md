@@ -166,22 +166,31 @@ is [.claude/rules/tool-design.md](../.claude/rules/tool-design.md).
 ```markdown
 ---
 name: tijd
-description: De Tijd — full article text, through a logged-in browser session
-provides: [fetch_article]
+description: De Tijd's articles, read the way a subscriber reads them — in a logged-in browser
+provides: []                    # nobody asks for "log in to De Tijd"; news_article returns the text
 expires: session                # never | manual | session
 enabled: true
 config:
-  storage_state:
-    description: Path to the saved browser session. Refresh with `make tijd-login`.
-    secret: true
+  email:
+    description: The email address the De Tijd subscription signs in with.
     required: true
+    secret: true
+  password:
+    description: That account's De Tijd password.
+    required: true
+    secret: true
+  session_dir:
+    description: Where the logged-in session is saved. On the data volume and nowhere else.
+    default: /data/tijd
 ---
 
-De Tijd returns 403 to any non-browser client, even for free articles. There is no header
-trick — it needs a real browser carrying a real login.
+De Tijd's articles, in full … **Harry logs in by itself** whenever the saved session has
+lapsed …
 
-**When this stops working**, articles fall back to their RSS summary, the page still
-renders, and `#harry` says "De Tijd login needs refreshing". To fix it: ...
+## When it goes wrong
+
+| What reaches Slack | What happened | What to do |
+…
 ```
 
 The renewal procedure lives here, beside the code it is about, rather than in a

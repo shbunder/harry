@@ -24,8 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # from this image on 2026-09-16 against De Tijd's public homepage: chrome-headless-shell
 # 403, full Chromium in headless mode 403, headed Chromium under Xvfb 200. The middle one
 # was 200 on 2026-09-13 — the edge tightened in three days, which is the reason to expect
-# it to tighten again. Nothing uses this yet; it is here so adding full-text fetching is a
-# code change rather than an image rebuild, which on this image is minutes and a re-deploy.
+# it to tighten again. `scripts/with-display.sh` starts it for the whole container.
 #
 # `xauth` because `xvfb-run` — the wrapper anyone reaches for — refuses to start without it
 # (`xvfb-run: error: xauth command not found`). With `xvfb` alone the display works only if
@@ -69,6 +68,12 @@ EXPOSE 7430
 
 HEALTHCHECK --interval=60s --timeout=5s --start-period=20s \
   CMD python -c "import urllib.request,os; urllib.request.urlopen(f'http://localhost:{os.environ[\"HARRY_PORT\"]}/health').read()"
+
+# The display De Tijd's browser draws on, started before anything else and then replaced by
+# the command — so Harry is still the process `docker stop` signals. `:99` because nothing
+# else in this container draws anywhere.
+ENV DISPLAY=:99
+ENTRYPOINT ["/app/scripts/with-display.sh"]
 
 # `python -m harry`, not a uvicorn command line: the port has one owner, `config.py`.
 CMD ["uv", "run", "python", "-m", "harry"]

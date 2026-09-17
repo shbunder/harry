@@ -92,7 +92,18 @@ class Settings(BaseSettings):
     capabilities_dir: Path | None = Field(default=None, validation_alias='HARRY_CAPABILITIES_DIR')
     """Optional directory of out-of-tree capabilities, loaded after this instance's own."""
 
-    @field_validator('capabilities_dir', 'public_url', mode='before')
+    capability_settings_dir: Path | None = Field(default=None, validation_alias='HARRY_CAPABILITY_SETTINGS_DIR')
+    """Where this machine's `.env.local` for each capability is read from, when it is not
+    beside the capability. Laid out like `.harry/`: `<dir>/connectors/icloud/.env.local`.
+
+    **A container is why.** `.dockerignore` keeps every `.env.local` out of the image, so
+    the real stack's compose service mounts the checkout's `.harry/` read-only and names the
+    mount here. A credential then lives in one file, in its connector's folder, rather than
+    a second time under a prefixed name in the root `.env.local`. Empty on a laptop, where
+    the file sits beside the capability anyway, and on the dev stack, which keeps its own.
+    """
+
+    @field_validator('capabilities_dir', 'capability_settings_dir', 'public_url', mode='before')
     @classmethod
     def _blank_is_unset(cls, value: Any) -> Any:
         """An empty value in a file means unset, and for a path it must mean None.
@@ -220,6 +231,22 @@ def capability_env_files(folder: Path) -> tuple[Path, Path]:
     return (folder / '.env', folder / '.env.local')
 
 
+def mounted_env_file(folder: Path) -> Path | None:
+    """A capability's `.env.local` under `HARRY_CAPABILITY_SETTINGS_DIR`, or None when unset.
+
+    The directory mirrors `.harry/`, so `<root>/connectors/icloud` maps to
+    `<dir>/connectors/icloud/.env.local` whichever root the capability was found in.
+
+    **Only `.env.local` is read from there.** The committed `.env` travels in the image with
+    the declaration it was generated from, and a second copy out of a checkout on another
+    commit could disagree with the code that is actually running.
+    """
+    directory = get_settings().capability_settings_dir
+    if directory is None:
+        return None
+    return directory / folder.parent.name / folder.name / '.env.local'
+
+
 def read_capability_config(
     folder: Path,
     implementation: str,
@@ -230,13 +257,17 @@ def read_capability_config(
 
     1. `HARRY_<IMPLEMENTATION>_<SETTING>` in the real environment — a container injecting
     2. `<data>/users/<principal>/connectors/<name>.env` — this person's, when one is given
-    3. `.env.local` in the capability's folder — this machine
-    4. `.env` in the capability's folder — committed, generated from the schema
-    5. the `default:` in the schema
+    3. `.env.local` under `HARRY_CAPABILITY_SETTINGS_DIR` — this machine, seen from a container
+    4. `.env.local` in the capability's folder — this machine
+    5. `.env` in the capability's folder — committed, generated from the schema
+    6. the `default:` in the schema
 
     Layer 2 is what makes "whose calendar?" answerable. It lives in the data volume rather
     than the repository, because other people's credentials are not something to commit,
     and a directory boundary cannot be got wrong the way a rule can.
+
+    Layer 3 sits above layer 4 because setting the directory is a deliberate act, and in the
+    container it exists for there is never a file at layer 4 — the image carries none.
 
     Returns only what the schema declares. A key sitting in a file that the capability
     never declared is ignored rather than passed through: it is either a typo or a
@@ -245,6 +276,9 @@ def read_capability_config(
     values: dict[str, Any] = {name: spec.get('default') for name, spec in schema.items() if 'default' in spec}
 
     sources = list(capability_env_files(folder))
+    mounted = mounted_env_file(folder)
+    if mounted is not None:
+        sources.append(mounted)
     if principal is not None:
         sources.append(user_data_dir(principal) / 'connectors' / f'{implementation}.env')
 

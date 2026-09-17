@@ -25,7 +25,9 @@ of their names — adding one is a folder, never a core change.
 4. **Run.** Import `connector.py` / `tool.py` / `job.py`, if there is one, and call its
    `register`.
 
-Connectors go first, so a tool that needs one can be told its connector is missing.
+Connectors go first, so a tool that needs one can be told its connector is missing. **Within
+a kind, a capability loads after the ones of its own kind it names**, and otherwise in folder
+order — see [A connector naming a connector](#a-connector-naming-a-connector).
 
 **Every capability loads inside its own try/except.** One that is half-written is logged
 and stepped over; the rest come up. That is the property that makes it safe to leave an
@@ -77,6 +79,31 @@ two folders that cannot be swapped:
 def register(registry: Registry, context: Context) -> None:
     slack = context.connectors['slack']
 ```
+
+### A connector naming a connector
+
+A connector may declare `requires:` and `optional:` too, naming other connectors. It is loaded
+after them, whatever their folder names, so it is handed what it named:
+
+```yaml
+# .harry/connectors/news/CONNECTOR.md
+optional: [tijd]      # De Tijd's pages go to the connector holding its login
+```
+
+```python
+def register(registry: Registry, context: Context) -> None:
+    tijd = context.connectors.get('tijd')  # None when it did not load
+```
+
+The same question picks the list. News still has every other feed without De Tijd, so it is
+`optional:` — and that matters more for a connector than for a tool: under `requires:`, one
+lapsed login would take every headline down with it.
+
+**A loop is refused by `make lint`**, of any length, a connector naming itself included. One
+that reaches a running Harry anyway — from a `$HARRY_CAPABILITIES_DIR` the lint never saw —
+does not stop it. The members of the loop load together, in folder order, after anything
+outside the loop they name, and the log names them. A member naming a later member finds it
+not there yet: handed nothing under `optional:`, skipped under `requires:`.
 
 You get exactly what you declared. A connector that did not load, or that registered
 nothing to hand over, means this capability is skipped at start-up with the reason — rather
@@ -131,6 +158,7 @@ Each of these costs exactly that one capability, and each one's reason appears i
 | A `required: true` setting with no value | `required setting app_password is not set` |
 | A connector in `requires:` that did not load | `needs icloud, which did not load` |
 | A connector in `optional:` that did not load | nothing — the capability loads, and the name is not in `connectors` |
+| `requires:` or `optional:` written as one name, not a list | `` `optional:` must be a list of connector names, like `optional: [name]` `` |
 | An import that reaches past the SDK | `reaches past harry.sdk — connector.py:9 imports harry.scheduler` |
 | `register` missing from the module | `connector.py has no register(registry, context)` |
 | A **tool** with no `tool.py` beside it | `no tool.py, so there is nothing for this tool to call` |
