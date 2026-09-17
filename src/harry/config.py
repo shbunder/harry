@@ -299,12 +299,20 @@ def read_capability_config(
 
 
 def _read_env_file(path: Path) -> dict[str, str]:
-    """A dotenv file as a flat mapping. Absent is empty; malformed lines are skipped."""
+    """A dotenv file as a flat mapping. Absent is empty; malformed lines are skipped.
+
+    A leading `export` is stripped, as pydantic's dotenv parser and Docker Compose strip it from
+    the root pair. Without that, `export FEEDS=…` was read as a key called `export FEEDS` that no
+    capability declares — ignored, so the setting fell back to its default with nothing said.
+    """
     if not path.is_file():
         return {}
     found: dict[str, str] = {}
     for line in path.read_text(encoding='utf-8').splitlines():
         line = line.strip()
+        # Only when whitespace follows, so `EXPORTED_URL=` stays a key of its own.
+        if line[:7] in ('export ', 'export\t'):
+            line = line[6:].lstrip()
         if not line or line.startswith('#') or '=' not in line:
             continue
         key, _, value = line.partition('=')
