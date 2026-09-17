@@ -63,6 +63,83 @@ built on it. If De Tijd refuses a scripted login, [[ADR-260916-b26785]] is revis
 - **2026-09-16** — AUTOMATED LOGIN WORKS FROM THE NUC — measured from the harry:c32f0cc image under xvfb-run, with the account in the worktree's .harry/connectors/tijd/.env.local. Route: open https://www.tijd.be/ (NOT the article: there a second modal, .ds-modal-wrapper 'Dit artikel is alleen voor abonnees', covers the Log in button even after consent is dismissed); the consent dialog also intercepts the click on the homepage, so click 'Optionele cookies weigeren' first; click .trck_sitenav_login:visible; auth.mediafin.be/u/login/identifier, fill #username, click button[name=action][value=default]; /u/login/password, fill #password, same button; lands on www.tijd.be/. No captcha on either step. Logged in, the measured article (10686286) gave 6,120 characters through trafilatura against 263 logged out, status 200. The saved storage_state (31 cookies, 28.7 KB) opened in a fresh browser read the same 6,120 characters with no login. One deliberately wrong password: the page stays on /u/login/password and shows #error-element-password, class ulp-input-error-message, text 'E-mailadres of wachtwoord onjuist'. THE MARKER TO READ: paywall-active is on <html> in the SERVED html and at domcontentloaded (checked logged out: served tag is <html lang="nl" class="paywall-active" data-brand="tijd">), and absent from the served html when logged in. The Log in button is NOT in the served html — JavaScript draws it — so it is not a reliable 'logged out' marker and the connector does not read it. The spike session sits in a throwaway docker volume, tijd-spike, deleted when this feature closes.
 - **2026-09-16** — plan-verifier: WARN, no BLOCK, 15 findings, all folded into the board before any code merged. The ones that changed the design: the tijd connector raises its own Slack lines, because Context.alert scrubs only the raising capability's declared secrets and a line raised by news would not scrub tijd's password (EMAIL is now declared secret too); every reason is a fixed sentence keyed by its name; a login page that does not answer waits 15 minutes rather than 6 hours, because nothing was refused; logged-in-at records the login time so the session-length log line has a source; the login rule is a table of expected endings per step, with Auth0's documented captcha markers named; loops are specified per list (optional: handed nothing, requires: skipped, logged) and a malformed declaration counts as naming nothing for ordering. Also found: every connector .env.local on this NUC is mode 664, and tests/test_deployment.py asserts that nothing but named volumes is mounted — narrowed deliberately in STORY-260916-ebeb3f.
 - **2026-09-16** — pre-close-verifier, first pass: REQUEST CHANGES, 1 Critical and 5 Important, all acted on in 0163f43. Critical: nothing tested the 6-hour wait after a captcha (adding it to the lockout-free set left 919 tests green). The waits are now two parametrized groups, every reason that could count towards a lockout and every reason that sent no password, and each mutation goes red. Also fixed: a login the browser loses part-way set no wait at all (the probe got 3 logins in 3 minutes) and now waits by whether the password had gone; the 30 s page and 60 s login budgets are asserted from the timeouts the stand-in pages are handed; the hard limit is 150 s, the sum of the waits, because a tool call silent for 300 s is abandoned and the old 240 s let two De Tijd stories cost the whole page; a stuck read no longer makes later articles queue. The tijd-spike volume is deleted. NOT fixed, recorded as an accepted risk in ADR-260916-b26785: Chromium runs as root without its sandbox in the container that mounts every connector's .env.local. Still owed before the deploy: chmod 600 on the NUC's connector .env.local files (all five are 664) and De Tijd's feed in the NUC's news FEEDS.
+- **2026-09-17** — pre-close-verifier, second pass: REQUEST CHANGES — 1 Critical (the lock timeout had lost its only test to the early busy answer) and 5 Important, all acted on in the commit before this one; 14 mutations of what had stayed green now go red. The owner chose, on 2026-09-17, to deploy with Chromium running as root without its sandbox and to harden next: the risk is on record in ADR-260916-b26785 and the work is FEAT-260917-250f5a. DONE PRECEDES STORY-260916-969f41 BY DESIGN: the real stack is deployed from the main checkout, where every connector's .env.local lives, so the proof on the NUC — and ebeb3f's mode-600 criterion — is verified right after the merge and recorded here as a dated note, with its boxes ticked in a board commit on main.
+
+## Lessons Learned
+
+### What worked
+
+**Spiking the automated login before writing the requirements around it.** One throwaway
+script from Harry's own image answered the question the whole feature rested on — does
+De Tijd's login service take a scripted login from the NUC — and found the three things no
+reading would have: the article page puts a subscription dialog over the Log in button, the
+cookie dialog covers it on the homepage too, and `paywall-active` is in the *served* HTML while
+the Log in button is drawn by JavaScript. The rule the connector reads is the one measured.
+
+**Running the live test three times, not once.** The first run failed in 19 seconds and the
+rerun passed. Recording `framenavigated` during a login showed why: the password step lands on
+`www.tijd.be/login-redirect.html`, which navigates on 1.5 s later, and the next page load was
+abandoned (`net::ERR_ABORTED`). Fixed with `LANDED` in `.harry/connectors/tijd/pages.py` and a
+single retry in `Chromium.visit`. A race found by one flaky run would have been dismissed as flaky.
+
+**Mutations as JSON, applied and restored by a script.** About 85 across the feature — config
+precedence, loader order, every wait, every limit, every fault line — each named and each red.
+The first code review and the pre-close verifier each still found controls that could not fail
+(the 6-hour wait after a captcha, the page and login budgets asserted only as settings), so the
+list is a floor, not proof.
+
+### What to do differently
+
+**A scrub that asserts the absence of a known string misses its encodings.** The reduced login
+page was checked for the account's email and passed, while the "forgot password" link carried
+it URL-encoded. It reached a commit and needed a history rewrite before the merge. Scan for the
+*shape* — any address, decoded with `unquote`, in every encoding — as
+`tests/test_tijd_connector.py::test_no_fixture_a_logged_in_person_saw_carries_an_email_address`
+now does.
+
+**Playwright puts what it typed into its errors.** A failed `fill` carries `fill("<value>")` in
+its call log. Never chain a Playwright error (`raise … from None` throughout
+`.harry/connectors/tijd/browser.py`), never `log.exception` around code that types a secret, and
+test `caplog.text` as well as the answer and the Slack line.
+
+**"Captcha" appears 77 times on a login page showing no captcha.** Every rule that reads a page
+reads elements through `HTMLParser`, never substrings (`pages.py::_Elements`), and the recorded
+page keeps the script line that would fool a substring rule.
+
+**Decide which failures count towards a lockout before choosing any wait.** Three rounds of
+review moved failures between the 6-hour and 15-minute groups. The line that held is one fact:
+was the password sent? `Chromium.login_step` records it, and `LOCKOUT_FREE` in `connector.py`
+is exactly the set of reasons where it was not.
+
+**A limit is chosen against the caller's patience, not the callee's worst case.** 240 s per read
+looked generous and let two De Tijd stories outlast the 300-second idle limit on the tool call
+that builds the page. 150 s is the sum of the waits; after a slow failure De Tijd rests for 10
+minutes, so the page pays one wait, not one per story. A slow-but-succeeding site is still not
+bounded per page — `digest_build` reporting progress is what would bound it.
+
+**A shortcut that answers early can take the test off the path it skips.** Answering `busy` at
+once for a read known stuck left the lock's own timeout — the only bound on a second caller
+arriving *before* a read is declared stuck — with no test at all. Removing it went green. Every
+early return deserves the question: which test still reaches what comes after it?
+
+**Background image build and in-place mutation testing do not mix.** Both started together; the
+build could have captured a mutated file. A rebuild that is fully cached proves it did not.
+
+### Patterns to reuse
+
+- **`HARRY_CAPABILITY_SETTINGS_DIR` and a read-only bind of `./.harry`** (`src/harry/config.py`,
+  `docker-compose.yml`) — how a container reads each capability's own `.env.local`.
+- **`src/harry/loader.py::_in_dependency_order`** — same-kind dependencies with loops loaded
+  together; tested by writing the real registration order to a file
+  (`tests/test_loader_order.py`).
+- **A stand-in browser swapped onto the loaded connector** (`Script` in
+  `tests/test_tijd_connector.py`), plus a stand-in *page* for the browser class itself
+  (`LoginPage`, `Interrupted`) that records the timeouts it is handed.
+- **A hard bound on a synchronous library call with no timeout of its own**: a worker thread,
+  `join(limit)`, a lock acquired with a timeout, and the stuck worker remembered
+  (`.harry/connectors/tijd/connector.py::Tijd.read`).
+- **A connector that says its own faults** returns `{"why", "said": True}` so the caller does not
+  say them twice, and its own context scrubs its own secrets.
 
 ## Links
 

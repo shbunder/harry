@@ -2,7 +2,7 @@
 id: STORY-260916-969f41
 title: On the NUC, a page carries a De Tijd story in full
 feature: FEAT-260912-9c933f
-status: Backlog
+status: In Progress
 created: 2026-09-16
 ---
 
