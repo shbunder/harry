@@ -1,14 +1,14 @@
 ---
 id: FEAT-260917-250f5a
-title: Harry's browser runs as an unprivileged user with Chromium's sandbox on
+title: Harry's browser runs in its own container, with no credential to steal
 track: full
 created: 2026-09-17
-touches: [Dockerfile, compose, connectors/tijd, docs/operating]
-stories: []
-decisions: []
+touches: [Dockerfile, compose, connectors/tijd, docs/operating, docs/sources]
+stories: [STORY-260917-2441de, STORY-260917-e9ca02]
+decisions: [ADR-260917-719ab4]
 ---
 
-# FEAT-260917-250f5a — Harry's browser runs as an unprivileged user with Chromium's sandbox on
+# FEAT-260917-250f5a — Harry's browser runs in its own container, with no credential to steal
 
 ## Summary
 
@@ -42,11 +42,19 @@ Decided in [[ADR-260916-b26785]], where the accepted risk is recorded.
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] <criterion>
+- [ ] The browser container mounts no `.harry/`, no root `.env.local` and no data volume, and is handed no credential
+- [ ] It runs as a non-root user, with Chromium's sandbox on and every Linux capability dropped
+- [ ] De Tijd reads as before through it: headed, 200, the whole article, and the session on Harry's volume renewed
+- [ ] The launch options are stated on every connect — without them the browser is headless and De Tijd answers 403
+- [ ] A machine with no browser container still reads De Tijd by starting a browser of its own
+- [ ] A browser container that is down or unsandboxed costs De Tijd's text only, says so once in Slack, and never falls back to an unsandboxed browser
+- [ ] The relaxed seccomp is on the browser container alone, and a test fails if either Harry stack gains it
 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
+- [ ] [[STORY-260917-2441de]] — What a sandboxed browser needs in Docker, measured before anything is built on it
+- [ ] [[STORY-260917-e9ca02]] — The browser moves to its own container, and Harry connects to it
 
 ## Notes
 
@@ -55,3 +63,5 @@ Decided in [[ADR-260916-b26785]], where the accepted risk is recorded.
 ## Links
 
 - Requirements: [[FEAT-260917-250f5a]]
+- Decision: [[ADR-260917-719ab4]] — The browser runs in its own container, and holds no credential
+
