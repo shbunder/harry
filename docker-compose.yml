@@ -19,6 +19,8 @@ services:
     image: harry:${HARRY_TAG:-latest}
     container_name: harry
     restart: unless-stopped
+    depends_on:
+      - harry-browser
     # A small init as PID 1, which reaps what a crashed Chromium leaves behind — `uv` does not,
     # and a container running for months would collect them — and passes `docker stop` on.
     init: true
@@ -59,9 +61,35 @@ services:
       HARRY_DATA_DIR: /data
       # The real stack keeps the clock. Only one Harry on this machine may.
       HARRY_SCHEDULER_ENABLED: "true"
+      # Where the browser lives. Set here rather than in the connector's file because it is
+      # deployment, not a credential: on a laptop it is empty and the connector starts a browser
+      # of its own. A wrong value reads as a browser that could not start, and says so.
+      HARRY_TIJD_BROWSER_ENDPOINT: ws://harry-browser:3000/
       # Where the mount above lands. Set here rather than in a file for the same reason as
       # the port: a stray value in `.env.local` must not be able to point it elsewhere.
       HARRY_CAPABILITY_SETTINGS_DIR: /settings
+
+  # The browser De Tijd is read with, and nothing else. It renders a commercial news site, ads
+  # and all, so it is the one container here that meets hostile input — and it is given nothing:
+  # no `.harry/` mount, no root `.env.local`, no data volume, no published port. An exploited
+  # renderer lands somewhere empty. Decided in project/decisions/, the day De Tijd shipped.
+  harry-browser:
+    image: harry:${HARRY_TAG:-latest}
+    container_name: harry-browser
+    restart: unless-stopped
+    init: true
+    # Unprivileged, and with Chromium's own sandbox on — which needs Docker's syscall filtering
+    # relaxed, measured. That relaxation is safe to make HERE and nowhere else: this container
+    # holds nothing. Anything added to it has to revisit that.
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt:
+      - seccomp:unconfined
+    # No env_file and no volumes, on purpose. Both are checked by the suite.
+    environment:
+      TZ: Europe/Brussels
+    # Reachable on the compose network by name, never published.
+    command: ["uv", "run", "playwright", "run-server", "--port", "3000", "--host", "0.0.0.0"]
 
   # The stack a change is tried on. Same image, same code, different everything else.
   # `profiles:` is what keeps it out of a plain `make up` — compose ignores a profiled

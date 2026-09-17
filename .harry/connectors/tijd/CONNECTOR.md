@@ -16,6 +16,9 @@ config:
   session_dir:
     description: Where the logged-in session is saved. Keep it on the data volume and nowhere else — the file is a working De Tijd login for anyone who has it.
     default: /data/tijd
+  browser_endpoint:
+    description: 'The browser container to read through, as ws://harry-browser:3000/. Empty means Harry starts a browser of its own, which is what a laptop does. The real stack sets it in docker-compose.yml, because it is deployment rather than a credential.'
+    default: ""
 ---
 
 De Tijd's articles, in full, read the way a subscriber reads them: in a real browser window,
@@ -57,6 +60,28 @@ The first De Tijd article Harry is asked for logs in. The session is saved to
 `/data/tijd/storage-state.json` on the data volume, mode 600, and reused from then on. The
 log says `logged in to De Tijd`, and on every later login, how many days the previous session
 lasted.
+
+## Where the browser runs
+
+**In its own container**, `harry-browser`, on the real stack. It renders De Tijd's pages and the
+advertising scripts on them, so it is the one container here that meets hostile input — and it is
+given nothing: no connector's `.env.local`, no root `.env.local`, no data volume, no published
+port. It runs as an unprivileged user with every Linux capability dropped and **Chromium's own
+sandbox on**. An exploited renderer lands somewhere empty.
+
+Harry connects to it and states what the browser must be — headed, full Chromium, sandboxed — on
+every connect. A browser container asked for nothing launches headless, and De Tijd answers 403.
+
+The session stays Harry's: it is read from `/data/tijd` on Harry's side and handed to the browser
+for the call, never written inside the browser container.
+
+**With `BROWSER_ENDPOINT` empty, Harry starts a browser itself**, in its own container. That is
+what a laptop does and what `make test-live` does. It runs unsandboxed there, because Chromium's
+sandbox needs Docker's syscall filtering relaxed, and relaxing it where the credentials are is
+what the separate container avoids.
+
+When the browser container is down, De Tijd's stories print their summary and Slack gets the
+usual `the browser … could not start` line. Nothing else changes.
 
 ## How it reads a page
 

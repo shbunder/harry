@@ -86,6 +86,10 @@ make logs      make logs-dev      # follow
 make health    make health-dev    # what loaded, and whether the clock is on
 ```
 
+**Three containers, two stacks.** `harry` and `harry-dev` are the stacks; `harry-browser` is the
+browser the real stack reads De Tijd through, and it belongs to neither — see
+[The browser container](#the-browser-container) below.
+
 | | Real | Dev |
 |---|---|---|
 | Port | 7430 | 7431 |
@@ -114,6 +118,26 @@ it. So dev schedules nothing, registers no watchdog, and never starts its schedu
 Dev has its own volume, so `docker compose down -v` on dev cannot take the real store with
 it, and its own credentials file, so a token pasted in to try something is never the token
 the morning page is using.
+
+### The browser container
+
+`harry-browser` runs the browser De Tijd is read with, and **holds nothing**: no connector's
+`.env.local`, no root `.env.local`, no data volume, no published port. It renders a commercial
+news site, advertising scripts and all, which is why it is kept empty and why it is the one
+container here allowed to run with Docker's syscall filtering relaxed — that is what lets
+Chromium's own sandbox start, measured on this machine. It runs as an unprivileged user with
+every capability dropped.
+
+```bash
+docker compose logs -f harry-browser     # what the browser server is doing
+docker compose restart harry-browser     # when De Tijd says the browser could not start
+```
+
+**It comes from the same image as Harry**, so a deploy replaces both. In the seconds between,
+Harry may reach a browser of the other version and report that the browser could not start; the
+next article is fine. De Tijd's stories print their summaries meanwhile.
+
+The dev stack has no browser: it has no De Tijd credentials, so it never opens one.
 
 ### Why the port is set on the service and not left to a file
 

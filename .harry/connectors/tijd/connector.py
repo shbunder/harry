@@ -56,6 +56,7 @@ outlast its client — reporting progress from the page's own tool is what would
 from __future__ import annotations
 
 import contextlib
+import functools
 import json
 import logging
 import os
@@ -372,6 +373,8 @@ class Tijd:
 
 
 def register(registry: Registry, context: Context) -> None:
+    # The browser container, when there is one. Empty is a machine that starts its own browser.
+    endpoint = str(context.config.get('browser_endpoint') or '')
     registry.connector(
         Tijd(
             email=str(context.config['email']),
@@ -379,5 +382,6 @@ def register(registry: Registry, context: Context) -> None:
             session_dir=Path(str(context.config['session_dir'])),
             alert=context.alert,
             log=context.log,
+            browser=functools.partial(Chromium, endpoint=endpoint),
         )
     )

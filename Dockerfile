@@ -50,9 +50,15 @@ COPY pyproject.toml uv.lock ./
 COPY src/ src/
 RUN uv sync --frozen --no-dev
 
-# The browser tier-2 extraction drives. Installed after the deps so a code change
-# does not re-download it.
-RUN uv run playwright install --with-deps chromium
+# The browser De Tijd is read with. Installed after the deps so a code change does not
+# re-download it, and into a path any user can read: the browser runs in its own container as
+# an unprivileged user, and a browser in root's cache is one it cannot open.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN uv run playwright install --with-deps chromium && chmod -R a+rX /ms-playwright
+
+# The user the browser container runs as. Harry's own container still runs as root, and owning
+# /app costs it nothing: root reads and writes it either way.
+RUN useradd --uid 1000 --create-home harry && chown -R harry:harry /app
 
 # `.harry/` holds every connector and job — the product, not configuration. It is
 # hidden, which is exactly why it gets its own line and a comment saying so.

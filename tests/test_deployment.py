@@ -99,7 +99,8 @@ def test_each_stack_keeps_its_data_on_a_named_volume_of_its_own():
     store, every rendered page and the De Tijd session would have died with the container.
     """
     compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
-    mounted = {name: sources(service) for name, service in compose['services'].items()}
+    # The browser container mounts nothing at all, which is its own test below.
+    mounted = {name: sources(compose['services'][name]) for name in HARRY_STACKS}
 
     for name, found in mounted.items():
         assert found, f'{name} mounts no named volume, so everything it writes dies with the container'
@@ -145,7 +146,7 @@ def test_the_two_stacks_cannot_collide_on_a_port_a_name_or_a_volume():
     container name.
     """
     compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
-    services = compose['services']
+    services = {name: compose['services'][name] for name in HARRY_STACKS}
 
     for field, got in (
         ('container_name', [s['container_name'] for s in services.values()]),
@@ -221,7 +222,9 @@ def test_the_committed_defaults_are_read_before_the_machine_s_own_file():
     """
     compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
 
-    for name, service in compose['services'].items():
+    # The browser container reads no env file at all, which is its own test.
+    for name in HARRY_STACKS:
+        service = compose['services'][name]
         paths = [entry if isinstance(entry, str) else entry['path'] for entry in service['env_file']]
         assert paths[0] == '.env', f'{name} reads {paths[0]} before the committed defaults'
         assert len(paths) == 2, f'{name} reads {paths}, and only two files have a defined precedence'
@@ -355,6 +358,78 @@ def test_the_image_starts_the_display_before_harry_and_hands_harry_the_signals()
     assert any('>&2' in line and 'did not start' in line for line in code), 'a display that never came says nothing'
 
 
+BROWSER = 'harry-browser'
+"""The one container here that renders a commercial news site's scripts."""
+
+HARRY_STACKS = ('harry', 'harry-dev')
+
+
+def test_every_service_in_the_compose_file_is_one_of_the_three_this_suite_knows():
+    """Two Harry stacks and a browser. Every test here either walks `HARRY_STACKS` or names the
+    browser, so a fourth service would otherwise be checked by nothing at all."""
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+
+    assert set(compose['services']) == {*HARRY_STACKS, BROWSER}
+
+
+def test_the_browser_container_is_given_nothing_to_steal():
+    """It meets hostile input — De Tijd's pages and the advertising on them — so what it holds is
+    the whole question. No `.harry/` mount, no root `.env.local`, no data volume, no credential in
+    its environment. An exploited renderer must land somewhere empty."""
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    browser = compose['services'][BROWSER]
+
+    assert not browser.get('volumes'), f'the browser container mounts {browser.get("volumes")}'
+    assert not browser.get('env_file'), f'the browser container reads {browser.get("env_file")}'
+    assert not browser.get('ports'), 'the browser container publishes a port'
+    handed = browser.get('environment') or {}
+    assert set(handed) <= {'TZ'}, f'the browser container is handed {sorted(set(handed) - {"TZ"})}'
+
+
+def test_only_the_browser_container_has_its_syscall_filtering_relaxed():
+    """Chromium's sandbox will not start under Docker's default seccomp — measured. That
+    relaxation is only safe where there is nothing to take, so it belongs to the empty container
+    and to no other. A stack that gained it would be running every credential under it."""
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+
+    assert compose['services'][BROWSER].get('security_opt') == ['seccomp:unconfined']
+    for name in HARRY_STACKS:
+        assert not compose['services'][name].get('security_opt'), f'{name} relaxes its syscall filtering'
+        assert not compose['services'][name].get('privileged'), f'{name} runs privileged'
+
+
+def test_the_browser_container_is_unprivileged():
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    browser = compose['services'][BROWSER]
+
+    assert browser.get('user') == '1000:1000', 'the browser runs as root'
+    assert browser.get('cap_drop') == ['ALL'], 'the browser keeps Linux capabilities it never needs'
+
+
+def test_the_real_stack_reads_de_tijd_through_the_browser_container():
+    """A stack pointed at no browser would start one inside itself, beside the credentials —
+    which is the arrangement this feature exists to end."""
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    real = compose['services']['harry']
+
+    assert real['environment'].get('HARRY_TIJD_BROWSER_ENDPOINT') == f'ws://{BROWSER}:3000/'
+    assert BROWSER in (real.get('depends_on') or []), 'nothing starts the browser before Harry'
+    assert 'HARRY_TIJD_BROWSER_ENDPOINT' not in (compose['services']['harry-dev'].get('environment') or {}), (
+        'the dev stack has no De Tijd credentials, so it never opens a browser'
+    )
+
+
+def test_the_image_installs_its_browsers_where_an_unprivileged_user_can_read_them():
+    """In root's cache, which is where they land by default, the browser container cannot open
+    them: it runs as uid 1000. The failure is a browser that will not start, every article."""
+    dockerfile = (REPO / 'Dockerfile').read_text(encoding='utf-8')
+
+    assert re.search(r'^ENV PLAYWRIGHT_BROWSERS_PATH=\S+', dockerfile, re.MULTILINE), "browsers stay in root's cache"
+    installs = ' '.join(re.findall(r'playwright install[^\n]*', dockerfile))
+    assert 'chmod -R a+rX' in dockerfile, 'the browsers are installed but left unreadable'
+    assert 'chromium' in installs
+
+
 def test_both_stacks_run_an_init_that_reaps_what_a_crashed_browser_leaves():
     """After `exec`, PID 1 is `uv`, which reaps nothing. Every Chromium that crashes in a container
     that runs for months would leave its processes behind."""
@@ -372,7 +447,8 @@ def test_each_stack_pins_its_own_port_and_data_directory_on_the_service():
     """
     compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
 
-    for name, service in compose['services'].items():
+    for name in HARRY_STACKS:
+        service = compose['services'][name]
         environment = service['environment']
         published = str(service['ports'][0]).split(':')[0]
         assert str(environment['HARRY_PORT']) == published, (
@@ -386,7 +462,7 @@ def test_only_the_real_stack_keeps_the_clock():
     compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
     keeping_time = {
         name
-        for name, service in compose['services'].items()
+        for name, service in ((name, compose['services'][name]) for name in HARRY_STACKS)
         if str(service['environment']['HARRY_SCHEDULER_ENABLED']).lower() == 'true'
     }
 

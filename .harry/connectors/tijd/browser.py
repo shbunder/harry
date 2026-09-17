@@ -15,8 +15,10 @@ a page is paywalled, how a login ended — is in `pages.py`, where recorded page
 
 from __future__ import annotations
 
+import json
 import re
 import time
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,20 @@ from .pages import (
 )
 
 VIEWPORT = {'width': 1280, 'height': 900}
+
+LAUNCH = {'headless': False, 'channel': 'chromium', 'chromiumSandbox': True}
+"""What the browser has to be, stated on every connect.
+
+**Headed**, because De Tijd answers a headless browser with 403 — including a browser container
+asked for nothing, which launches headless by default. **The full Chromium** rather than the
+stripped headless shell, which De Tijd refuses on every URL. **Sandboxed**, because the browser
+container exists to render a commercial news site's scripts and that is what a sandbox is for.
+A browser that will not be all three is a failure Harry reports; it never settles for less.
+"""
+
+CONNECT_SECONDS = 30.0
+"""How long to wait for the browser container. Down or unreachable reads as a browser that
+could not start, which is exactly what it is."""
 
 CONSENT_APPEARS = 5.0
 """Seconds to wait for the cookie dialog before deciding there is none. A saved session that
@@ -71,11 +87,25 @@ class Visit:
     html: str
 
 
-class Chromium:
-    """A headed Chromium carrying a saved session, for the length of one `with` block."""
+def connect_to(endpoint: str) -> str:
+    """The browser container's address, carrying what the browser must be.
 
-    def __init__(self, state: Path | None) -> None:
+    Without these the server launches its own default — headless — and De Tijd answers 403.
+    """
+    return f'{endpoint}?launch-options={urllib.parse.quote(json.dumps(LAUNCH))}'
+
+
+class Chromium:
+    """A headed Chromium carrying a saved session, for the length of one `with` block.
+
+    With an endpoint, the browser is the one in its own container — which holds no credential,
+    runs unprivileged and keeps Chromium's sandbox on. With none, Harry starts one itself, which
+    is what a laptop and the live tests do.
+    """
+
+    def __init__(self, state: Path | None, endpoint: str = '') -> None:
         self._state = state
+        self._endpoint = endpoint
         self._playwright: Any = None
         self._browser: Any = None
         self._context: Any = None
@@ -87,9 +117,17 @@ class Chromium:
     def __enter__(self) -> Chromium:
         try:
             self._playwright = sync_playwright().start()
-            # `channel='chromium'` is the full browser rather than the stripped headless shell,
-            # which De Tijd refuses on every URL with a perfectly good session attached.
-            self._browser = self._playwright.chromium.launch(headless=False, channel='chromium')
+            if self._endpoint:
+                self._browser = self._playwright.chromium.connect(
+                    connect_to(self._endpoint), timeout=CONNECT_SECONDS * 1000
+                )
+            else:
+                # No browser container: Harry starts one here, as it does on a laptop. Unsandboxed,
+                # because Chromium's sandbox will not start under Docker's default seccomp and
+                # relaxing that where the credentials are is the thing this arrangement avoids.
+                self._browser = self._playwright.chromium.launch(
+                    headless=LAUNCH['headless'], channel=LAUNCH['channel'], chromium_sandbox=False
+                )
             self._context = self._browser.new_context(
                 viewport=VIEWPORT, storage_state=str(self._state) if self._state else None
             )
