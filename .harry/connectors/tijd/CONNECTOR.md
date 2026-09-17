@@ -66,8 +66,9 @@ lasted.
 **In its own container**, `harry-browser`, on the real stack. It renders De Tijd's pages and the
 advertising scripts on them, so it is the one container here that meets hostile input — and it is
 given nothing: no connector's `.env.local`, no root `.env.local`, no data volume, no published
-port. It runs as an unprivileged user with every Linux capability dropped and **Chromium's own
-sandbox on**. An exploited renderer lands somewhere empty.
+port. It runs as an unprivileged user with every Linux capability dropped, a read-only
+filesystem, and **Chromium's own sandbox on**. An exploited renderer lands somewhere empty, and
+keeps nothing when the container restarts.
 
 Harry connects to it and states what the browser must be — headed, full Chromium, sandboxed — on
 every connect. A browser container asked for nothing launches headless, and De Tijd answers 403.

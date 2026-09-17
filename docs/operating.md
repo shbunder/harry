@@ -125,8 +125,10 @@ the morning page is using.
 `.env.local`, no root `.env.local`, no data volume, no published port. It renders a commercial
 news site, advertising scripts and all, which is why it is kept empty and why it is the one
 container here allowed to run with Docker's syscall filtering relaxed — that is what lets
-Chromium's own sandbox start, measured on this machine. It runs as an unprivileged user with
-every capability dropped.
+Chromium's own sandbox start, measured on this machine. Against that it runs as an unprivileged
+user, drops every Linux capability, may gain no privileges, caps its processes, and has a
+**read-only filesystem** with a tmpfs for the browser's scratch: it keeps nothing between
+restarts, because there is nowhere to keep it.
 
 ```bash
 docker compose logs -f harry-browser     # what the browser server is doing

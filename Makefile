@@ -193,9 +193,9 @@ up:  ## Start the real stack on whatever tag is deployed here
 # This service by name, not `docker compose down`: that takes the project's network with
 # it and prints "Resource is still in use" whenever the dev stack is up — a line that reads
 # like a failure, exits 0 and means nothing.
-down:  ## Stop Harry. The data volume is not touched — that needs `docker compose down -v`
-	docker compose stop harry
-	docker compose rm -f harry
+down:  ## Stop Harry and its browser. The data volume is not touched — that needs `docker compose down -v`
+	docker compose stop harry harry-browser
+	docker compose rm -f harry harry-browser
 
 logs:  ## Follow Harry's logs
 	docker compose logs -f harry

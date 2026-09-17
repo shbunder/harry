@@ -15,6 +15,10 @@ display_number="${DISPLAY#:}"
 # refuse to start. Nothing else in this container owns that display.
 rm -f "/tmp/.X${display_number}-lock" "/tmp/.X11-unix/X${display_number}"
 
+# Xvfb refuses to create this itself unless it is root, and the browser container runs as neither
+# root nor with a /tmp that outlives it: its /tmp is a fresh tmpfs on every start.
+mkdir -p /tmp/.X11-unix
+
 # In the background, and not fatal: without a display Harry still starts, and De Tijd's articles
 # answer "the browser could not start" rather than taking the page down. Its complaints go to
 # the container's log, which is the only place a display that failed can be seen.

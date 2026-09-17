@@ -383,7 +383,9 @@ def test_the_browser_container_is_given_nothing_to_steal():
     assert not browser.get('env_file'), f'the browser container reads {browser.get("env_file")}'
     assert not browser.get('ports'), 'the browser container publishes a port'
     handed = browser.get('environment') or {}
-    assert set(handed) <= {'TZ'}, f'the browser container is handed {sorted(set(handed) - {"TZ"})}'
+    # A clock, and two paths that keep its scratch on the tmpfs. Nothing Harry reads as a setting.
+    assert set(handed) <= {'TZ', 'HOME', 'UV_CACHE_DIR'}, f'the browser container is handed {sorted(handed)}'
+    assert not [key for key in handed if key.startswith('HARRY_')], f'the browser container is configured: {handed}'
 
 
 def test_only_the_browser_container_has_its_syscall_filtering_relaxed():
@@ -392,10 +394,34 @@ def test_only_the_browser_container_has_its_syscall_filtering_relaxed():
     and to no other. A stack that gained it would be running every credential under it."""
     compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
 
-    assert compose['services'][BROWSER].get('security_opt') == ['seccomp:unconfined']
+    assert 'seccomp:unconfined' in (compose['services'][BROWSER].get('security_opt') or [])
     for name in HARRY_STACKS:
         assert not compose['services'][name].get('security_opt'), f'{name} relaxes its syscall filtering'
         assert not compose['services'][name].get('privileged'), f'{name} runs privileged'
+
+
+def test_the_browser_container_cannot_keep_what_a_renderer_leaves():
+    """Relaxed syscall filtering widens what an escape could try next, so the cheap half is taken
+    back: nothing here may gain privileges, the filesystem is a tmpfs that dies with the
+    container, and a fork bomb in a renderer stops at a limit."""
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    browser = compose['services'][BROWSER]
+
+    assert 'no-new-privileges:true' in (browser.get('security_opt') or [])
+    assert browser.get('read_only') is True, 'the browser container can write its own filesystem'
+    assert set(browser.get('tmpfs') or []) >= {'/tmp'}, 'a read-only browser needs somewhere to work'
+    assert browser.get('pids_limit'), 'nothing caps the processes a renderer can fork'
+
+
+def test_the_browser_container_answers_a_healthcheck_of_its_own():
+    """The image's asks Harry's port for /health, and nothing in this container answers that. A
+    container that is permanently unhealthy is one whose health nobody reads — and `make up`
+    waits on every service it starts."""
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    check = compose['services'][BROWSER].get('healthcheck') or {}
+
+    assert check, 'the browser container inherits a healthcheck it can never pass'
+    assert check.get('disable') is True or '3000' in ' '.join(check.get('test') or []), check
 
 
 def test_the_browser_container_is_unprivileged():

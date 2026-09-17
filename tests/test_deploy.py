@@ -133,6 +133,19 @@ def deployable(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_down_stops_the_browser_too(deployable):
+    """The browser container runs with its syscall filtering relaxed, and it exists to serve
+    Harry. Left running after `make down`, it outlives the only reason it is allowed to.
+
+    Run, not read: the stub records what `docker` was actually asked to stop.
+    """
+    deployable.make('down')
+
+    stopped = ' '.join(line for line in deployable.calls() if line.startswith(('compose stop', 'compose rm')))
+
+    assert 'harry-browser' in stopped, f'`make down` asked docker only for: {stopped}'
+
+
 def test_a_deploy_names_the_commit_records_it_and_starts_the_stack_on_it(deployable):
     sha = deployable.commit('one.txt')
 

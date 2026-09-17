@@ -989,9 +989,13 @@ def test_a_read_arriving_while_another_hangs_waits_no_longer_than_the_limit(harr
 
 
 def test_the_hard_limit_is_the_sum_of_the_waits_harry_sets(harry):
-    """Starting the browser (Playwright's own 30 seconds), two pages and a login."""
-    module = harry().failures()
-    assert module.READ_SECONDS == 30 + 2 * module.PAGE_SECONDS + module.LOGIN_SECONDS == 150
+    """Reaching the browser, two pages and a login. The first term is the wait on the browser
+    container, so raising that must raise this or a read can outlast the limit that catches it."""
+    built = harry()
+    module = built.failures()
+    reaching = chromium_module(built).CONNECT_SECONDS
+
+    assert module.READ_SECONDS == reaching + 2 * module.PAGE_SECONDS + module.LOGIN_SECONDS == 150
 
 
 @respx.mock
@@ -1492,12 +1496,20 @@ def test_harry_s_own_browser_wrapper_drives_the_browser_container(built_image):
                 '1000:1000',
                 '--cap-drop',
                 'ALL',
+                # Exactly what docker-compose.yml gives it, so this proves what ships.
                 '--security-opt',
                 'seccomp=unconfined',
+                '--security-opt',
+                'no-new-privileges',
+                '--read-only',
+                '--tmpfs',
+                '/tmp',
+                '--env',
+                'HOME=/tmp',
+                '--pids-limit',
+                '512',
                 IMAGE,
-                'uv',
-                'run',
-                'playwright',
+                '/app/.venv/bin/playwright',
                 'run-server',
                 '--port',
                 '3000',
@@ -1592,12 +1604,20 @@ def test_de_tijd_reads_through_a_browser_container_that_holds_no_credential(buil
                 '1000:1000',
                 '--cap-drop',
                 'ALL',
+                # Exactly what docker-compose.yml gives it, so this proves what ships.
                 '--security-opt',
                 'seccomp=unconfined',
+                '--security-opt',
+                'no-new-privileges',
+                '--read-only',
+                '--tmpfs',
+                '/tmp',
+                '--env',
+                'HOME=/tmp',
+                '--pids-limit',
+                '512',
                 IMAGE,
-                'uv',
-                'run',
-                'playwright',
+                '/app/.venv/bin/playwright',
                 'run-server',
                 '--port',
                 '3000',

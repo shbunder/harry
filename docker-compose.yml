@@ -85,11 +85,32 @@ services:
     cap_drop: [ALL]
     security_opt:
       - seccomp:unconfined
+      # The sandbox needs the syscall filtering above relaxed, which widens what an escape from
+      # this container could try next. These three are the cheap half of that back: no process
+      # here may gain privileges, the filesystem is a tmpfs it cannot keep anything in, and a
+      # fork bomb in a renderer stops at 512.
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    pids_limit: 512
+    # Its own, because the image's asks Harry's port for /health and nothing here answers that —
+    # a container that is permanently unhealthy is one nobody reads the health of.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 3000), 2).close()"]
+      interval: 60s
+      timeout: 5s
+      start_period: 20s
     # No env_file and no volumes, on purpose. Both are checked by the suite.
     environment:
       TZ: Europe/Brussels
+      # Its filesystem is read-only, so what it scratches goes to the tmpfs that dies with it.
+      # Not configuration Harry reads — it keeps the browser off disk.
+      HOME: /tmp
     # Reachable on the compose network by name, never published.
-    command: ["uv", "run", "playwright", "run-server", "--port", "3000", "--host", "0.0.0.0"]
+    # The installed binary, not `uv run`: uv rewrites the editable install on start, and this
+    # container's filesystem is read-only. Nothing here needs a resolver.
+    command: ["/app/.venv/bin/playwright", "run-server", "--port", "3000", "--host", "0.0.0.0"]
 
   # The stack a change is tried on. Same image, same code, different everything else.
   # `profiles:` is what keeps it out of a plain `make up` — compose ignores a profiled
