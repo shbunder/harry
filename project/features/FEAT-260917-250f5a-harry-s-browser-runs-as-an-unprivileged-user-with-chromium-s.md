@@ -42,13 +42,13 @@ Decided in [[ADR-260916-b26785]], where the accepted risk is recorded.
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] The browser container mounts no `.harry/`, no root `.env.local` and no data volume, and is handed no credential
-- [ ] It runs as a non-root user, with Chromium's sandbox on and every Linux capability dropped
+- [x] The browser container mounts no `.harry/`, no root `.env.local` and no data volume, and is handed no credential
+- [x] It runs as a non-root user, with Chromium's sandbox on and every Linux capability dropped
 - [ ] De Tijd reads as before through it: headed, 200, the whole article, and the session on Harry's volume renewed
-- [ ] The launch options are stated on every connect — without them the browser is headless and De Tijd answers 403
-- [ ] A machine with no browser container still reads De Tijd by starting a browser of its own
-- [ ] A browser container that is down or unsandboxed costs De Tijd's text only, says so once in Slack, and never falls back to an unsandboxed browser
-- [ ] The relaxed seccomp is on the browser container alone, and a test fails if either Harry stack gains it
+- [x] The launch options are stated on every connect — without them the browser is headless and De Tijd answers 403
+- [x] A machine with no browser container still reads De Tijd by starting a browser of its own
+- [x] A browser container that is down or unsandboxed costs De Tijd's text only, says so once in Slack, and never falls back to an unsandboxed browser
+- [x] The relaxed seccomp is on the browser container alone, and a test fails if either Harry stack gains it
 
 ## Stories
 
@@ -59,6 +59,7 @@ Decided in [[ADR-260916-b26785]], where the accepted risk is recorded.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-17** — The browser container is built and proven without an account: a live test stands one up — unprivileged, capabilities dropped, seccomp relaxed — and drives it with the connector's own Chromium wrapper. De Tijd's public homepage answers 200 through it, the container has no /settings, and no Chromium process carries --no-sandbox. 13 mutations of the new controls each go red. The two live tests that need the De Tijd account skip in this worktree, because the account lives in the main checkout; they run from there after the merge, with the deploy.
 
 ## Links
 
