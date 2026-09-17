@@ -30,7 +30,8 @@ container that is not there, and that is the `browser` fault the connector alrea
 - [x] The browser service is the only one with relaxed seccomp, and a test fails if the real or dev stack gains it
 - [x] The tijd connector takes an endpoint setting, connects when it is set, and starts its own browser when it is empty — both paths tested
 - [x] The launch options — headed, full Chromium, sandbox on — are stated on every connect, and a test fails if any of the three is dropped
-- [x] A browser container that cannot give a sandboxed browser is the existing `browser` fault: the summary prints, one Slack line, and no quiet fall back to an unsandboxed browser
+- [x] A browser container that cannot be reached is the existing `browser` fault: the summary prints, one Slack line, and no quiet fall back to a browser started beside the credentials
+- [x] A browser that comes up without its sandbox is not detectable from Harry's side — it reads De Tijd exactly as well — so it is prevented instead: `--unsafe` is in the shipped command, a gate test fails if it goes, and a live test reads the container's own processes
 - [x] A browser container that is down costs De Tijd's text only, and VRT NWS and BBC News are read in the same Harry
 - [ ] Through the running stack: a De Tijd article comes back with more than 1,000 characters, and the browser container's process is not root and asked for the sandbox (live)
 - [ ] The saved session is still Harry's: read from `/data/tijd`, renewed, and never written inside the browser container (live)

@@ -50,7 +50,8 @@ Decided in [[ADR-260916-b26785]], where the accepted risk is recorded.
 - [ ] De Tijd reads as before through it: headed, 200, the whole article, and the session on Harry's volume renewed
 - [x] The launch options are stated on every connect — without them the browser is headless and De Tijd answers 403
 - [x] A machine with no browser container still reads De Tijd by starting a browser of its own
-- [x] A browser container that is down or unsandboxed costs De Tijd's text only, says so once in Slack, and never falls back to an unsandboxed browser
+- [x] A browser container that is down or refusing costs De Tijd's text only, says so once in Slack, and never falls back to a browser Harry starts beside its credentials
+- [x] The sandbox is guaranteed where it can be: the flag the server needs is in the shipped compose command and held there by the gate, and a live test reads the running browser's own processes
 - [x] The relaxed seccomp is on the browser container alone, and a test fails if either Harry stack gains it
 
 ## Stories
