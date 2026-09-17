@@ -1519,7 +1519,8 @@ def test_harry_s_own_browser_wrapper_drives_a_sandboxed_browser_in_its_own_conta
     De Tijd's homepage answers 403 to a headless browser, so 200 proves headed. The sandbox is
     read from the browser's own processes **while a page is open** — measured 2026-09-17: the
     server drops the sandbox the connect URL asks for unless it was started with `--unsafe`, and
-    11 of 13 Chromium processes then carry `--no-sandbox`.
+    most Chromium processes then carry `--no-sandbox`; with the flag, none does. How many
+    processes there are varies with the page, so the count is not the claim.
     """
     flags, command = shipped_browser_flags()
     assert '--unsafe' in command, 'without it the server silently ignores the sandbox it is asked for'
@@ -1552,7 +1553,7 @@ def test_harry_s_own_browser_wrapper_drives_a_sandboxed_browser_in_its_own_conta
             'spec.loader.exec_module(module)\n'
             'with module.Chromium(None, sys.argv[1]) as browser:\n'
             '    visit = browser.visit("https://www.tijd.be/", 45)\n'
-            '    print(visit.status, flush=True)\n'
+            '    print(visit.status, len(visit.html), flush=True)\n'
             '    time.sleep(45)\n'
         )
         subprocess.run(
@@ -1582,7 +1583,10 @@ def test_harry_s_own_browser_wrapper_drives_a_sandboxed_browser_in_its_own_conta
                 break
             time.sleep(1)
         answered = subprocess.run(['docker', 'logs', holder], capture_output=True, text=True).stdout.strip()
-        assert answered == '200', f'De Tijd answered {answered!r}, which is what it does to a headless browser'
+        status, _, length = answered.partition(' ')
+        assert status == '200', f'De Tijd answered {status!r}, which is what it does to a headless browser'
+        # A 200 with an empty body would otherwise pass for a rendered page.
+        assert int(length or 0) > 10000, f'De Tijd answered 200 with {length} characters of markup'
 
         processes = running_processes(browser)
         chromium = [line for line in processes.splitlines() if 'chrome' in line]
@@ -1633,13 +1637,14 @@ def test_de_tijd_reads_through_a_browser_container_that_holds_no_credential(buil
         assert settings.returncode != 0, 'the browser container can see a settings directory'
 
         probe = (
-            'import json, sys, trafilatura\n'
+            'import json, pathlib, sys, trafilatura\n'
             'from harry.loader import load\n'
             'found = load().get("connector", "tijd")\n'
             'assert found.status == "loaded", found.reason\n'
             'answer = found.target.read(sys.argv[1])\n'
             'text = trafilatura.extract(answer.get("html", ""), url=answer.get("url"), favor_precision=True) or ""\n'
-            'print(json.dumps({"why": answer.get("why"), "chars": len(text)}))\n'
+            'session = sorted(p.name for p in pathlib.Path("/tmp/tijd").glob("*"))\n'
+            'print(json.dumps({"why": answer.get("why"), "chars": len(text), "session": session}))\n'
         )
         ran = subprocess.run(
             [
@@ -1672,6 +1677,25 @@ def test_de_tijd_reads_through_a_browser_container_that_holds_no_credential(buil
         answer = json.loads(ran.stdout.strip().splitlines()[-1])
         assert answer['why'] is None, answer
         assert answer['chars'] > 1000, answer
+        assert 'storage-state.json' in answer['session'], f"the session was not saved on Harry's side: {answer}"
+
+        # The session is a live De Tijd login. It is Harry's, handed over for the call only, so a
+        # copy inside the browser container would outlive the read and sit where the renderer is.
+        left = subprocess.run(
+            [
+                'docker',
+                'exec',
+                browser,
+                'sh',
+                '-c',
+                'find / -xdev -name "*storage-state*" -o -xdev -name "Cookies" 2>/dev/null',
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert left.returncode == 0, left.stderr[-500:]
+        assert not left.stdout.strip(), f'the browser container kept the session: {left.stdout[:400]}'
 
     finally:
         subprocess.run(['docker', 'rm', '-f', browser], capture_output=True)

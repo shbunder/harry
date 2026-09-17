@@ -20,7 +20,10 @@ services:
     container_name: harry
     restart: unless-stopped
     depends_on:
-      - harry-browser
+      # Healthy, not merely started: the browser server takes a moment to listen, and Harry
+      # reaching it before then costs the first article after every restart.
+      harry-browser:
+        condition: service_healthy
     # A small init as PID 1, which reaps what a crashed Chromium leaves behind — `uv` does not,
     # and a container running for months would collect them — and passes `docker stop` on.
     init: true

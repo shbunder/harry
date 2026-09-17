@@ -383,8 +383,9 @@ def test_the_browser_container_is_given_nothing_to_steal():
     assert not browser.get('env_file'), f'the browser container reads {browser.get("env_file")}'
     assert not browser.get('ports'), 'the browser container publishes a port'
     handed = browser.get('environment') or {}
-    # A clock, and two paths that keep its scratch on the tmpfs. Nothing Harry reads as a setting.
-    assert set(handed) <= {'TZ', 'HOME', 'UV_CACHE_DIR'}, f'the browser container is handed {sorted(handed)}'
+    # A clock, and a home on the tmpfs. Nothing Harry reads as a setting. Keep this list to what
+    # the service actually sets: an allow-list wider than reality is a hole nobody remembers.
+    assert set(handed) <= {'TZ', 'HOME'}, f'the browser container is handed {sorted(handed)}'
     assert not [key for key in handed if key.startswith('HARRY_')], f'the browser container is configured: {handed}'
 
 
@@ -432,6 +433,20 @@ def test_the_browser_container_is_unprivileged():
 
     assert browser.get('user') == '1000:1000', 'the browser runs as root'
     assert browser.get('cap_drop') == ['ALL'], 'the browser keeps Linux capabilities it never needs'
+
+
+def test_the_browser_server_is_started_on_the_terms_the_sandbox_needs():
+    """`playwright run-server` discards the sandbox the connect URL asks for unless it was
+    started with `--unsafe`, and reports nothing either way — so a browser with no sandbox reads
+    De Tijd exactly as well as one with it, and nothing degrades and nothing reaches Slack.
+
+    The live test proves the flag works. This one proves it is still there, because that is the
+    single line whose deletion reverts what this container is for, in silence.
+    """
+    compose = yaml.safe_load(COMPOSE.read_text(encoding='utf-8'))
+    command = compose['services'][BROWSER]['command']
+
+    assert '--unsafe' in command, 'without it Chromium runs with --no-sandbox and says nothing'
 
 
 def test_the_real_stack_reads_de_tijd_through_the_browser_container():
