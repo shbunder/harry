@@ -88,8 +88,8 @@ One article at a time. The browser is started for each article and closed after 
 | `De Tijd: Harry could not save the De Tijd session in /data/tijd…` | The data volume is full or not writable | Fix the volume. Until then every article logs in again |
 | `De Tijd: reading the article took longer than 150 seconds…` | Something inside the browser never came back | Usually transient. The morning page moved on with the summary |
 | `De Tijd: an earlier De Tijd article is still stuck in the browser…` | The read above has still not come back, and holds the browser | If it repeats, restart Harry |
-| `…the browser or the network failed at the email step, before the password was sent…` | Chromium or the connection gave out part-way through the login | Usually transient. Nothing was refused, so Harry tries again in 15 minutes |
-| `…the browser or the network failed after the password was sent…` | The same, after the password had gone — so nobody can tell whether De Tijd counted it | No new login for 6 hours, in case it was a refusal |
+| `…the browser or the network failed at the email step. Nothing was refused…` (or another step, or `after De Tijd took the password`) | Chromium or the connection gave out part-way through the login, before the password was sent or after De Tijd had already taken it | Usually transient. Harry tries again in 15 minutes |
+| `…the browser or the network failed after the password was sent…` | The same, between the password's click and the page coming back to De Tijd — so nobody can tell whether De Tijd counted it | No new login for 6 hours, in case it was a refusal |
 
 **Every line is a fixed sentence.** None carries the email, the password, an error's text or
 a URL. The same reason twice in a day is one line; a different reason is a second line.
@@ -99,11 +99,19 @@ the browser refuses after an upgrade — is set aside with a line in the log, an
 afresh.
 
 **No read takes longer than 150 seconds.** Starting the browser, two pages of 30 seconds and
-a login of 60 are the waits Harry sets, and they add up to exactly that. The limit catches
-everything else — a page wedged in an ad script — so the morning page moves on with the
-summary. A client gives up on a tool call that stays silent for 300 seconds, and one stuck read
-leaves the page half of that. Once a read is known stuck, every later De Tijd article is
-answered at once rather than queued behind it, until it comes back or Harry restarts.
+a login of 60 are the waits Harry sets, and they add up to that. The limit catches everything
+else — a page wedged in an ad script — and the story prints its summary.
+
+**After a failure that cost time, De Tijd rests for 10 minutes.** A page that did not load, a
+read that got stuck, or a browser that would not run: every De Tijd article in the next 10
+minutes gets the same answer at once, without the browser. The morning page reads all its
+stories inside one tool call, and a client gives up on a call that stays silent for 300
+seconds, so one slow failure has to cost one wait rather than one per story. Once a read is
+known stuck, later articles are answered at once until it comes back or Harry restarts.
+
+**What this does not cover:** a De Tijd that is slow but *succeeding* is never cut short, so a
+morning page with many slow De Tijd stories can still outlast its client. Then the 07:00
+watchdog says no page was built.
 
 **Without this connector** — no `EMAIL` or `PASSWORD` — De Tijd's links are fetched like any
 other page, De Tijd answers 403, and the news connector's own line says `De Tijd: De Tijd

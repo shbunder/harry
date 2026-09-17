@@ -54,6 +54,7 @@ STEPS = {
     'email': 'at the email step',
     'password': 'at the password step',
     'sent': 'after the password was sent',
+    'landed': 'after De Tijd took the password',
 }
 """The steps a login can stop in, and how each is named to a person. `sent` is everything
 after the password was submitted — the only point from which a failure can count towards De

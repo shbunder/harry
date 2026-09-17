@@ -186,9 +186,19 @@ class Chromium:
                 return step
             step = self.login_step = 'password'
             page.locator(PASSWORD_FIELD).fill(password, timeout=_left(deadline))
-            page.locator(SUBMIT).first.click(timeout=_left(deadline))
-            step = self.login_step = 'sent'
+            # From the moment the click is attempted the password may have gone, so a browser lost
+            # mid-click counts as sent. A click that only timed out never happened.
+            self.login_step = 'sent'
+            try:
+                page.locator(SUBMIT).first.click(timeout=_left(deadline))
+            except PlaywrightTimeout:
+                self.login_step = step
+                return step
+            step = 'sent'
             if self._first_of(deadline, landed=LANDED, **_refusals()) == 'landed':
+                # Back on De Tijd: the password was taken. A browser lost from here on did not
+                # meet a refusal, and the next login need not wait as though it had.
+                self.login_step = 'landed'
                 page.wait_for_load_state('load', timeout=_left(deadline))
             return step
         except PlaywrightTimeout:

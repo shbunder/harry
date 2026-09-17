@@ -41,10 +41,16 @@ page waiting on it moves on with the feed's summary. Once a read is known to be 
 later article is answered at once rather than queued behind it, until it comes back or Harry
 restarts.
 
-**Why 150.** A tool call that says nothing for 300 seconds is abandoned by the client, and the
-morning page reads its articles one after another inside one call. Starting the browser, two
-pages and a login are 150 seconds of waiting at the very worst, and the limit sits exactly
-there, so one stuck read leaves the rest of the page half the ceiling.
+**Why 150.** Starting the browser, two pages and a login are the waits Harry sets, and they
+add up to 150 seconds. The limit sits there, so it catches what those waits do not.
+
+**Why De Tijd rests after a slow failure.** A tool call that says nothing for 300 seconds is
+abandoned by its client, and the morning page reads every article it chose inside one call. So
+after a page that did not load, a read that got stuck, or a browser that would not run, De Tijd
+is not tried again for 10 minutes: every De Tijd article in that time gets the same answer at
+once. One slow failure then costs the page one wait, not one per story. A De Tijd that is slow
+but succeeding is not cut short, and a morning page with many slow De Tijd stories can still
+outlast its client — reporting progress from the page's own tool is what would fix that.
 """
 
 from __future__ import annotations
@@ -79,6 +85,10 @@ account of why 150."""
 
 WAIT_AFTER_FAILURE = timedelta(hours=6)
 WAIT_AFTER_SILENCE = timedelta(minutes=15)
+
+REST = timedelta(minutes=10)
+RESTS_AFTER = frozenset({'timeout', 'stuck', 'browser'})
+"""Failures that cost time, after which De Tijd is answered at once for `REST` rather than tried."""
 LOCKOUT_FREE = frozenset({'login-unreachable', 'login-stalled', 'login-broke'})
 """Failures in which nothing was refused, so trying again sooner cannot lock the account."""
 
@@ -103,8 +113,8 @@ WHY = {
         'It may be slow, or De Tijd may have changed it. Harry tries again in 15 minutes'
     ),
     'login-broke': (
-        'Harry could not log in: the browser or the network failed {step}, before the password was '
-        'sent. Harry tries again in 15 minutes'
+        'Harry could not log in: the browser or the network failed {step}. Nothing was refused, so '
+        'Harry tries again in 15 minutes'
     ),
     'login-broke-sent': (
         'Harry could not log in: the browser or the network failed after the password was sent, so '
@@ -148,6 +158,8 @@ class Tijd:
         self._now = now
         self._one_at_a_time = threading.Lock()
         self._stuck: threading.Thread | None = None
+        self._resting: tuple[datetime, str, str] | None = None
+        """Until when De Tijd is answered at once after a failure that cost time, and with what."""
         """The read that outlasted its limit, while it has still not come back."""
         self._waiting: tuple[datetime, str, str] | None = None
         """Until when no login is tried, and the reason and sentence every article gets meanwhile."""
@@ -166,6 +178,8 @@ class Tijd:
         One read at a time — two browsers writing one session file is how it gets corrupted —
         and never longer than `READ_SECONDS`, whatever happens inside it.
         """
+        if self._resting is not None and self._now() < self._resting[0]:
+            return self._say(self._resting[1:], rest=False)
         if self._stuck is not None and self._stuck.is_alive():
             # Queueing behind a read that is known stuck would spend this call's limit waiting
             # for nothing, and a morning page with two De Tijd stories would outlast its client.
@@ -261,6 +275,7 @@ class Tijd:
             # nobody can tell whether De Tijd counted a refusal.
             step = getattr(browser, 'login_step', 'open')
             reason = 'login-broke-sent' if step == 'sent' else 'login-broke'
+            # `landed` is lost after De Tijd took the password: nothing was refused.
             details = {'step': STEPS.get(step, step)}
         else:
             reason = login_outcome(end)
@@ -347,8 +362,10 @@ class Tijd:
     def _fault(self, reason: str, **details: Any) -> dict[str, Any]:
         return self._say((reason, WHY[reason].format(**details)))
 
-    def _say(self, fault: tuple[str, str]) -> dict[str, Any]:
+    def _say(self, fault: tuple[str, str], rest: bool = True) -> dict[str, Any]:
         reason, why = fault
+        if rest and reason in RESTS_AFTER:
+            self._resting = (self._now() + REST, reason, why)
         self._alert(f'De Tijd: {why}', key=reason)
         self._log.warning('a De Tijd article was not read: %s', reason)
         return {'why': why, 'said': True}

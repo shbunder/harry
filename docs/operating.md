@@ -385,11 +385,13 @@ session to `/data/tijd`, and read the article again — in the same call. A laps
 nothing anybody sees.
 
 **When Harry cannot log in**, De Tijd's stories print the feed's summary, the page still
-renders, and one line reaches Slack naming what happened. After a refused password, a captcha
-or a step after the password Harry does not recognise, **it does not try again for 6 hours**:
-De Tijd blocks an account after repeated failures, and one refused attempt a morning is safe
-where one per article is not. A login that stalled before the password was sent is tried again
-after 15 minutes.
+renders, and one line reaches Slack naming what happened. **It does not try again for 6
+hours** after anything that might have been a refusal: a refused password, a captcha, a step
+after the password Harry does not recognise, a browser lost between sending the password and
+coming back to De Tijd, or a paywall that is still there after a login. De Tijd blocks an
+account after repeated failures, and one refused attempt a morning is safe where one per
+article is not. A login that stopped before the password was sent — slow, unreachable, or a
+browser that gave out — is tried again after 15 minutes.
 
 **Fix a refused password:**
 
