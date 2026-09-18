@@ -451,6 +451,20 @@ def fit(intro: str, data: dict, log: Any) -> tuple[str, dict]:
     }
 
 
+SECOND_SHEET_PAGES = 2
+"""How many pages "also today" may run to before it counts as crowded.
+
+It was one. The second sheet then held about a dozen stories and a category with a single
+story in it looked broken rather than quiet — so the brief now asks for up to twenty, about
+four in each category the day supports, and two pages is what a full second sheet looks like.
+
+**`MOST_MORE` is what really bounds the sheet.** Twenty cards with pictures and real headlines
+make two pages, measured, so three is not reachable while the tool refuses a twenty-first.
+This stays as the guard for a day of unusually long headlines, and it is deliberately the one
+control here with no test that makes it fire — the reachable boundary is the cap, which has
+its own."""
+
+
 def render(html: str, where: Path, log: Any) -> dict:
     """The PDF on disk, and what is worth knowing about it.
 
@@ -471,7 +485,7 @@ def render(html: str, where: Path, log: Any) -> dict:
     if 'day' not in [name for name, _, _ in _boxes(first)]:
         crowded.append('the day column did not fit on the front sheet')
     spread = [n for n, one in enumerate(document.pages, start=1) if 'sheet' in [c for c, _, _ in _boxes(one)]]
-    if len(spread) > 1:
+    if len(spread) > SECOND_SHEET_PAGES:
         crowded.append(f'"also today" runs to {len(spread)} pages — one or two stories too many')
     for what in crowded:
         log.warning('%s', what)

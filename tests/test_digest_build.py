@@ -521,17 +521,23 @@ def test_a_front_sheet_that_will_not_fit_says_so(digest):
 
 
 @respx.mock
-def test_a_second_sheet_that_runs_over_says_so(digest):
-    """The other half. A reader who has turned past the front page wants everything else at a
-    glance, not a second and third helping of it.
+def test_a_full_second_sheet_of_two_pages_is_not_reported_as_crowded(digest):
+    """This asserted the opposite until the owner chose two pages as a full second sheet.
 
-    With pictures, because a card without one is half the height and twenty of those fit
-    comfortably — the sheet this is about is the one a real morning produces.
+    The old assertion was right for a one-page sheet: twelve stories, and a category with one
+    story in it looked broken. The brief now asks for up to twenty across seven categories,
+    which is two pages, so reporting that as "one or two stories too many" would cry wolf
+    every morning.
+
+    Built the way a real morning is — with pictures, and with headlines the length real ones
+    are, because both decide a card's height. **Three pages cannot be reached from here:**
+    `MOST_MORE` refuses more than twenty, and twenty of these make two. The cap is what bounds
+    the sheet now, and it has its own test.
     """
     respx.get('https://pictures.test/0.jpg').mock(
         return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
     )
-    answer = built(digest(news={'many': 30, 'image': 'https://pictures.test/0.jpg'}))(
+    answer = built(digest(news={'many': 30, 'image': 'https://pictures.test/0.jpg', 'real_titles': True}))(
         intro='Too much.',
         picks=[pick(0)],
         # Spread across the subjects: each section costs a heading, and it is the headings
@@ -545,7 +551,8 @@ def test_a_second_sheet_that_runs_over_says_so(digest):
         ],
     )
 
-    assert any('also today' in one for one in answer['page']['crowded']), answer['page']['crowded']
+    assert [one for one in answer['page']['crowded'] if 'also today' in one] == [], answer['page']['crowded']
+    assert answer['more'] == 20, 'the sheet under test is not a full one'
 
 
 @respx.mock

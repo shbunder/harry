@@ -904,3 +904,35 @@ def test_a_regional_feed_that_is_down_costs_only_itself(news):
     assert any(c['source'] == 'KW West-Vlaanderen' for c in answer['candidates']), (
         'a dead feed took its neighbour with it'
     )
+
+
+TIJD_NIEUWS = 'https://www.tijd.be/rss/nieuws.xml'
+TIJD_CULTUUR = 'https://www.tijd.be/rss/cultuur.xml'
+TIJD_POLITIEK = 'https://www.tijd.be/rss/politiek.xml'
+
+TIJD_FEEDS = (
+    f'FEEDS=tijd=De Tijd={TIJD_NIEUWS}|tijd-cultuur=De Tijd={TIJD_CULTUUR}|tijd-politiek=De Tijd={TIJD_POLITIEK}\n'
+)
+
+
+@respx.mock
+def test_one_paper_s_sections_are_read_together_and_deduplicated(news):
+    """De Tijd's `nieuws` feed carries ten stories and nothing more, which left Culture on the
+    second sheet with one item. It publishes eight sections of ten, mostly distinct — measured
+    live on 2026-09-18, `cultuur` shared two stories with `nieuws` and `politiek` shared none.
+
+    **These three fixtures share nothing**, because `tijd-nieuws.xml` was recorded two days
+    before the other two. So this proves the sections are read together, add stories, and
+    print under one name — not that a story carried twice is offered once. Deduplication has
+    its own test with a pair chosen because it can fail:
+    `test_the_feed_listed_first_keeps_the_duplicate`.
+    """
+    serving(**{TIJD_NIEUWS: 'tijd-nieuws.xml', TIJD_CULTUUR: 'tijd-cultuur.xml', TIJD_POLITIEK: 'tijd-politiek.xml'})
+
+    answer = connector(news(settings=TIJD_FEEDS)).search(limit=60)
+    links = [one['id'] for one in answer['candidates']]
+
+    assert answer['unavailable'] == []
+    assert len(links) == 26, f'three sections of the same paper gave {len(links)} stories'
+    assert len(links) == len(set(links)), 'the same story came back twice'
+    assert {one['source'] for one in answer['candidates']} == {'De Tijd'}, 'one paper, one name on the page'
