@@ -127,6 +127,12 @@ three towns; Harry never matches a town name against a headline.
 - **HLN is paywalled**, so a front-page pick from it prints the feed's summary rather than
   full text. That is the existing behaviour for any source without a reader, and it means the
   best-looking local story can be the thinnest page in the paper.
+- **The top of the front page loses its pictures on a local day.** Measured after building
+  this: VRT carries a picture on every entry, and ROB tv, HLN Leuven and HLN Oostende carry
+  none at all — 0 of 8 each. Regional leads by topic order rather than by choice, so on a day
+  with two local picks the first two cards are plain text above a page of illustrated ones.
+  The page still reads; it is simply quieter at the top than it was. Nothing can be done
+  about it from here — the pictures are absent at the source.
 - **Three more feeds is three more things that can fail quietly.** A Nearby section with one
   story looks exactly like a quiet week, which is why a failed feed has to reach
   `unavailable` and the intro.

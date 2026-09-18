@@ -2,7 +2,7 @@
 id: STORY-260918-f117b8
 title: What Claude is handed each morning is only what it chooses on
 feature: FEAT-260918-4065d5
-status: Backlog
+status: Done
 created: 2026-09-18
 ---
 
@@ -21,12 +21,12 @@ Part of [[FEAT-260918-4065d5]].
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [ ] `digest_list_candidates` drops `image` from every headline it returns, and a test fails if it comes back
-- [ ] It drops `feed` too: every id already begins with that feed's slug, and `source` is the name a person reads
-- [ ] **`date` stays on every headline.** `news.search` applies no date filter, so the newest 40 can include yesterday's stories, and a candidate that lost its date would be put on today's page as today's news
-- [ ] `news_search` is unchanged — it serves a caller asking across days, where `feed` and `date` are the answer rather than noise
-- [ ] The trim happens in the tool, not in `CONCISE_FIELDS`, so the connector keeps serving both callers
-- [ ] Measured on the running stack, before and after, with the three regional feeds configured: the payload for 40 headlines and what fraction each field costs
+- [x] `digest_list_candidates` drops `image` from every headline it returns, and a test fails if it comes back
+- [x] It drops `feed` too: every id already begins with that feed's slug, and `source` is the name a person reads
+- [x] **`date` stays on every headline.** `news.search` applies no date filter, so the newest 40 can include yesterday's stories, and a candidate that lost its date would be put on today's page as today's news
+- [x] `news_search` is unchanged — it serves a caller asking across days, where `feed` and `date` are the answer rather than noise
+- [x] The trim happens in the tool, not in `CONCISE_FIELDS`, so the connector keeps serving both callers
+- [x] Measured on the running stack, before and after, with the three regional feeds configured: the payload for 40 headlines and what fraction each field costs
 
 ## Subtasks
 
