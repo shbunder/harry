@@ -32,6 +32,8 @@ out, the way basketball is on a day with no basketball.
 - [ ] A page with nothing regional prints no Nearby heading, and every other section is unchanged
 - [ ] The news connector reads ROB tv, HLN Leuven and HLN Oostende beside the national feeds, and their ids carry their own slugs
 - [ ] A regional feed that fails is named in `unavailable` and costs only itself — the national headlines still arrive
+- [ ] Every place that lists the topics agrees: `marks.py`, `digest_build/TOOL.md`, the job's brief, and the claude.ai routine's copy
+- [ ] The brief names a missing source in the intro whenever the section it feeds is thin, so a half-empty Nearby section cannot read as a quiet week
 - [ ] The job's brief and the claude.ai routine's copy name the same three towns and the same rule for a day with none
 - [ ] `docs/sources.md` says which feeds carry the three towns, and that VRT's regional feeds answer 410
 

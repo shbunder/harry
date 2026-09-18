@@ -109,8 +109,11 @@ three towns; Harry never matches a town name against a headline.
 
 - The reader's own towns lead the paper, and the running order now means something a person
   could state: here, home, abroad, then the rest.
-- The six-shape claim is replaced by a rendered page, and the spike that produced it is in
-  `scratch/` for the next person who wants an eighth.
+- The six-shape claim is replaced by a rendered page rather than a second opinion. The spike
+  that produced it was thrown away — `scratch/` is gitignored, so nothing here survives a
+  merge — which is why what it measured is written out above instead of pointed at. The
+  method is the reusable part: patch `TOPICS` in memory, render a real day through
+  `digest_build` with `deliver=false`, and look at the first two pages.
 - Adding the feeds costs no code, which is the property the news connector was built for.
 
 **What this makes harder:**
