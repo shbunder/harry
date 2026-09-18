@@ -13,6 +13,8 @@ Everything the news connector is tested against. No test here reaches a URL.
 | `vrt-article.html` | The article behind the first VRT entry, after the `vrtnws.be/p.oL1bKEomY` redirect | Nothing |
 | `bbc-article.html` | `www.bbc.co.uk/news/articles/cy5zg41dkqwo` | Nothing |
 | `tijd-nieuws.xml` | `www.tijd.be/rss/nieuws.xml`, recorded 16 September 2026 — RSS 2.0, 10 items, links are `tijd.be/r/t/1/id/…` redirect stubs, no pictures | Nothing |
+| `tijd-cultuur.xml` | `www.tijd.be/rss/cultuur.xml`, recorded 18 September 2026 — RSS 2.0 | 10 items cut to 8 |
+| `tijd-politiek.xml` | `www.tijd.be/rss/politiek.xml`, recorded 18 September 2026 — RSS 2.0 | 10 items cut to 8 |
 | `robtv.xml` | `www.robtv.be/rss`, recorded 18 September 2026 — RSS 2.0. Regional television for the Leuven area, which is what carries Holsbeek and its neighbours | 40 items cut to the first 8 |
 | `kw-west-vlaanderen.xml` | `kw.be/feed/`, recorded 18 September 2026 — RSS 2.0. All of West Flanders, which is why only a few items are about Oostende | 50 items cut to 8 |
 
@@ -28,6 +30,11 @@ that used only `cy5zg41dkqwo`, whose headlines match, would pass either way.
 
 `vrt-nws.xml` also carries one entry published 2026-04-20 among seven from September, so
 filtering by date has something real to exclude.
+
+**The three De Tijd files share no story**, because `tijd-nieuws.xml` was recorded two days
+before the other two. Live on 18 September, `cultuur` shared two stories with `nieuws`. So
+they prove the sections are read together and add stories, never that a duplicate is dropped —
+that is `bbc-news.xml` and `bbc-world.xml`, above, chosen because they can fail.
 
 **The two regional feeds were recorded because VRT's own are gone** — `nl.rss.articles_regio_*`
 answers **410 Gone**. What else was tried, and why it is not here, is in `docs/sources.md`:

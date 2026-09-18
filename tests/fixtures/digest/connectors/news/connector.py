@@ -71,10 +71,18 @@ class News:
                 },
             ]
             return {'candidates': made, 'unavailable': []}
+        # A real headline runs to a dozen words and wraps to three lines, which is most of a
+        # card's height. `Story 5` wraps to none, so a sheet built from those holds about
+        # twice what a morning's actually does.
+        headline = (
+            'Vlaams minister stuurt West-Vlaams gouverneur naar de kust voor verkennend onderzoek'
+            if wanted.get('real_titles')
+            else 'Story'
+        )
         made = [
             {
                 'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it',
-                'title': f'Story {n}',
+                'title': f'{headline} {n}',
                 'source': 'VRT NWS',
                 'feed': 'vrt',
                 'date': '2026-09-15',

@@ -172,6 +172,26 @@ FEEDS=vrt=VRT NWS=https://www.vrt.be/vrtnws/nl.rss.articles.xml|bbc=BBC News=htt
 ENV
 ```
 
+### One paper, several sections
+
+A feed is a section rather than a paper, and a paper's sections are added as separate feeds
+under the same **Name** — they print as one source and deduplicate against each other on the
+link. De Tijd's `nieuws` carries ten stories and nothing else, which is why Culture came out
+with one item on the second sheet. Four of its sections are read:
+
+```
+tijd=De Tijd=https://www.tijd.be/rss/nieuws.xml
+tijd-cultuur=De Tijd=https://www.tijd.be/rss/cultuur.xml
+tijd-politiek=De Tijd=https://www.tijd.be/rss/politiek.xml
+tijd-ondernemen=De Tijd=https://www.tijd.be/rss/ondernemen.xml
+```
+
+Eight sections answer 200, each with ten items: `nieuws`, `ondernemen`, `cultuur`,
+`politiek`, `markten_live`, `opinie`, `netto` and `sabato`. Measured on 18 September 2026
+against `nieuws`, `politiek` and `opinie` shared nothing with it, `cultuur` and `ondernemen`
+shared two each, and `markten_live` four. The four left out are markets, opinion, personal
+finance and the weekend magazine — none of them the day's news.
+
 Feeds are separated by `|`, and each one is `slug=Name=url` split on the first two `=`.
 Harry reads RSS 2.0 and Atom; check a new feed is one of those, because nothing will tell
 you it is not except an empty section. An entry that is not `slug=Name=url` is skipped with

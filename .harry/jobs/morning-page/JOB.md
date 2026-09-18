@@ -13,8 +13,9 @@ on a tablet. Follow these five steps in order. Do not skip one and do not add on
 
 ## 1. Ask what today could contain
 
-Call `digest_list_candidates()`. It returns today's date, the weather, the day's agenda, and
-about forty headlines. Each headline has an `id`, a `title`, a `source` and a `summary`.
+Call `digest_list_candidates(limit=60)`. It returns today's date, the weather, the day's
+agenda, and about sixty headlines — a wide choice on purpose, and most of them will not be
+used. Sixty is the most it will give. Each headline has an `id`, a `title`, a `source` and a `summary`.
 
 It also returns `nearby`: the ids of the few stories that came from the local papers, which
 are held to a narrower rule and come last in the list. **They are not the same thing as the
@@ -74,14 +75,17 @@ If a story could be two topics, use the one the reader would look under:
   it would also fit `culture` or `belgium` and it is the one you would repeat, it is `oddity`.
   Only one or two a day earn it.
 
-## 3. Choose the second page: 10 to 12 more stories
+## 3. Choose the second page: up to 20 more stories
 
 Everything else worth knowing, as a `more` list. Same `id` and `topic` fields; **no note** —
-the second page is a glance, not an argument.
+the second page is a glance, not an argument. It runs to two sheets and that is fine.
 
-Spread them across the topics — two or three each under `belgium`, `world`, `tech` and
-`culture`, one or two under `oddity` — **but take what the day actually has.** A topic with
-one good story gets one. A topic with none is left out entirely rather than padded.
+**Aim for about four in each category.** A section with one story in it looks broken; four
+looks like a section. Twenty is the most the tool accepts.
+
+**But take what the day actually has.** A category with two good stories gets two — do not
+pad it with something you would not have chosen. A category with none is left out entirely.
+Four is what to aim for, never a quota to fill.
 
 Nothing may appear on both pages, and nothing twice.
 
@@ -149,4 +153,4 @@ Finally call `harry_mark_done` for this job, so nothing reports it missing.
 - **Every pick needs a `topic`** from the seven words above. No others.
 - **Never rewrite a headline or a summary.** Your words go in the `note` and the `intro`, and
   nowhere else.
-- **Six on the front page, 10 to 12 on the second.** Not twenty.
+- **Six on the front page, up to 20 on the second.** The tool refuses a twenty-first.
