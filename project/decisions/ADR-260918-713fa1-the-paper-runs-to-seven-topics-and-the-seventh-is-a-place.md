@@ -91,26 +91,60 @@ game. Which topic a story belongs to is judgement, and judgement is Claude's.
 
 ## Decision outcome
 
-**Option 1. Seven topics, with `regional` first, printed as "Nearby".** **Explainable** drove
-it: the paper runs outward from where the reader is, and a section for their own towns
-belongs at the front or not at all.
+**Option 1, with the position reversed on the day: seven topics, `regional` printed as
+"Nearby" and running near the back** — after basketball, before the oddity.
 
-The sources come from three feeds that were fetched and read before this was written — ROB tv
-for the Leuven region including Holsbeek's neighbours, HLN Leuven and HLN Oostende. They are
-configured exactly as VRT and the BBC are, as `slug=Name=url` in the connector's `.env.local`,
-so no code learns their names.
+It was built running first, and the owner moved it once they had seen it. Their reason is the
+better one: the three towns are a **standing interest**, like basketball, rather than the
+day's news. The front of the paper is what happened; the back is what this reader keeps an eye
+on. **Explainable** still drove it, to the opposite arrangement — "news first, my things
+after" is the truer sentence.
+
+Two rules came with the move, and they are what make the section affordable:
+
+- **A local paper is filtered before Claude sees it.** A story from a feed named in
+  `nearby_feeds` is handed over only if it names one of `nearby_places`, capped at
+  `nearby_limit`, and placed last. Without it KW took 17 of the newest 40 and left ROB tv with
+  one — the feed that actually covers the towns, squeezed out by the one that covers the
+  province.
+- **A nearby story leads the front page only when another paper carries it too**, enforced by
+  `digest_build` refusing a front-page `regional` pick with an empty `also`.
+
+**Does that filter contradict Option 4 below?** It is close, and the line is worth stating.
+Option 4 was rejected for deciding **what a story is about** by keyword, which is judgement.
+This decides **which candidates are worth handing over** from a paper that files fifty a day,
+which is a rule a person could apply by hand — the connector already filters by `query` and
+`source` the same way. Claude still assigns every topic. The filter is blunt in both
+directions and that is accepted: a Holsbeek story naming only a village inside it is dropped,
+and `OH Leuven` matches wherever the club is playing. A filter tight enough to fix either
+would be one that reads the story.
+
+The sources come from two feeds that were fetched and read before this was written — ROB tv
+for the Leuven area including Holsbeek's neighbours, and KW for West Flanders and the coast.
+They are configured exactly as VRT and the BBC are, as `slug=Name=url` in the connector's
+`.env.local`, so no code learns their names.
+
+**Oostende is the weak side of this and the owner chose it knowingly.** HLN is the only feed
+that is both current and actually about Oostende, and it is out by preference. Of what
+remains, Focus-WTV's Oostende feed stopped in March 2014 while still answering 200, Stad
+Oostende gives all 146 items the timestamp of the fetch, and Nieuwsblad answers 403. KW
+carries the whole province, so Oostende arrives a few items at a time among fifty.
 
 **Which stories are local stays Claude's**, handed over with the pick. The brief names the
-three towns; Harry never matches a town name against a headline.
+three towns. Harry matches town names only to decide which of a local paper's stories are
+worth handing over; it never decides what a story is about.
 
 ## Consequences
 
 **Good:**
 
-- The reader's own towns lead the paper, and the running order now means something a person
-  could state: here, home, abroad, then the rest.
-- The six-shape claim is replaced by a rendered page, and the spike that produced it is in
-  `scratch/` for the next person who wants an eighth.
+- The running order means something a person can state: the day's news, then the things this
+  reader keeps an eye on — basketball, the three towns, and the one worth repeating.
+- The six-shape claim is replaced by a rendered page rather than a second opinion. The spike
+  that produced it was thrown away — `scratch/` is gitignored, so nothing here survives a
+  merge — which is why what it measured is written out above instead of pointed at. The
+  method is the reusable part: patch `TOPICS` in memory, render a real day through
+  `digest_build` with `deliver=false`, and look at the first two pages.
 - Adding the feeds costs no code, which is the property the news connector was built for.
 
 **What this makes harder:**
@@ -121,9 +155,18 @@ three towns; Harry never matches a town name against a headline.
 - **The front page has one more claim on it.** Six picks now include up to two local stories,
   so a day with a heavy national story and a good local one is a harder choice for Claude,
   not an easier one. The brief still asks for six.
-- **HLN is paywalled**, so a front-page pick from it prints the feed's summary rather than
-  full text. That is the existing behaviour for any source without a reader, and it means the
-  best-looking local story can be the thinnest page in the paper.
-- **Three more feeds is three more things that can fail quietly.** A Nearby section with one
+- **Oostende is thinly covered**, by choice. KW is a province rather than a town, so most
+  mornings it brings nothing local and the Nearby section is Leuven-area only. If that turns
+  out to be too quiet, the source to add back is the one already ruled out on taste rather
+  than a new one to go looking for.
+- **Nearby stories are never illustrated.** VRT carries a picture on every entry; ROB tv and
+  KW carry none — 0 of 8 each. Since the section now sits at the back this costs little, but a
+  nearby story that does earn the front page will be the plain card among illustrated ones.
+  The pictures are absent at the source, so there is nothing to configure.
+- **The front-page rule can be satisfied without being met.** Harry checks that an `also`
+  exists, not that it names a national paper, so two local papers covering the same event
+  would pass. That is deliberate — the alternative is Harry deciding which sources count —
+  but it means the rule is only as good as the brief Claude is following.
+- **Two more feeds are two more things that can fail quietly.** A Nearby section with one
   story looks exactly like a quiet week, which is why a failed feed has to reach
   `unavailable` and the intro.

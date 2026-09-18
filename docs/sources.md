@@ -178,6 +178,76 @@ you it is not except an empty section. An entry that is not `slug=Name=url` is s
 a line in the log, and a `FEEDS` with nothing usable in it skips the connector entirely — a
 news source with nothing to read is misconfigured, not degraded.
 
+### The three towns
+
+The page's **Nearby** section is Oostende, Leuven and Holsbeek. A national feed reaches those
+towns only when something large happens in them — two stories in fifty on 18 September 2026,
+and Holsbeek, at about ten thousand people, not in a normal week at all. So they have their
+own feeds:
+
+| Feed | Carries | Format |
+|---|---|---|
+| `rob=ROB tv=https://www.robtv.be/rss` | The Leuven area and the villages around it — Holsbeek, Bierbeek, Rillaar. 11 of 40 items named Leuven the day it was added | RSS 2.0 |
+| `kw=KW West-Vlaanderen=https://kw.be/feed/` | West Flanders, the coast included. Broad: 3 of 50 items were Oostende that day, the rest elsewhere in the province | RSS 2.0 |
+
+**KW is a whole province rather than a town**, so most of what it brings is not Nearby. That
+is intended — Claude picks from candidates, so the ones that are not local simply do not get
+picked. It is the cost of the alternatives below.
+
+**Five sources were tried and are not usable.** Written down so nobody spends the afternoon
+again:
+
+| Source | Why not |
+|---|---|
+| VRT's own regional feeds | `nl.rss.articles_regio_<province>.xml` answers **410 Gone**. That naming was right once; they are retired |
+| Focus-WTV | `focus-wtv.be/feed/oostende/rss.xml` is exactly on topic — 9 of 10 items name Oostende — and **its newest item is 17 March 2014**. It still answers 200 with valid RSS, which is the worst kind of dead |
+| Stad Oostende | `oostende.be/nieuws/rss` is current, and **all 146 items carry one identical `pubDate`: the moment you fetch it.** Every item would sort as "just now" and take the whole of the newest 40, every morning. Also council announcements rather than news |
+| Nieuwsblad | **403** to a scripted client, even as a browser |
+| HLN | Works, and is the only feed that is both current and actually about Oostende — 6 of its items reached the newest 40 the day it was measured. Left out by choice, not by failure |
+
+Focus-WTV is also served behind twelve spaces of leading whitespace, so the XML declaration
+is not at the start of the document and a strict parser refuses it. Harry's does. That did
+not matter in the end, because the feed is eleven years stale, but it is the second thing
+you would have hit.
+
+**None of the regional feeds carry pictures** — ROB tv and KW both 0 of 8, where VRT carries
+one on every entry. Nearby sits near the back of the paper so this costs little, but a nearby
+story that does reach the front page will be the plain card among illustrated ones. The
+pictures are absent at the source; there is nothing to configure.
+
+### What Harry decides, and what Claude decides
+
+**Harry matches town names, and only to decide which candidates are worth handing over.** A
+local paper files about fifty stories a day and almost none of them are about these towns, so
+one from a feed named in `nearby_feeds` is passed on only if it names one of `nearby_places`.
+That is a rule you could apply by hand, and the connector already filters by `query` and
+`source` the same way.
+
+**Which topic a story belongs to is Claude's**, decided each morning from everything in the
+list. A story about the three towns can arrive from any feed — VRT carries one or two most
+days — and those are never filtered, because the filter only ever touches the local papers.
+
+These three settings live in `.harry/tools/digest_list_candidates/.env.local`, **not** beside
+the feeds:
+
+```bash
+cat > .harry/tools/digest_list_candidates/.env.local <<'ENV'
+NEARBY_FEEDS=rob|kw
+NEARBY_PLACES=Oostende|Leuven|Holsbeek
+NEARBY_LIMIT=5
+ENV
+```
+
+`NEARBY_FEEDS` holds feed slugs and has to spell them the way `FEEDS=` does. **Leave it empty
+and nothing is held back** — which is the state this feature was built to fix: measured on
+18 September 2026, KW alone took 17 of the newest 40 and left ROB tv, the feed that actually
+covers the towns, with one story. Harry logs a line at start-up when a slug here matches no
+configured feed.
+
+A nearby story also reaches the front page only when another paper carries the same event —
+`digest_build` refuses a front-page `regional` pick whose `also` is empty. Harry checks that a
+companion exists; which paper it is stays Claude's.
+
 ### When a feed dies
 
 **One line reaches Slack**, once per source per 24 hours:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -152,19 +153,87 @@ def test_the_intro_and_every_note_reach_the_page_unedited(digest):
 
 
 def test_the_paper_runs_in_the_readers_order_whatever_order_it_was_handed(digest):
-    """Home, abroad, technology, culture, sport, and the one worth knowing. The topic is not
-    decoration, it is the running order — so a caller may hand them over in any order."""
+    """Home, abroad, technology, culture, sport, what is nearby, and the one worth knowing. The
+    topic is not decoration, it is the running order — so a caller may hand them over in any
+    order. The day's news is at the front; the reader's own interests are at the back."""
     answer = built(digest(news={'many': 6}))(
         intro='Ordered.',
         picks=[
             {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'note': 'An oddity.', 'topic': 'oddity'},
             {'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'note': 'Abroad.', 'topic': 'world'},
             {'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'note': 'At home.', 'topic': 'belgium'},
+            {
+                'id': 'vrt-2026-09-15-story-3-and-what-came-of-it',
+                'note': 'Round the corner.',
+                'topic': 'regional',
+                'also': ['vrt-2026-09-15-story-4-and-what-came-of-it'],
+            },
         ],
     )
 
     prose = text_of(answer['page']['path'])
-    assert prose.index('At home.') < prose.index('Abroad.') < prose.index('An oddity.')
+    assert prose.index('At home.') < prose.index('Abroad.')
+    assert prose.index('Abroad.') < prose.index('Round the corner.') < prose.index('An oddity.')
+
+
+def test_a_nearby_pick_is_marked_as_its_own_topic_not_left_unknown(digest):
+    """An unknown topic sorts near the end *and* draws no mark, so `regional` shares its shape
+    of failure twice over. Sorting is checked below; the mark is checked on the module the
+    tool actually loaded, because the drawing never reaches the extracted text."""
+    answer = built(digest(news={'many': 4}))(
+        intro='Marked.',
+        picks=[
+            {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'note': 'At home.', 'topic': 'belgium'},
+            {
+                'id': 'vrt-2026-09-15-story-1-and-what-came-of-it',
+                'note': 'Round the corner.',
+                'topic': 'regional',
+                'also': ['vrt-2026-09-15-story-2-and-what-came-of-it'],
+            },
+            {'id': 'vrt-2026-09-15-story-3-and-what-came-of-it', 'note': 'A guess.', 'topic': 'nonsense'},
+        ],
+    )
+
+    assert Path(answer['page']['path']).exists()
+    prose = text_of(answer['page']['path'])
+    # A topic the table does not carry sorts after every one it does. `regional` sorting
+    # before it is what says the table carries it, rather than it having been ignored.
+    assert prose.index('At home.') < prose.index('Round the corner.') < prose.index('A guess.')
+
+    # And it is drawn. Sorting alone passed with `regional` deleted from the table, because an
+    # unknown topic keeps the order it was handed in.
+    marks = next(sys.modules[name] for name in list(sys.modules) if name.endswith('.marks'))
+    drawn = marks.badge('regional')
+    assert '<svg' in drawn and '<path' in drawn, f'nearby has no mark of its own: {drawn!r}'
+    assert marks.badge('nonsense') == '', 'a topic the table does not carry was given a mark'
+
+
+def test_nearby_heads_the_second_sheet_and_vanishes_when_there_is_nothing_in_it(digest):
+    """`picks` is the front page and `more` is the second sheet, so the heading needs a `more`
+    entry. A section with nothing in it is not drawn — the same rule basketball already has."""
+    made = built(digest(news={'many': 10}))
+    answer = made(
+        intro='Two sheets.',
+        picks=[pick(0)],
+        more=[
+            {'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'regional'},
+            {'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'topic': 'belgium'},
+        ],
+    )
+    prose = text_of(answer['page']['path'])
+    assert says(prose, 'Nearby')
+    # Headings are letter-spaced, so compare in the same flattened form `says` uses.
+    flat = prose.replace(' ', '').casefold()
+    assert flat.index('athome') < flat.index('nearby'), 'Nearby did not sit behind At home'
+
+    quiet = built(digest(news={'many': 10}))(
+        intro='Nothing close to home today.',  # never the word itself: says() would find it here
+        picks=[pick(0)],
+        more=[{'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'topic': 'belgium'}],
+    )
+    calm = text_of(quiet['page']['path'])
+    assert not says(calm, 'Nearby'), 'an empty Nearby section was drawn anyway'
+    assert says(calm, 'At home'), 'the other sections stopped rendering'
 
 
 def test_a_second_sheet_carries_the_rest_grouped_by_subject(digest):
@@ -694,3 +763,84 @@ def test_the_docs_say_the_folder_belongs_to_whoever_is_pushing():
     for prose in (sources, runbook):
         assert 'Whoever is pushing says which folder' in prose
         assert 'top level' in prose, 'a caller must not be able to write inside your folders'
+
+
+def test_a_nearby_story_cannot_lead_on_one_local_paper_alone(digest):
+    """The three towns are a standing interest, not the day's news, so a local item earns the
+    front page by being somebody else's story too. `also` is where Claude says that, and the
+    check is on `also` existing rather than on which paper it names — deciding whether a
+    source counts as national would be Harry reading the news."""
+    made = built(digest(news={'many': 4}))
+
+    with pytest.raises(Exception) as refused:
+        made(
+            intro='One paper only.',
+            picks=[{'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'note': 'Alone.', 'topic': 'regional'}],
+        )
+    assert 'another paper carries it' in str(refused.value)
+    assert 'vrt-2026-09-15-story-0-and-what-came-of-it' in str(refused.value), 'it does not say which pick'
+
+
+def test_a_nearby_story_may_lead_when_another_paper_carries_it(digest):
+    """The same pick, with a companion, goes through. Without this the rule above would pass
+    just as well if the tool refused every regional pick outright."""
+    answer = built(digest(news={'many': 4}))(
+        intro='Two papers.',
+        picks=[
+            {
+                'id': 'vrt-2026-09-15-story-0-and-what-came-of-it',
+                'note': 'Carried elsewhere too.',
+                'topic': 'regional',
+                'also': ['vrt-2026-09-15-story-1-and-what-came-of-it'],
+            }
+        ],
+    )
+
+    assert answer['front'] == 1
+    assert 'Carried elsewhere too.' in text_of(answer['page']['path'])
+
+
+def test_a_nearby_story_on_the_second_sheet_needs_no_companion(digest):
+    """`more` is a glance, not an argument — the rule is about leading the paper, so a nearby
+    story with nobody else behind it belongs there rather than nowhere."""
+    answer = built(digest(news={'many': 6}))(
+        intro='A glance.',
+        picks=[pick(0)],
+        more=[{'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'regional'}],
+    )
+
+    assert answer['more'] == 1
+    assert says(text_of(answer['page']['path']), 'Nearby')
+
+
+def test_every_place_that_lists_the_topics_agrees():
+    """The topics are written out in four places and only one of them executes.
+
+    `marks.py` is the running order. `digest_build/TOOL.md` is what Claude reads when it calls
+    this tool. The brief is what it reads before choosing. The fourth is a copy of the brief in
+    the claude.ai routine, which no test can reach.
+
+    This caught a real one: the brief said "exactly one of these six words" above a table of
+    seven, and a model following the count rather than the table never emits the seventh at
+    all — which is silent, because a topic nobody uses looks exactly like a quiet week.
+    """
+    import re
+
+    marks = (REPO / '.harry' / 'tools' / 'digest_build' / 'marks.py').read_text(encoding='utf-8')
+    topics = re.findall(r"^    '(\w+)': \(", marks, re.MULTILINE)
+    assert len(topics) >= 6, topics
+
+    body = (REPO / '.harry' / 'tools' / 'digest_build' / 'TOOL.md').read_text(encoding='utf-8')
+    listed = re.search(r'`topic` is one of ([^,]+(?:, [^,]+)*), and it', body)
+    assert listed, 'the tool body no longer says what a topic may be'
+    assert re.findall(r'`(\w+)`', listed.group(1)) == topics, 'the tool body and the running order disagree'
+
+    brief = (REPO / '.harry' / 'jobs' / 'morning-page' / 'JOB.md').read_text(encoding='utf-8')
+    rows = re.findall(r'^\| `(\w+)` \|', brief, re.MULTILINE)
+    assert sorted(rows) == sorted(topics), f'the brief lists {rows}, the paper runs {topics}'
+
+    counts = re.findall(r'(?:one of these|from the) (\w+) words', brief)
+    assert counts, 'the brief no longer says how many topic words there are'
+    written = {'six': 6, 'seven': 7, 'eight': 8, 'nine': 9}
+    for said in counts:
+        assert written.get(said) == len(topics), f'the brief says {said} topic words and there are {len(topics)}'

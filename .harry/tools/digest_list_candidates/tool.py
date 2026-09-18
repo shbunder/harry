@@ -17,8 +17,19 @@ MOST = 60
 """Headlines this will return however much is asked for. Forty is the default and what the
 brief asks for; sixty is headroom for a caller that wants to filter afterwards."""
 
+POOL = 150
+"""Candidates asked of the connector before any of this tool's own filtering.
+
+Far more than it returns, on purpose. A local paper files about fifty stories a day against a
+national one's seven, and almost none of them name the places this page cares about — so
+asking for sixty and then discarding most of them left the page with fifteen candidates
+instead of forty. Ask wide, then narrow."""
+
 
 def register(registry: Registry, context: Context) -> None:
+    nearby_feeds = _split(context.config.get('nearby_feeds'))
+    nearby_places = [place.casefold() for place in _split(context.config.get('nearby_places'))]
+    nearby_limit = int(context.config.get('nearby_limit') or 0)
     weather = context.connectors.get('weather')
     calendar = context.connectors.get('icloud')
     news = context.connectors.get('news')
@@ -80,18 +91,31 @@ def register(registry: Registry, context: Context) -> None:
         # It costs nothing — one fetch per feed either way.
         stories, missing = section(
             'news',
-            (lambda: news.search(limit=MOST, detail=detail)) if news else None,
+            (lambda: news.search(limit=POOL, detail=detail)) if news else None,
             'no news connector is configured',
         )
         note(missing)
 
         found = stories.pop('candidates', []) if stories.get('available') else []
-        headlines = found[:wanted]
+        elsewhere, nearby, seen = _split_off_the_local_ones(found, nearby_feeds, nearby_places)
+        # A slug that matches nothing in the whole pool is a misspelling or a feed that went
+        # away, and it looks exactly like a quiet week in those towns — so it is said out loud.
+        for slug in sorted(set(nearby_feeds) - seen):
+            log.warning('nearby_feeds names %r, and no story in the pool came from it', slug)
+        # The local ones go last and are capped, so a paper that files fifty stories a day
+        # cannot take the list over. Everything else keeps competing on recency as before.
+        close_by = nearby[:nearby_limit]
+        kept = (elsewhere[: max(1, wanted - len(close_by))] + close_by)[:wanted]
+        headlines = [_only_what_is_chosen_on(one) for one in kept]
+        # Named so the brief can say "these are the nearby ones" without Claude re-deriving it
+        # from a feed slug that is no longer in the answer.
+        here = {one['id'] for one in close_by}
         # The news connector reports its own dead feeds by name; they belong in the same list
         # a caller checks rather than in a second one nobody looks at.
         unavailable += [str(one.get('source', 'a feed')) for one in stories.pop('unavailable', []) or []]
 
         return {
+            'nearby': [one['id'] for one in headlines if one['id'] in here],
             'date': dt.date.today().isoformat(),
             'weather': sky,
             'agenda': day,
@@ -99,6 +123,66 @@ def register(registry: Registry, context: Context) -> None:
             'dropped': len(found) - len(headlines),
             'unavailable': sorted(set(unavailable)),
         }
+
+
+def _split(setting: object) -> list[str]:
+    """A `|`-separated setting, as a list. An empty setting is no entries, not one empty one."""
+    return [part.strip() for part in str(setting or '').split('|') if part.strip()]
+
+
+def _split_off_the_local_ones(
+    candidates: list[dict], feeds: list[str], places: list[str]
+) -> tuple[list[dict], list[dict], set[str]]:
+    """Everything else, and the local stories that name one of the places.
+
+    A local paper covers a whole province and files all day, so most of what it carries is
+    about somewhere else entirely. Naming one of the places is the rule for handing it over —
+    a rule a person could apply by hand, which is what keeps it Harry's to apply. **Which
+    topic a story belongs to is still Claude's**, decided on the morning from what arrives.
+
+    It is a blunt rule in both directions, on purpose. A story about a village inside one of
+    the places, named only by the village, is dropped. A football club carrying a city's name
+    matches wherever it is playing. Both were measured on 2026-09-18, and a filter tight
+    enough to fix either would be one that reads the story.
+    """
+    if not feeds or not places:
+        return candidates, [], set()
+    elsewhere, nearby, seen = [], [], set()
+    for one in candidates:
+        slug = str(one.get('feed') or str(one.get('id', '')).split('-')[0])
+        if slug not in feeds:
+            elsewhere.append(one)
+            continue
+        seen.add(slug)
+        haystack = f'{one.get("title", "")} {one.get("summary", "")}'.casefold()
+        if any(place in haystack for place in places):
+            nearby.append(one)
+    return elsewhere, nearby, seen
+
+
+SPENT_HERE = ('image', 'feed')
+"""Fields the news connector supplies that nothing on this page is chosen by.
+
+Measured on 2026-09-18, on a 40-headline answer of 21,959 characters: `image` was 14.3% of it
+and `feed` 2.8%. Neither comes back — a pick is an id, a note and a topic — and `digest_build`
+re-reads the feeds itself, so it resolves the picture from its own copy rather than from
+anything the caller returns. `feed` says nothing the id does not: every id begins with that
+feed's slug, and `source` is the name a person reads.
+
+**`date` is not one of these, and looks like it should be.** Every candidate carried today's
+date the day this was measured, which makes it appear to repeat the answer's own `date`. It
+does not: `news.search` applies no date filter, so the newest forty can include yesterday's
+stories on a quiet morning, and a candidate that lost its date would be put on today's page
+as today's news.
+
+Trimmed here rather than in the connector's `CONCISE_FIELDS`, which `news_search` shares —
+there the caller is asking across days and across feeds, and both fields are the answer.
+"""
+
+
+def _only_what_is_chosen_on(candidate: dict) -> dict:
+    """One headline, with the fields this page is not chosen by removed."""
+    return {key: value for key, value in candidate.items() if key not in SPENT_HERE}
 
 
 def forecast_of(weather: Any) -> dict:

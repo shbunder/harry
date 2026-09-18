@@ -27,9 +27,16 @@ MOST = 12
 """Front-page picks this will accept. The brief asks for six; twelve is headroom, and an
 uncapped `picks` is an uncapped PDF at one to two pages each."""
 
-CANDIDATES = 60
-"""Candidates asked for when resolving ids. The same ceiling `digest_list_candidates` has, so
-an id it offered is an id this can still find."""
+CANDIDATES = 150
+"""Candidates asked for when resolving ids. **The same pool `digest_list_candidates` draws
+from**, so an id it offered is an id this can still find.
+
+The two numbers have to match, and for a while they did not. `digest_list_candidates` began
+asking for 150 so it could hold local papers back and still fill the page; this stayed at 60.
+Because the local ones are excluded from the rest rather than merged with them, the ordinary
+headlines it offers reach far deeper than 60 into the merged list — deep enough that a pick
+from the bottom of the page resolved to nothing and raised "no candidate is …, the feeds move
+on", which is not what had happened at all."""
 
 MOST_MORE = 20
 """Second-sheet stories. Past about a dozen they do not fit on one sheet and the answer says
@@ -38,6 +45,29 @@ so; twenty is the point at which it stops being worth rendering to find out."""
 
 class Unknown(Exception):
     """An id that matches no candidate, or more than one. The caller's mistake, so it raises."""
+
+
+class NotALead(Exception):
+    """A nearby story put on the front page with nothing but a local paper behind it."""
+
+
+def only_when_somebody_else_carries_it(picks: list[dict]) -> None:
+    """A `regional` story leads only when it is also somebody else's story.
+
+    The three towns are a standing interest rather than the day's news, so a local item earns
+    the front page by being picked up elsewhere — and `also` is where that shows. Claude
+    groups the pieces on one event already, so the check is mechanical: a front-page
+    `regional` pick with no companion is one paper's story, and belongs on the second sheet.
+
+    **Harry checks that a companion exists; which paper it is stays Claude's.** A rule that
+    tried to decide whether a source counted as national would be Harry reading the news.
+    """
+    alone = [pick['id'] for pick in picks if pick.get('topic') == 'regional' and not pick.get('also')]
+    if alone:
+        raise NotALead(
+            f'{", ".join(alone)}: a nearby story leads only when another paper carries it too. '
+            "Put the other paper's id in `also`, or move this to `more`."
+        )
 
 
 def resolve(given: str, known: dict[str, dict]) -> str:
@@ -99,6 +129,8 @@ def gather(sources: dict[str, Any], settings: dict[str, Any], picks: list[dict],
             'handed': place,
             'front': front,
         }
+
+    only_when_somebody_else_carries_it(picks)
 
     articles: list[dict] = []
     for place, pick in enumerate([*picks, *more], start=1):

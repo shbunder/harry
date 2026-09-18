@@ -86,6 +86,11 @@ GLOBE = (
     '<path d="M8 1.8c2.4 2.6 2.4 9.8 0 12.4M8 1.8c-2.4 2.6-2.4 9.8 0 12.4" '
     'fill="none" stroke="{ink}" stroke-width="1.2"/>'
 )
+PIN = (
+    '<path d="M8 14.2s4.6-4.3 4.6-7.6a4.6 4.6 0 1 0-9.2 0c0 3.3 4.6 7.6 4.6 7.6z" '
+    'fill="none" stroke="{ink}" stroke-width="1.5" stroke-linejoin="round"/>'
+    '<circle cx="8" cy="6.5" r="1.8" fill="none" stroke="{ink}" stroke-width="1.3"/>'
+)
 
 TOPICS = {
     'belgium': ('Belgium', 'At home', '#3f6b3a', HOUSE),
@@ -93,12 +98,15 @@ TOPICS = {
     'tech': ('AI & technology', 'AI and technology', '#5b4a8a', CHIP),
     'culture': ('Culture', 'Culture', '#a8447a', BOOK),
     'sport': ('Basketball', 'Basketball', '#9c3d2e', BALL),
+    'regional': ('Nearby', 'Nearby', '#1f6f6b', PIN),
     'oddity': ('Worth knowing', 'And one more thing', '#9a7b16', SPARK),
 }
 """The subjects worth a shape of their own — and **the order the paper runs in.**
 
-Home first, then abroad, then technology, then culture, then sport, then the one worth
-knowing. That order is the reader's, stated once and applied everywhere: the second page's
+Home first, then abroad, then technology, then culture, then sport, then what is nearby, then
+the one worth knowing. **The front of the paper is the day's news and the back is the
+reader's own interests** — basketball, then the three towns, then the story worth repeating.
+That order is the reader's, stated once and applied everywhere: the second page's
 sections, and the article pages behind both pages, are all laid out in it. A newspaper you
 can predict the shape of is one you can read at arm's length without hunting.
 
@@ -109,9 +117,13 @@ longer one that heads a section, the colour, and the drawing.
 grouping is on. A keyword rule would file every article mentioning a company under technology
 on the day one of them is about a court case.
 
-Six, because six shapes stay distinguishable at eleven points and a seventh would not. A pick
-with no topic, or one this table does not carry, sorts last and gets no mark rather than a
-wrong one.
+Seven. Six was the limit until a seventh was drawn and looked at: a page rendered on
+2026-09-18 with `regional` in the table kept the pin distinguishable from the house, the
+globe, the chip, the book, the ball and the spark at eleven points. **An eighth is an open
+question rather than a settled one** — render one and look, the way this one was.
+
+A pick with no topic, or one this table does not carry, sorts last and gets no mark rather
+than a wrong one.
 """
 
 ORDER = {name: place for place, name in enumerate(TOPICS)}

@@ -13,7 +13,7 @@ enabled: true
 
 Returns the headlines Harry's news feeds are carrying right now — VRT NWS for Belgium and
 BBC News for the world, unless this Harry is configured differently. Newest first, 20 by
-default, never more than 50.
+default, never more than 150.
 
 ```
 {"candidates": [

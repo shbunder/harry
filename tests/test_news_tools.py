@@ -147,30 +147,35 @@ async def test_search_returns_the_twenty_newest(harry):
     assert answer['unavailable'] == []
 
 
-def sixty_stories() -> str:
-    """The recorded BBC feed with 60 distinct items in it, so a cap has something to cut."""
+def many_stories(how_many: int = 60) -> str:
+    """The recorded BBC feed with N distinct items in it, so a cap has something to cut.
+
+    The ceiling is 150, so proving it bites needs more than 150 in front of the tool. Asking
+    for fewer than the ceiling would pass whether or not there were a ceiling at all.
+    """
     many = recorded('bbc-news.xml')
     one_item = '<item>' + many.split('<item>', 1)[1].split('</item>')[0] + '</item>'
     return (
         many.split('<item>')[0]
         + ''.join(
             one_item.replace('cy5zg41dkqwo', f'story{n:03d}').replace('<title>', f'<title>Story number {n} ')
-            for n in range(60)
+            for n in range(how_many)
         )
         + '</channel></rss>'
     )
 
 
-@pytest.mark.parametrize(('asked', 'back'), [({}, 20), ({'limit': 40}, 40), ({'limit': 100}, 50)])
+@pytest.mark.parametrize(('asked', 'back'), [({}, 20), ({'limit': 40}, 40), ({'limit': 500}, 150)])
 @respx.mock
-async def test_the_default_is_twenty_and_the_ceiling_is_fifty(harry, asked, back):
+async def test_the_default_is_twenty_and_the_ceiling_is_a_hundred_and_fifty(harry, asked, back):
     """20 is for somebody asking what happened today. The morning page asks for 40 by name,
-    because 40 is what it chooses six from. 50 is the ceiling.
+    because 40 is what it chooses six from. 150 is the ceiling, high because the digest filters
+    the local papers down afterwards and needs more raw material than it hands back.
 
-    Every other test here has 16 candidates to work with, so it would pass with any default
-    at all. This one puts 68 in front of the tool.
+    Every other test here has 16 candidates to work with, so it would pass with any default at
+    all. This one puts 208 in front of the tool, which is the only way the ceiling shows.
     """
-    respx.get(BBC).mock(return_value=httpx.Response(200, text=sixty_stories()))
+    respx.get(BBC).mock(return_value=httpx.Response(200, text=many_stories(200)))
     respx.get(VRT).mock(return_value=httpx.Response(200, text=recorded('vrt-nws.xml')))
     server, _ = harry()
 

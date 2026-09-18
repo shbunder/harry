@@ -31,9 +31,11 @@ STANDINS = REPO / 'tests' / 'fixtures' / 'digest' / 'connectors'
 def digest(tmp_path, monkeypatch):
     """The real tool, loaded, with whichever stand-ins a test asks for."""
 
-    def build(*, sources: tuple[str, ...] = ('weather', 'icloud', 'news'), **plan):
+    def build(*, sources: tuple[str, ...] = ('weather', 'icloud', 'news'), settings: str = '', **plan):
         root = tmp_path / 'root'
         copy_capability(REPO / '.harry' / TOOL, root / TOOL)
+        if settings:
+            (root / TOOL / '.env.local').write_text(settings, encoding='utf-8')
         for name in sources:
             copy_capability(STANDINS / name, root / 'connectors' / name)
         if sources:
@@ -223,3 +225,148 @@ def test_a_source_reporting_its_own_failure_is_logged_too(digest, caplog):
 
     assert 'weather says it could not answer' in caplog.text
     assert 'open-meteo answered 503' in caplog.text
+
+
+def test_a_headline_carries_only_what_the_page_is_chosen_on(digest):
+    """Measured on 2026-09-18: `image` was 14.3% of a 40-headline answer and `feed` 2.8%, and
+    neither comes back. A pick is an id, a note and a topic; `digest_build` re-reads the feeds
+    and resolves the picture from its own copy. `feed` repeats the id's own prefix."""
+    answer = called(digest(news={'image': 'https://images.vrt.be/a-very-long-url-indeed.jpg'}))()
+
+    assert answer['headlines'], 'nothing came back, so this proves nothing'
+    for headline in answer['headlines']:
+        assert 'image' not in headline, f'the picture URL is still being sent: {headline}'
+        assert 'feed' not in headline, f'the feed slug is still being sent: {headline}'
+
+
+def test_a_headline_keeps_its_date_because_the_newest_forty_are_not_all_today(digest):
+    """`news.search` applies no date filter, so a quiet morning's newest forty can carry
+    yesterday's stories. A candidate stripped of its date would go on today's page as today's
+    news, which is why `date` is not trimmed with the rest."""
+    answer = called(digest(news={}))()
+
+    assert answer['headlines'], 'nothing came back, so this proves nothing'
+    for headline in answer['headlines']:
+        assert headline.get('date'), f'a candidate lost the day it happened: {headline}'
+
+
+def test_the_id_still_says_which_feed_it_came_from(digest):
+    """`feed` is dropped rather than lost: every id begins with that feed's slug, which is
+    what makes dropping it safe."""
+    answer = called(digest(news={}))()
+
+    assert [h['id'] for h in answer['headlines']], 'nothing came back'
+    assert all(h['id'].startswith('vrt-') for h in answer['headlines']), answer['headlines']
+
+
+NEARBY = 'NEARBY_FEEDS=kw\nNEARBY_PLACES=Oostende|Leuven|Holsbeek\nNEARBY_LIMIT=2\n'
+"""A local paper, the three places, and a low cap so the test can see it bite."""
+
+
+def test_a_local_paper_is_handed_over_only_where_it_names_one_of_the_places(digest):
+    """A local paper covers a province and files all day. Measured on 2026-09-18, one put 17 of
+    the newest 40 on the page and pushed the feed that actually mattered down to one story."""
+    answer = called(digest(news={'many': 4, 'local': 6}, settings=NEARBY))()
+
+    titles = [h['title'] for h in answer['headlines']]
+    assert [t for t in titles if 'Oostende' in t], 'the local stories that name a place were dropped too'
+    assert not [t for t in titles if 'De Panne' in t], f'a local story naming nowhere nearby got through: {titles}'
+
+
+def test_the_local_ones_are_capped_and_come_last(digest):
+    """Newest-first is what let the chatty paper win, so the local ones are held back from it
+    rather than trusted to lose. The stand-in files them newest of all."""
+    answer = called(digest(news={'many': 4, 'local': 6}, settings=NEARBY))()
+
+    ids = [h['id'] for h in answer['headlines']]
+    local = [i for i in ids if i.startswith('kw-')]
+
+    assert len(local) == 2, f'NEARBY_LIMIT=2 did not hold: {ids}'
+    assert ids[-2:] == local, f'the local ones did not come last: {ids}'
+    assert answer['nearby'] == local, 'the answer does not say which ones are nearby'
+
+
+def test_with_no_nearby_feeds_configured_nothing_is_held_back(digest):
+    """The setting is empty by default, and a Harry that has not been told which papers are
+    local must not start guessing that one of them is."""
+    answer = called(digest(news={'many': 4, 'local': 4}))()
+
+    titles = [h['title'] for h in answer['headlines']]
+    assert [t for t in titles if 'De Panne' in t], 'a feed nobody named as local was filtered anyway'
+    assert answer['nearby'] == []
+
+
+def test_a_flood_of_local_stories_does_not_starve_the_page(digest):
+    """The filter runs after the connector has already capped, so asking for only what is
+    returned lets a chatty local paper fill the pool and then be thrown away. Measured on the
+    running stack: 15 candidates came back instead of 40, all but one from a single feed."""
+    answer = called(digest(news={'many': 40, 'local': 60}, settings=NEARBY))()
+
+    assert len(answer['headlines']) == 40, 'the local paper ate the page'
+    assert len(answer['nearby']) == 2, answer['nearby']
+
+
+def test_every_id_it_offers_is_one_the_page_can_still_find(tmp_path, monkeypatch):
+    """The two tools draw from one pool and it has to be the same pool.
+
+    `digest_list_candidates` asks for 150 so it can hold the local papers back and still fill
+    the page, and it excludes them from the rest rather than merging them — so the ordinary
+    headlines it offers reach far deeper into the merged list than the 40 it returns. When
+    `digest_build` asked for only 60, a pick from the bottom of that page resolved to nothing
+    and raised "no candidate is …, the feeds move on", which is not what had happened.
+
+    Both tools are loaded into one tree and called in turn, which is the order a morning takes.
+    """
+    root = tmp_path / 'both'
+    for where in ('tools/digest_list_candidates', 'tools/digest_build'):
+        copy_capability(REPO / '.harry' / where, root / where)
+    copy_capability(STANDINS / 'news', root / 'connectors' / 'news')
+    (root / 'connectors' / '_plan.py').write_text((STANDINS / '_plan.py').read_text(encoding='utf-8'), encoding='utf-8')
+    (root / 'tools/digest_list_candidates' / '.env.local').write_text(NEARBY, encoding='utf-8')
+    (root / 'tools/digest_build' / '.env.local').write_text(f'OUT_DIR={tmp_path / "out"}\n', encoding='utf-8')
+    where = tmp_path / 'plan.json'
+    where.write_text(json.dumps({'news': {'many': 120, 'local': 60}}), encoding='utf-8')
+    monkeypatch.setenv('HARRY_DIGEST_TEST_PLAN', str(where))
+
+    catalogue = load([root])
+    listing = catalogue.get('tool', 'digest_list_candidates')
+    building = catalogue.get('tool', 'digest_build')
+    assert listing and listing.target and building and building.target, [c.reason for c in catalogue.skipped]
+
+    offered = listing.target(limit=40)
+    assert len(offered['headlines']) == 40
+
+    # The last ordinary headline is the deepest one offered, and the one that used to fall
+    # outside what the build could see.
+    deepest = [h for h in offered['headlines'] if h['id'] not in offered['nearby']][-1]
+    answer = building.target(
+        intro='The deepest one offered.',
+        picks=[{'id': deepest['id'], 'note': 'From the bottom of the list.', 'topic': 'belgium'}],
+        deliver=False,
+    )
+
+    assert answer['front'] == 1, answer
+
+
+def test_a_nearby_feed_slug_that_matches_nothing_is_said_out_loud(digest, caplog):
+    """The two lists live in different folders and have to spell the slug the same way. A
+    misspelling silently turns the whole control off, and the page that results — a local
+    paper taking the list back over — looks like nothing is wrong."""
+    settings = 'NEARBY_FEEDS=kw|robtv\nNEARBY_PLACES=Oostende|Leuven\nNEARBY_LIMIT=5\n'
+    with caplog.at_level('WARNING'):
+        called(digest(news={'many': 4, 'local': 4}, settings=settings))()
+
+    assert "names 'robtv'" in caplog.text, f'a slug that matched nothing was not reported: {caplog.text}'
+    assert "names 'kw'" not in caplog.text, 'the slug that did match was reported as missing'
+
+
+def test_the_tool_body_shows_the_answer_it_actually_gives():
+    """The body is served to Claude verbatim, so an example carrying fields the tool no longer
+    returns is a contradiction handed over at the moment of the call."""
+    body = (REPO / '.harry' / TOOL / 'TOOL.md').read_text(encoding='utf-8')
+    example = body.split('```')[1]
+
+    assert '"image"' not in example, 'the example still advertises the picture URL'
+    assert '"feed"' not in example, 'the example still advertises the feed slug'
+    assert '"nearby"' in example, 'the example does not show the nearby list'
+    assert '"date"' in example, 'the example dropped the day a story happened'

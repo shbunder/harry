@@ -20,15 +20,24 @@ class News:
         self.read.append(story_id)
         if story_id in (wanted.get('unreadable') or []):
             return {
-                'available': False, 'id': story_id, 'title': f'Story {story_id[-1]}',
-                'source': 'VRT NWS', 'published': '2026-09-15T06:00:00+00:00',
-                'link': f'https://example.test/{story_id}', 'summary': 'A summary.',
-                'image': None, 'why': 'it answered 403',
+                'available': False,
+                'id': story_id,
+                'title': f'Story {story_id[-1]}',
+                'source': 'VRT NWS',
+                'published': '2026-09-15T06:00:00+00:00',
+                'link': f'https://example.test/{story_id}',
+                'summary': 'A summary.',
+                'image': None,
+                'why': 'it answered 403',
             }
         return {
-            'available': True, 'id': story_id, 'title': f'Story {story_id[-1]}',
-            'source': 'VRT NWS', 'published': '2026-09-15T06:00:00+00:00',
-            'link': f'https://example.test/{story_id}', 'summary': 'A summary.',
+            'available': True,
+            'id': story_id,
+            'title': f'Story {story_id[-1]}',
+            'source': 'VRT NWS',
+            'published': '2026-09-15T06:00:00+00:00',
+            'link': f'https://example.test/{story_id}',
+            'summary': 'A summary.',
             'image': wanted.get('image'),
             'text': 'One paragraph.\n\nAnd a second one, long enough to set in two columns.',
         }
@@ -42,18 +51,54 @@ class News:
             # What `News._unique` really produces when two same-day stories share their first
             # five title words: the second id is the first with `-2` on the end.
             made = [
-                {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'title': 'Story 0', 'source': 'VRT NWS',
-                 'feed': 'vrt', 'date': '2026-09-15', 'summary': 'A summary.', 'image': wanted.get('image')},
-                {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it-2', 'title': 'Story 0b', 'source': 'VRT NWS',
-                 'feed': 'vrt', 'date': '2026-09-15', 'summary': 'A summary.', 'image': wanted.get('image')},
+                {
+                    'id': 'vrt-2026-09-15-story-0-and-what-came-of-it',
+                    'title': 'Story 0',
+                    'source': 'VRT NWS',
+                    'feed': 'vrt',
+                    'date': '2026-09-15',
+                    'summary': 'A summary.',
+                    'image': wanted.get('image'),
+                },
+                {
+                    'id': 'vrt-2026-09-15-story-0-and-what-came-of-it-2',
+                    'title': 'Story 0b',
+                    'source': 'VRT NWS',
+                    'feed': 'vrt',
+                    'date': '2026-09-15',
+                    'summary': 'A summary.',
+                    'image': wanted.get('image'),
+                },
             ]
             return {'candidates': made, 'unavailable': []}
         made = [
-            {'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'title': f'Story {n}', 'source': 'VRT NWS',
-             'feed': 'vrt', 'date': '2026-09-15', 'summary': 'A summary.' * (40 if wanted.get('long') else 1),
-             'image': wanted.get('image')}
+            {
+                'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it',
+                'title': f'Story {n}',
+                'source': 'VRT NWS',
+                'feed': 'vrt',
+                'date': '2026-09-15',
+                'summary': 'A summary.' * (40 if wanted.get('long') else 1),
+                'image': wanted.get('image'),
+            }
             for n in range(many)
         ]
+        # A local paper, newest of all, so a tool that does not hold it back puts it first.
+        # Half of them name the place and half do not, which is the whole point of the filter.
+        for n in range(wanted.get('local', 0)):
+            names = n % 2 == 0
+            made.insert(
+                n,
+                {
+                    'id': f'kw-2026-09-15-local-{n}-and-what-came-of-it',
+                    'title': f'Something in Oostende {n}' if names else f'Something in De Panne {n}',
+                    'source': 'KW West-Vlaanderen',
+                    'feed': 'kw',
+                    'date': '2026-09-15',
+                    'summary': 'A summary.',
+                    'image': wanted.get('image'),
+                },
+            )
         return {'candidates': made[: how.get('limit', 20)], 'unavailable': wanted.get('unavailable', [])}
 
 

@@ -14,8 +14,12 @@ on a tablet. Follow these five steps in order. Do not skip one and do not add on
 ## 1. Ask what today could contain
 
 Call `digest_list_candidates()`. It returns today's date, the weather, the day's agenda, and
-about forty headlines. Each headline has an `id`, a `title`, a `source`, a `summary` and
-sometimes an `image`.
+about forty headlines. Each headline has an `id`, a `title`, a `source` and a `summary`.
+
+It also returns `nearby`: the ids of the few stories that came from the local papers, which
+are held to a narrower rule and come last in the list. **They are not the same thing as the
+`regional` topic** — a story about the three towns can come from any feed, and VRT carries one
+or two most days. The topic is still yours to assign, from any headline in the list.
 
 Read all of them before choosing anything.
 
@@ -28,7 +32,7 @@ open it.
 **One of the six is an `oddity`** — the thing they would repeat to somebody. A front page of
 six serious stories is a worse morning than five and a praying mantis.
 
-Give every pick a **topic**, exactly one of these six words:
+Give every pick a **topic**, exactly one of these seven words:
 
 | topic | what goes in it |
 |---|---|
@@ -37,11 +41,30 @@ Give every pick a **topic**, exactly one of these six words:
 | `tech` | artificial intelligence, computing, software, telecoms, science |
 | `culture` | books, games, television, film, music, art, exhibitions |
 | `sport` | **basketball only**, men's or women's |
+| `regional` | **Oostende, Leuven or Holsbeek** — the reader's own three towns |
 | `oddity` | the one you would repeat to somebody: strange, funny, or quietly nice |
 
 Two rules about `sport`. It means basketball and nothing else — not football, not cycling,
 not athletics, not Formula 1. **On a day with no basketball, use no `sport` picks at all.**
 Leaving the section out is correct; putting another sport in it is not.
+
+`regional` works the same way, and is the same kind of thing: a standing interest rather than
+the day's news. It means **Oostende, Leuven and Holsbeek** and nowhere else. Bruges is not
+nearby. Brussels is not nearby. **On a day with nothing from those three towns, use no
+`regional` picks at all.**
+
+Three things about it:
+
+- **A story about one of those towns is `regional` rather than `belgium`**, even though it is
+  also Belgian. The reader wants their own streets separated from the country. A national
+  story that merely mentions Leuven in passing — a minister who happens to be from there, a
+  club playing an away game — is not regional. It is about the town or it is not.
+- **`regional` belongs on the second sheet.** It sits near the back of the paper, beside the
+  basketball and the oddity: things the reader keeps an eye on, not the day's news.
+- **A nearby story only leads the front page when another paper carries it too.** Put the
+  other paper's id in its `also`, the way you would for any shared event. `digest_build`
+  refuses a front-page `regional` pick with an empty `also` and says which one — that is the
+  rule, not a suggestion. One local paper on its own is a `more` entry.
 
 If a story could be two topics, use the one the reader would look under:
 
@@ -108,8 +131,11 @@ Finally call `harry_mark_done` for this job, so nothing reports it missing.
 
 ## When something is not there
 
-- **A source says unavailable.** Choose from what did arrive and carry on. Say so in the
-  intro only if it cost you a whole topic.
+- **A source says unavailable.** Choose from what did arrive and carry on, and **name it in
+  the intro whenever the section it feeds comes out thin** — not only when a whole topic is
+  lost. Two feeds carry the nearby towns, so one being down halves the
+  section, and a short Nearby section looks exactly like a quiet week in Oostende. The reader
+  cannot tell those apart unless you say which one it was.
 - **Fewer than six good stories.** Use fewer. A thin front page is honest; padding it is not.
 - **`digest_build` returns an error.** Read it, fix what it names, call it once more. If it
   fails twice, stop and say what happened — do not try a third time.
@@ -120,7 +146,7 @@ Finally call `harry_mark_done` for this job, so nothing reports it missing.
   that is easy to drop — `…prinskensmolen-in-meerhout-krijgt`, not `…in-meerhout`. Copy the
   string; do not retype it from memory. If `digest_build` says an id is unknown, you almost
   certainly lost the last word: find it in the candidate list again and copy the whole thing.
-- **Every pick needs a `topic`** from the six words above. No others.
+- **Every pick needs a `topic`** from the seven words above. No others.
 - **Never rewrite a headline or a summary.** Your words go in the `note` and the `intro`, and
   nowhere else.
 - **Six on the front page, 10 to 12 on the second.** Not twenty.
