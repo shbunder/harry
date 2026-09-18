@@ -3,8 +3,8 @@ id: FEAT-260918-4065d5
 title: A Nearby section brings Oostende, Leuven and Holsbeek onto the page
 track: full
 created: 2026-09-18
-touches: [connectors/news, docs/sources, jobs/morning-page, tools/digest_build]
-stories: [STORY-260918-30a017, STORY-260918-177cde]
+touches: [connectors/news, docs/sources, jobs/morning-page, tools/digest_build, tools/digest_list_candidates]
+stories: [STORY-260918-30a017, STORY-260918-177cde, STORY-260918-f117b8]
 decisions: [ADR-260918-713fa1]
 ---
 
@@ -35,6 +35,7 @@ out, the way basketball is on a day with no basketball.
 - [ ] Every place that lists the topics agrees: `marks.py`, `digest_build/TOOL.md`, the job's brief, and the claude.ai routine's copy
 - [ ] The brief names a missing source in the intro whenever the section it feeds is thin, so a half-empty Nearby section cannot read as a quiet week
 - [ ] The job's brief and the claude.ai routine's copy name the same three towns and the same rule for a day with none
+- [ ] `digest_list_candidates` hands Claude no `image` and no `feed` — 17% of the payload it never uses — while `date` stays and `news_search` is unchanged
 - [ ] `docs/sources.md` says which feeds carry the three towns, and that VRT's regional feeds answer 410
 
 ## Stories
@@ -42,6 +43,7 @@ out, the way basketball is on a day with no basketball.
 <!-- Maintained by `board.py new-story`. -->
 - [ ] [[STORY-260918-30a017]] — The page can print a seventh topic, and Nearby leads it
 - [ ] [[STORY-260918-177cde]] — Three regional feeds carry the towns the national ones miss
+- [ ] [[STORY-260918-f117b8]] — What Claude is handed each morning is only what it chooses on
 
 ## Notes
 
