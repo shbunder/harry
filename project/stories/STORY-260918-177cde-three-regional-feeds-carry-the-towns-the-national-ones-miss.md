@@ -21,7 +21,7 @@ Part of [[FEAT-260918-4065d5]].
      Good: A De Tijd article whose browser session has expired falls back to its RSS
            summary, and the page still renders -->
 
-- [x] The news connector reads ROB tv, HLN Leuven and HLN Oostende beside the national feeds, configured the way every other feed is — a line in `.env.local`, never a code change
+- [x] The news connector reads ROB tv and KW West-Vlaanderen beside the national feeds, configured the way every other feed is — a line in `.env.local`, never a code change
 - [x] Candidates from each carry that feed's own slug, so an id says where it came from
 - [x] A regional feed answering 500 is named in `unavailable` and costs only itself: the national headlines still arrive, proved against a recorded fixture
 - [x] Each feed's format is recorded as a fixture under `tests/fixtures/news/`, and the parser is tested against it rather than against the live URL
