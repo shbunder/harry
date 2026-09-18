@@ -93,18 +93,20 @@ PIN = (
 )
 
 TOPICS = {
-    'regional': ('Nearby', 'Nearby', '#1f6f6b', PIN),
     'belgium': ('Belgium', 'At home', '#3f6b3a', HOUSE),
     'world': ('Abroad', 'Abroad', '#23496b', GLOBE),
     'tech': ('AI & technology', 'AI and technology', '#5b4a8a', CHIP),
     'culture': ('Culture', 'Culture', '#a8447a', BOOK),
     'sport': ('Basketball', 'Basketball', '#9c3d2e', BALL),
+    'regional': ('Nearby', 'Nearby', '#1f6f6b', PIN),
     'oddity': ('Worth knowing', 'And one more thing', '#9a7b16', SPARK),
 }
 """The subjects worth a shape of their own — and **the order the paper runs in.**
 
-Nearby first, then home, then abroad, then technology, then culture, then sport, then the one
-worth knowing — **the paper runs outward from where the reader is.** That order is the reader's, stated once and applied everywhere: the second page's
+Home first, then abroad, then technology, then culture, then sport, then what is nearby, then
+the one worth knowing. **The front of the paper is the day's news and the back is the
+reader's own interests** — basketball, then the three towns, then the story worth repeating.
+That order is the reader's, stated once and applied everywhere: the second page's
 sections, and the article pages behind both pages, are all laid out in it. A newspaper you
 can predict the shape of is one you can read at arm's length without hunting.
 

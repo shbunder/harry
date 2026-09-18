@@ -19,6 +19,9 @@ brief asks for; sixty is headroom for a caller that wants to filter afterwards."
 
 
 def register(registry: Registry, context: Context) -> None:
+    nearby_feeds = _split(context.config.get('nearby_feeds'))
+    nearby_places = [place.casefold() for place in _split(context.config.get('nearby_places'))]
+    nearby_limit = int(context.config.get('nearby_limit') or 0)
     weather = context.connectors.get('weather')
     calendar = context.connectors.get('icloud')
     news = context.connectors.get('news')
@@ -86,12 +89,21 @@ def register(registry: Registry, context: Context) -> None:
         note(missing)
 
         found = stories.pop('candidates', []) if stories.get('available') else []
-        headlines = [_only_what_is_chosen_on(one) for one in found[:wanted]]
+        elsewhere, nearby = _split_off_the_local_ones(found, nearby_feeds, nearby_places)
+        # The local ones go last and are capped, so a paper that files fifty stories a day
+        # cannot take the list over. Everything else keeps competing on recency as before.
+        close_by = nearby[:nearby_limit]
+        kept = (elsewhere[: max(1, wanted - len(close_by))] + close_by)[:wanted]
+        headlines = [_only_what_is_chosen_on(one) for one in kept]
+        # Named so the brief can say "these are the nearby ones" without Claude re-deriving it
+        # from a feed slug that is no longer in the answer.
+        here = {one['id'] for one in close_by}
         # The news connector reports its own dead feeds by name; they belong in the same list
         # a caller checks rather than in a second one nobody looks at.
         unavailable += [str(one.get('source', 'a feed')) for one in stories.pop('unavailable', []) or []]
 
         return {
+            'nearby': [one['id'] for one in headlines if one['id'] in here],
             'date': dt.date.today().isoformat(),
             'weather': sky,
             'agenda': day,
@@ -99,6 +111,40 @@ def register(registry: Registry, context: Context) -> None:
             'dropped': len(found) - len(headlines),
             'unavailable': sorted(set(unavailable)),
         }
+
+
+def _split(setting: object) -> list[str]:
+    """A `|`-separated setting, as a list. An empty setting is no entries, not one empty one."""
+    return [part.strip() for part in str(setting or '').split('|') if part.strip()]
+
+
+def _split_off_the_local_ones(
+    candidates: list[dict], feeds: list[str], places: list[str]
+) -> tuple[list[dict], list[dict]]:
+    """Everything else, and the local stories that name one of the places.
+
+    A local paper covers a whole province and files all day, so most of what it carries is
+    about somewhere else entirely. Naming one of the places is the rule for handing it over —
+    a rule a person could apply by hand, which is what keeps it Harry's to apply. **Which
+    topic a story belongs to is still Claude's**, decided on the morning from what arrives.
+
+    It is a blunt rule in both directions, on purpose. A story about a village inside one of
+    the places, named only by the village, is dropped. A football club carrying a city's name
+    matches wherever it is playing. Both were measured on 2026-09-18, and a filter tight
+    enough to fix either would be one that reads the story.
+    """
+    if not feeds or not places:
+        return candidates, []
+    elsewhere, nearby = [], []
+    for one in candidates:
+        slug = str(one.get('feed') or str(one.get('id', '')).split('-')[0])
+        if slug not in feeds:
+            elsewhere.append(one)
+            continue
+        haystack = f'{one.get("title", "")} {one.get("summary", "")}'.casefold()
+        if any(place in haystack for place in places):
+            nearby.append(one)
+    return elsewhere, nearby
 
 
 SPENT_HERE = ('image', 'feed')

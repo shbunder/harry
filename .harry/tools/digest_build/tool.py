@@ -40,6 +40,29 @@ class Unknown(Exception):
     """An id that matches no candidate, or more than one. The caller's mistake, so it raises."""
 
 
+class NotALead(Exception):
+    """A nearby story put on the front page with nothing but a local paper behind it."""
+
+
+def only_when_somebody_else_carries_it(picks: list[dict]) -> None:
+    """A `regional` story leads only when it is also somebody else's story.
+
+    The three towns are a standing interest rather than the day's news, so a local item earns
+    the front page by being picked up elsewhere — and `also` is where that shows. Claude
+    groups the pieces on one event already, so the check is mechanical: a front-page
+    `regional` pick with no companion is one paper's story, and belongs on the second sheet.
+
+    **Harry checks that a companion exists; which paper it is stays Claude's.** A rule that
+    tried to decide whether a source counted as national would be Harry reading the news.
+    """
+    alone = [pick['id'] for pick in picks if pick.get('topic') == 'regional' and not pick.get('also')]
+    if alone:
+        raise NotALead(
+            f'{", ".join(alone)}: a nearby story leads only when another paper carries it too. '
+            "Put the other paper's id in `also`, or move this to `more`."
+        )
+
+
 def resolve(given: str, known: dict[str, dict]) -> str:
     """The candidate this id means.
 
@@ -99,6 +122,8 @@ def gather(sources: dict[str, Any], settings: dict[str, Any], picks: list[dict],
             'handed': place,
             'front': front,
         }
+
+    only_when_somebody_else_carries_it(picks)
 
     articles: list[dict] = []
     for place, pick in enumerate([*picks, *more], start=1):

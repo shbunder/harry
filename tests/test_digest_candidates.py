@@ -31,9 +31,11 @@ STANDINS = REPO / 'tests' / 'fixtures' / 'digest' / 'connectors'
 def digest(tmp_path, monkeypatch):
     """The real tool, loaded, with whichever stand-ins a test asks for."""
 
-    def build(*, sources: tuple[str, ...] = ('weather', 'icloud', 'news'), **plan):
+    def build(*, sources: tuple[str, ...] = ('weather', 'icloud', 'news'), settings: str = '', **plan):
         root = tmp_path / 'root'
         copy_capability(REPO / '.harry' / TOOL, root / TOOL)
+        if settings:
+            (root / TOOL / '.env.local').write_text(settings, encoding='utf-8')
         for name in sources:
             copy_capability(STANDINS / name, root / 'connectors' / name)
         if sources:
@@ -255,3 +257,40 @@ def test_the_id_still_says_which_feed_it_came_from(digest):
 
     assert [h['id'] for h in answer['headlines']], 'nothing came back'
     assert all(h['id'].startswith('vrt-') for h in answer['headlines']), answer['headlines']
+
+
+NEARBY = 'NEARBY_FEEDS=kw\nNEARBY_PLACES=Oostende|Leuven|Holsbeek\nNEARBY_LIMIT=2\n'
+"""A local paper, the three places, and a low cap so the test can see it bite."""
+
+
+def test_a_local_paper_is_handed_over_only_where_it_names_one_of_the_places(digest):
+    """A local paper covers a province and files all day. Measured on 2026-09-18, one put 17 of
+    the newest 40 on the page and pushed the feed that actually mattered down to one story."""
+    answer = called(digest(news={'many': 4, 'local': 6}, settings=NEARBY))()
+
+    titles = [h['title'] for h in answer['headlines']]
+    assert [t for t in titles if 'Oostende' in t], 'the local stories that name a place were dropped too'
+    assert not [t for t in titles if 'De Panne' in t], f'a local story naming nowhere nearby got through: {titles}'
+
+
+def test_the_local_ones_are_capped_and_come_last(digest):
+    """Newest-first is what let the chatty paper win, so the local ones are held back from it
+    rather than trusted to lose. The stand-in files them newest of all."""
+    answer = called(digest(news={'many': 4, 'local': 6}, settings=NEARBY))()
+
+    ids = [h['id'] for h in answer['headlines']]
+    local = [i for i in ids if i.startswith('kw-')]
+
+    assert len(local) == 2, f'NEARBY_LIMIT=2 did not hold: {ids}'
+    assert ids[-2:] == local, f'the local ones did not come last: {ids}'
+    assert answer['nearby'] == local, 'the answer does not say which ones are nearby'
+
+
+def test_with_no_nearby_feeds_configured_nothing_is_held_back(digest):
+    """The setting is empty by default, and a Harry that has not been told which papers are
+    local must not start guessing that one of them is."""
+    answer = called(digest(news={'many': 4, 'local': 4}))()
+
+    titles = [h['title'] for h in answer['headlines']]
+    assert [t for t in titles if 'De Panne' in t], 'a feed nobody named as local was filtered anyway'
+    assert answer['nearby'] == []

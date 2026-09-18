@@ -3,6 +3,16 @@ name: digest_list_candidates
 namespace: digest
 description: Everything today could contain — the weather, the agenda and the headlines, in one call
 optional: [weather, icloud, news]
+config:
+  nearby_feeds:
+    description: 'Feed slugs that are local papers, separated by |. A story from one of these counts only when it names a place in nearby_places. Empty means no feed is treated as local.'
+    default: ""
+  nearby_places:
+    description: 'The places a local story must name to be worth handing over, separated by |. Matched against the title and the summary, case-insensitively.'
+    default: ""
+  nearby_limit:
+    description: How many local stories to hand over at most. They go last in the list, after everything else.
+    default: 5
 always_load: true
 annotations:
   readOnlyHint: true
@@ -13,6 +23,13 @@ enabled: true
 
 Returns everything today could go on the morning page: the weather where it is read, what is
 on the calendar, and up to forty headlines with their summaries and ids.
+
+**Local papers are held to a narrower rule.** A feed named in `nearby_feeds` publishes far
+more than a national one and almost none of it is about the places this page cares about —
+measured on 2026-09-18, one of them put 17 of the newest 40 on the page and pushed the local
+feed that mattered down to a single story. So a story from one of those feeds is handed over
+only when it names one of `nearby_places`, at most `nearby_limit` of them arrive, and they
+come **last** rather than competing on recency. Everything else is untouched.
 
 ```
 {"date": "2026-09-15",

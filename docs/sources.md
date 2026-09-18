@@ -187,25 +187,36 @@ own feeds:
 
 | Feed | Carries | Format |
 |---|---|---|
-| `rob=ROB tv=https://www.robtv.be/rss` | The Leuven region, including Holsbeek and its neighbours | RSS 2.0 |
-| `hln-leuven=HLN Leuven=https://www.hln.be/leuven/rss.xml` | Leuven and the Hageland | RSS 2.0 |
-| `hln-oostende=HLN Oostende=https://www.hln.be/oostende/rss.xml` | Oostende and the coast | RSS 2.0 |
+| `rob=ROB tv=https://www.robtv.be/rss` | The Leuven area and the villages around it — Holsbeek, Bierbeek, Rillaar. 11 of 40 items named Leuven the day it was added | RSS 2.0 |
+| `kw=KW West-Vlaanderen=https://kw.be/feed/` | West Flanders, the coast included. Broad: 3 of 50 items were Oostende that day, the rest elsewhere in the province | RSS 2.0 |
 
-**HLN is paywalled**, like De Tijd. Headlines and summaries come from the feed and are fine;
-an article Claude picks from it prints the feed's summary rather than full text, because
-there is no HLN reader. ROB tv is free and reads in full.
+**KW is a whole province rather than a town**, so most of what it brings is not Nearby. That
+is intended — Claude picks from candidates, so the ones that are not local simply do not get
+picked. It is the cost of the alternatives below.
 
-Three sources that were tried and are not usable, so nobody tries them again:
+**Five sources were tried and are not usable.** Written down so nobody spends the afternoon
+again:
 
-- **VRT's own regional feeds** — `nl.rss.articles_regio_<province>.xml` answers **410 Gone**.
-  That naming was right once; the feeds are retired.
-- **Focus-WTV** and **Nieuwsblad** — both answer **403** to a scripted client, which is the
-  De Tijd problem without a De Tijd connector behind it.
+| Source | Why not |
+|---|---|
+| VRT's own regional feeds | `nl.rss.articles_regio_<province>.xml` answers **410 Gone**. That naming was right once; they are retired |
+| Focus-WTV | `focus-wtv.be/feed/oostende/rss.xml` is exactly on topic — 9 of 10 items name Oostende — and **its newest item is 17 March 2014**. It still answers 200 with valid RSS, which is the worst kind of dead |
+| Stad Oostende | `oostende.be/nieuws/rss` is current, and **all 146 items carry one identical `pubDate`: the moment you fetch it.** Every item would sort as "just now" and take the whole of the newest 40, every morning. Also council announcements rather than news |
+| Nieuwsblad | **403** to a scripted client, even as a browser |
+| HLN | Works, and is the only feed that is both current and actually about Oostende — 6 of its items reached the newest 40 the day it was measured. Left out by choice, not by failure |
 
-Measured on 18 September 2026 with all six feeds configured: the newest 40 carried 10
-regional stories, so local news is a share of the page rather than a takeover. Which stories
-are *about* those towns is Claude's judgement on the morning — Harry never matches a town
-name against a headline.
+Focus-WTV is also served behind twelve spaces of leading whitespace, so the XML declaration
+is not at the start of the document and a strict parser refuses it. Harry's does. That did
+not matter in the end, because the feed is eleven years stale, but it is the second thing
+you would have hit.
+
+**None of the regional feeds carry pictures** — ROB tv and KW both 0 of 8, where VRT carries
+one on every entry. Nearby leads the page by topic order, so on a day with local picks the
+first cards are plain text above a page of illustrated ones. The pictures are absent at the
+source; there is nothing to configure.
+
+Which stories are *about* those towns is Claude's judgement on the morning — Harry never
+matches a town name against a headline.
 
 ### When a feed dies
 

@@ -152,37 +152,51 @@ def test_the_intro_and_every_note_reach_the_page_unedited(digest):
 
 
 def test_the_paper_runs_in_the_readers_order_whatever_order_it_was_handed(digest):
-    """Nearby, home, abroad, technology, culture, sport, and the one worth knowing. The topic
-    is not decoration, it is the running order — so a caller may hand them over in any order."""
+    """Home, abroad, technology, culture, sport, what is nearby, and the one worth knowing. The
+    topic is not decoration, it is the running order — so a caller may hand them over in any
+    order. The day's news is at the front; the reader's own interests are at the back."""
     answer = built(digest(news={'many': 6}))(
         intro='Ordered.',
         picks=[
             {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'note': 'An oddity.', 'topic': 'oddity'},
             {'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'note': 'Abroad.', 'topic': 'world'},
             {'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'note': 'At home.', 'topic': 'belgium'},
-            {'id': 'vrt-2026-09-15-story-3-and-what-came-of-it', 'note': 'Round the corner.', 'topic': 'regional'},
+            {
+                'id': 'vrt-2026-09-15-story-3-and-what-came-of-it',
+                'note': 'Round the corner.',
+                'topic': 'regional',
+                'also': ['vrt-2026-09-15-story-4-and-what-came-of-it'],
+            },
         ],
     )
 
     prose = text_of(answer['page']['path'])
-    assert prose.index('Round the corner.') < prose.index('At home.')
-    assert prose.index('At home.') < prose.index('Abroad.') < prose.index('An oddity.')
+    assert prose.index('At home.') < prose.index('Abroad.')
+    assert prose.index('Abroad.') < prose.index('Round the corner.') < prose.index('An oddity.')
 
 
 def test_a_nearby_pick_is_marked_as_its_own_topic_not_left_unknown(digest):
-    """An unknown topic sorts last and draws no mark. That is the failure this shares a shape
-    with, so `regional` has to be shown doing the opposite: ahead of home, and drawn."""
+    """An unknown topic also sorts near the end and draws no mark, so sorting proves nothing on
+    its own here. What separates them is the mark: `regional` has one and an unknown has none."""
     answer = built(digest(news={'many': 4}))(
         intro='Marked.',
         picks=[
             {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'note': 'At home.', 'topic': 'belgium'},
-            {'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'note': 'Round the corner.', 'topic': 'regional'},
+            {
+                'id': 'vrt-2026-09-15-story-1-and-what-came-of-it',
+                'note': 'Round the corner.',
+                'topic': 'regional',
+                'also': ['vrt-2026-09-15-story-2-and-what-came-of-it'],
+            },
+            {'id': 'vrt-2026-09-15-story-3-and-what-came-of-it', 'note': 'A guess.', 'topic': 'nonsense'},
         ],
     )
 
     assert Path(answer['page']['path']).exists()
     prose = text_of(answer['page']['path'])
-    assert prose.index('Round the corner.') < prose.index('At home.'), 'regional did not lead'
+    # A topic the table does not carry sorts after every one it does. `regional` sorting
+    # before it is what says the table carries it, rather than it having been ignored.
+    assert prose.index('At home.') < prose.index('Round the corner.') < prose.index('A guess.')
 
 
 def test_nearby_heads_the_second_sheet_and_vanishes_when_there_is_nothing_in_it(digest):
@@ -201,7 +215,7 @@ def test_nearby_heads_the_second_sheet_and_vanishes_when_there_is_nothing_in_it(
     assert says(prose, 'Nearby')
     # Headings are letter-spaced, so compare in the same flattened form `says` uses.
     flat = prose.replace(' ', '').casefold()
-    assert flat.index('nearby') < flat.index('athome'), 'Nearby did not lead the second sheet'
+    assert flat.index('athome') < flat.index('nearby'), 'Nearby did not sit behind At home'
 
     quiet = built(digest(news={'many': 10}))(
         intro='Nothing close to home today.',  # never the word itself: says() would find it here
@@ -740,3 +754,51 @@ def test_the_docs_say_the_folder_belongs_to_whoever_is_pushing():
     for prose in (sources, runbook):
         assert 'Whoever is pushing says which folder' in prose
         assert 'top level' in prose, 'a caller must not be able to write inside your folders'
+
+
+def test_a_nearby_story_cannot_lead_on_one_local_paper_alone(digest):
+    """The three towns are a standing interest, not the day's news, so a local item earns the
+    front page by being somebody else's story too. `also` is where Claude says that, and the
+    check is on `also` existing rather than on which paper it names — deciding whether a
+    source counts as national would be Harry reading the news."""
+    made = built(digest(news={'many': 4}))
+
+    with pytest.raises(Exception) as refused:
+        made(
+            intro='One paper only.',
+            picks=[{'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'note': 'Alone.', 'topic': 'regional'}],
+        )
+    assert 'another paper carries it' in str(refused.value)
+    assert 'vrt-2026-09-15-story-0-and-what-came-of-it' in str(refused.value), 'it does not say which pick'
+
+
+def test_a_nearby_story_may_lead_when_another_paper_carries_it(digest):
+    """The same pick, with a companion, goes through. Without this the rule above would pass
+    just as well if the tool refused every regional pick outright."""
+    answer = built(digest(news={'many': 4}))(
+        intro='Two papers.',
+        picks=[
+            {
+                'id': 'vrt-2026-09-15-story-0-and-what-came-of-it',
+                'note': 'Carried elsewhere too.',
+                'topic': 'regional',
+                'also': ['vrt-2026-09-15-story-1-and-what-came-of-it'],
+            }
+        ],
+    )
+
+    assert answer['front'] == 1
+    assert 'Carried elsewhere too.' in text_of(answer['page']['path'])
+
+
+def test_a_nearby_story_on_the_second_sheet_needs_no_companion(digest):
+    """`more` is a glance, not an argument — the rule is about leading the paper, so a nearby
+    story with nobody else behind it belongs there rather than nowhere."""
+    answer = built(digest(news={'many': 6}))(
+        intro='A glance.',
+        picks=[pick(0)],
+        more=[{'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'regional'}],
+    )
+
+    assert answer['more'] == 1
+    assert says(text_of(answer['page']['path']), 'Nearby')
