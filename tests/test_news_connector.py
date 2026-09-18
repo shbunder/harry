@@ -936,3 +936,95 @@ def test_one_paper_s_sections_are_read_together_and_deduplicated(news):
     assert len(links) == 26, f'three sections of the same paper gave {len(links)} stories'
     assert len(links) == len(set(links)), 'the same story came back twice'
     assert {one['source'] for one in answer['candidates']} == {'De Tijd'}, 'one paper, one name on the page'
+
+
+# ---------------------------------------------------------------------------
+# A picture comes from the article when the feed has none
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_a_feed_with_no_picture_borrows_the_one_the_article_page_shows(news):
+    """Three of five feeds here publish no picture — De Tijd 0 of 10, ROB tv 0 of 13, KW 0 of
+    50, measured 2026-09-18 — and every one of their article pages declares an og:image. The
+    page was already fetched to get the text out of it, so this costs no request."""
+    serving(**{VRT: 'vrt-nws.xml', ROB: 'robtv.xml', KW: 'kw-west-vlaanderen.xml'})
+    client = connector(news(settings=NEARBY_FEEDS))
+    story = next(c for c in client.candidates(60) if c['feed'] == 'rob')
+    assert story['image'] is None, 'the fixture no longer proves the case'
+    respx.get(story['link']).mock(return_value=httpx.Response(200, text=recorded('robtv-article.html')))
+
+    got = client.article(story['id'])
+
+    assert got['available'] is True
+    assert got['image'] == 'https://shared.robtv.be/ext/robtv/w1200/20260918-293-1931.jpg?t=1789721800'
+
+
+@respx.mock
+def test_the_feeds_own_picture_wins_over_the_pages(news):
+    """The feed's was chosen for the story. `og:image` is whatever a page hands out when it is
+    shared, which is sometimes a section logo.
+
+    **A VRT link is answered with a ROB tv page on purpose.** VRT declares the same address in
+    both places, so serving its own page proves nothing about which one won — the two have to
+    differ before precedence is visible at all.
+    """
+    both_feeds()
+    client = connector(news())
+    story = next(c for c in client.candidates(50) if c['feed'] == 'vrt')
+    assert story['image'], 'the fixture no longer proves the case'
+    elsewhere = recorded('robtv-article.html')
+    respx.get(story['link']).mock(return_value=httpx.Response(200, text=elsewhere))
+
+    got = client.article(story['id'])
+
+    assert got['available'] is True, got
+    assert got['image'] == story['image'], 'the page overrode the picture the feed chose'
+    assert 'robtv' not in (got['image'] or ''), got['image']
+
+
+@respx.mock
+def test_neither_a_feed_nor_a_page_with_a_picture_is_a_story_not_a_fault(news):
+    """A site that publishes no picture is a site. The card prints without one and nobody is
+    told — the reader can see it, which is the whole reason it needs no alert."""
+    serving(**{VRT: 'vrt-nws.xml', ROB: 'robtv.xml', KW: 'kw-west-vlaanderen.xml'})
+    built = news(settings=NEARBY_FEEDS)
+    client, sink = connector(built), built[1]
+    story = next(c for c in client.candidates(60) if c['feed'] == 'rob')
+    respx.get(story['link']).mock(return_value=httpx.Response(200, text=recorded('no-picture.html')))
+
+    got = client.article(story['id'])
+
+    assert got['available'] is True, got
+    assert got['image'] is None
+    assert sink.heard == [], f'a missing picture reached Slack: {sink.heard}'
+
+
+@respx.mock
+def test_a_paywalled_page_gives_up_its_picture_through_the_reader_that_can_see_it(news):
+    """De Tijd's page answers 403 to anything but its logged-in browser, so its picture is
+    reachable only through the tijd connector — which already hands the whole page back.
+
+    **The same parse, a different fetcher in front of it.** The reader is stood in for here
+    with the real recorded page, because the live one needs a browser and an account; what is
+    under test is that a reader's HTML is read for a picture exactly as a plain fetch is.
+    """
+    serving(**{ROB: 'robtv.xml'})
+    client = connector(news(settings=f'FEEDS=rob=ROB tv={ROB}\n'))
+    story = next(c for c in client.candidates(50) if c['feed'] == 'rob')
+    assert story['image'] is None, 'a feed picture would win, and rightly'
+    page = (FIXTURES.parent / 'tijd' / 'article-logged-in.html').read_text(encoding='utf-8')
+
+    class Standin:
+        def handles(self, link: str) -> bool:
+            return True
+
+        def read(self, link: str) -> dict:
+            return {'url': link, 'html': page}
+
+    client._readers = [Standin()]  # noqa: SLF001 — no browser and no account in a gate test
+
+    got = client.article(story['id'])
+
+    assert got['available'] is True, got
+    assert got['image'] and got['image'].startswith('https://images.tijd.be/'), got['image']

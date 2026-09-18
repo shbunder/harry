@@ -38,7 +38,9 @@ class News:
             'published': '2026-09-15T06:00:00+00:00',
             'link': f'https://example.test/{story_id}',
             'summary': 'A summary.',
-            'image': wanted.get('image'),
+            # `page_image` is what the article's own page shows when the feed published none —
+            # the real connector answers with the feed's picture or the page's, in that order.
+            'image': wanted.get('image') or wanted.get('page_image'),
             'text': 'One paragraph.\n\nAnd a second one, long enough to set in two columns.',
         }
 

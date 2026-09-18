@@ -122,7 +122,9 @@ def gather(sources: dict[str, Any], settings: dict[str, Any], picks: list[dict],
             **got,
             'note': note,
             'topic': topic,
-            'shot': known[story_id].get('image'),
+            # `article()` answers with the feed's picture, or the page's own when the feed
+            # had none. The candidate list only ever carries the feed's.
+            'shot': got.get('image') or known[story_id].get('image'),
             'summary': got.get('summary') or known[story_id].get('summary', ''),
             'anchor': f'story{place}',
             'number': place,

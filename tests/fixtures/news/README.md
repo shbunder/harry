@@ -15,6 +15,7 @@ Everything the news connector is tested against. No test here reaches a URL.
 | `tijd-nieuws.xml` | `www.tijd.be/rss/nieuws.xml`, recorded 16 September 2026 — RSS 2.0, 10 items, links are `tijd.be/r/t/1/id/…` redirect stubs, no pictures | Nothing |
 | `tijd-cultuur.xml` | `www.tijd.be/rss/cultuur.xml`, recorded 18 September 2026 — RSS 2.0 | 10 items cut to 8 |
 | `tijd-politiek.xml` | `www.tijd.be/rss/politiek.xml`, recorded 18 September 2026 — RSS 2.0 | 10 items cut to 8 |
+| `robtv-article.html` | The article behind the first `robtv.xml` entry — a page whose feed publishes no picture and which declares an `og:image`. Both existing article files are from feeds that already publish one, so neither can show the fallback | Nothing |
 | `robtv.xml` | `www.robtv.be/rss`, recorded 18 September 2026 — RSS 2.0. Regional television for the Leuven area, which is what carries Holsbeek and its neighbours | 40 items cut to the first 8 |
 | `kw-west-vlaanderen.xml` | `kw.be/feed/`, recorded 18 September 2026 — RSS 2.0. All of West Flanders, which is why only a few items are about Oostende | 50 items cut to 8 |
 
@@ -49,6 +50,7 @@ one on every entry.
 | `collision.xml` | Three Atom entries whose first five title words are identical, so two ids must collide. One is published 22:30 UTC, which is the next day in Brussels |
 | `bomb.xml` | A "billion laughs" entity bomb. Nine levels of nested entities from about 800 bytes. **Do not parse this file without the entity refusal** — `xml.etree.ElementTree` expands it |
 | `not-a-feed.html` | An HTML error page, for a feed URL that answers 200 with the wrong thing |
+| `no-picture.html` | An article page declaring `og:title` and `og:description` but no `og:image`, with enough prose to pass the minimum. No real page here lacks one |
 
 These three are handmade because no real feed offers them. Everything a real feed can
 supply is recorded above.

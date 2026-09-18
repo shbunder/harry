@@ -851,3 +851,20 @@ def test_every_place_that_lists_the_topics_agrees():
     written = {'six': 6, 'seven': 7, 'eight': 8, 'nine': 9}
     for said in counts:
         assert written.get(said) == len(topics), f'the brief says {said} topic words and there are {len(topics)}'
+
+
+@respx.mock
+def test_a_card_is_illustrated_from_the_article_when_the_feed_had_no_picture(digest):
+    """Three of five feeds publish no picture at all, so without this their cards are the plain
+    ones on an otherwise illustrated page. `article()` answers with the feed's picture or the
+    page's; this is the half that puts the second one on the sheet."""
+    drawn = respx.get('https://pictures.test/page.jpg').mock(
+        return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
+    )
+    answer = built(digest(news={'many': 4, 'page_image': 'https://pictures.test/page.jpg'}))(
+        intro='From the page.', picks=[pick(0)]
+    )
+
+    assert drawn.called, 'the article picture was never fetched'
+    assert answer['page']['crowded'] == []
+    assert 'Why story 0 matters.' in text_of(answer['page']['path'])
