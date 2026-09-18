@@ -17,6 +17,14 @@ MOST = 60
 """Headlines this will return however much is asked for. Forty is the default and what the
 brief asks for; sixty is headroom for a caller that wants to filter afterwards."""
 
+POOL = 150
+"""Candidates asked of the connector before any of this tool's own filtering.
+
+Far more than it returns, on purpose. A local paper files about fifty stories a day against a
+national one's seven, and almost none of them name the places this page cares about — so
+asking for sixty and then discarding most of them left the page with fifteen candidates
+instead of forty. Ask wide, then narrow."""
+
 
 def register(registry: Registry, context: Context) -> None:
     nearby_feeds = _split(context.config.get('nearby_feeds'))
@@ -83,7 +91,7 @@ def register(registry: Registry, context: Context) -> None:
         # It costs nothing — one fetch per feed either way.
         stories, missing = section(
             'news',
-            (lambda: news.search(limit=MOST, detail=detail)) if news else None,
+            (lambda: news.search(limit=POOL, detail=detail)) if news else None,
             'no news connector is configured',
         )
         note(missing)

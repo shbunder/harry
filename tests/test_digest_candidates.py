@@ -294,3 +294,13 @@ def test_with_no_nearby_feeds_configured_nothing_is_held_back(digest):
     titles = [h['title'] for h in answer['headlines']]
     assert [t for t in titles if 'De Panne' in t], 'a feed nobody named as local was filtered anyway'
     assert answer['nearby'] == []
+
+
+def test_a_flood_of_local_stories_does_not_starve_the_page(digest):
+    """The filter runs after the connector has already capped, so asking for only what is
+    returned lets a chatty local paper fill the pool and then be thrown away. Measured on the
+    running stack: 15 candidates came back instead of 40, all but one from a single feed."""
+    answer = called(digest(news={'many': 40, 'local': 60}, settings=NEARBY))()
+
+    assert len(answer['headlines']) == 40, 'the local paper ate the page'
+    assert len(answer['nearby']) == 2, answer['nearby']

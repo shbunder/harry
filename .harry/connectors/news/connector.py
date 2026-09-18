@@ -69,9 +69,15 @@ worse than a short one, because nothing on the page says how old it is.
 """
 
 DEFAULT_LIMIT = 20
-MAX_LIMIT = 50
-"""Forty candidates is what the morning page is chosen from, so fifty is the ceiling and
-twenty is what you get without asking."""
+MAX_LIMIT = 150
+"""Forty candidates is what the morning page is chosen from, and twenty is what you get
+without asking. The ceiling is far above both because **a caller that filters needs more raw
+material than it returns**: the digest holds local papers back to the few that name its towns,
+and a local paper files fifty stories a day. At a ceiling of fifty those fifty took the whole
+pool and the page was left with fifteen candidates instead of forty — measured 2026-09-18.
+
+It costs nothing to raise. Every feed is fetched whole either way; this only decides how much
+of the merged list is handed back."""
 
 ID_WORDS = 5
 """Words of the title in an id. Five fits `vrt-2026-09-14-tessenderlo-ham-hakt-knoop-door`
