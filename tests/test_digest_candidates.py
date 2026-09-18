@@ -304,3 +304,69 @@ def test_a_flood_of_local_stories_does_not_starve_the_page(digest):
 
     assert len(answer['headlines']) == 40, 'the local paper ate the page'
     assert len(answer['nearby']) == 2, answer['nearby']
+
+
+def test_every_id_it_offers_is_one_the_page_can_still_find(tmp_path, monkeypatch):
+    """The two tools draw from one pool and it has to be the same pool.
+
+    `digest_list_candidates` asks for 150 so it can hold the local papers back and still fill
+    the page, and it excludes them from the rest rather than merging them — so the ordinary
+    headlines it offers reach far deeper into the merged list than the 40 it returns. When
+    `digest_build` asked for only 60, a pick from the bottom of that page resolved to nothing
+    and raised "no candidate is …, the feeds move on", which is not what had happened.
+
+    Both tools are loaded into one tree and called in turn, which is the order a morning takes.
+    """
+    root = tmp_path / 'both'
+    for where in ('tools/digest_list_candidates', 'tools/digest_build'):
+        copy_capability(REPO / '.harry' / where, root / where)
+    copy_capability(STANDINS / 'news', root / 'connectors' / 'news')
+    (root / 'connectors' / '_plan.py').write_text((STANDINS / '_plan.py').read_text(encoding='utf-8'), encoding='utf-8')
+    (root / 'tools/digest_list_candidates' / '.env.local').write_text(NEARBY, encoding='utf-8')
+    (root / 'tools/digest_build' / '.env.local').write_text(f'OUT_DIR={tmp_path / "out"}\n', encoding='utf-8')
+    where = tmp_path / 'plan.json'
+    where.write_text(json.dumps({'news': {'many': 120, 'local': 60}}), encoding='utf-8')
+    monkeypatch.setenv('HARRY_DIGEST_TEST_PLAN', str(where))
+
+    catalogue = load([root])
+    listing = catalogue.get('tool', 'digest_list_candidates')
+    building = catalogue.get('tool', 'digest_build')
+    assert listing and listing.target and building and building.target, [c.reason for c in catalogue.skipped]
+
+    offered = listing.target(limit=40)
+    assert len(offered['headlines']) == 40
+
+    # The last ordinary headline is the deepest one offered, and the one that used to fall
+    # outside what the build could see.
+    deepest = [h for h in offered['headlines'] if h['id'] not in offered['nearby']][-1]
+    answer = building.target(
+        intro='The deepest one offered.',
+        picks=[{'id': deepest['id'], 'note': 'From the bottom of the list.', 'topic': 'belgium'}],
+        deliver=False,
+    )
+
+    assert answer['front'] == 1, answer
+
+
+def test_a_nearby_feed_slug_that_matches_nothing_is_said_out_loud(digest, caplog):
+    """The two lists live in different folders and have to spell the slug the same way. A
+    misspelling silently turns the whole control off, and the page that results — a local
+    paper taking the list back over — looks like nothing is wrong."""
+    settings = 'NEARBY_FEEDS=kw|robtv\nNEARBY_PLACES=Oostende|Leuven\nNEARBY_LIMIT=5\n'
+    with caplog.at_level('WARNING'):
+        called(digest(news={'many': 4, 'local': 4}, settings=settings))()
+
+    assert "names 'robtv'" in caplog.text, f'a slug that matched nothing was not reported: {caplog.text}'
+    assert "names 'kw'" not in caplog.text, 'the slug that did match was reported as missing'
+
+
+def test_the_tool_body_shows_the_answer_it_actually_gives():
+    """The body is served to Claude verbatim, so an example carrying fields the tool no longer
+    returns is a contradiction handed over at the moment of the call."""
+    body = (REPO / '.harry' / TOOL / 'TOOL.md').read_text(encoding='utf-8')
+    example = body.split('```')[1]
+
+    assert '"image"' not in example, 'the example still advertises the picture URL'
+    assert '"feed"' not in example, 'the example still advertises the feed slug'
+    assert '"nearby"' in example, 'the example does not show the nearby list'
+    assert '"date"' in example, 'the example dropped the day a story happened'

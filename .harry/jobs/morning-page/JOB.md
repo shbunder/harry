@@ -16,8 +16,10 @@ on a tablet. Follow these five steps in order. Do not skip one and do not add on
 Call `digest_list_candidates()`. It returns today's date, the weather, the day's agenda, and
 about forty headlines. Each headline has an `id`, a `title`, a `source` and a `summary`.
 
-It also returns `nearby`: the ids of the few stories from the local papers, which are held to
-a narrower rule and come last in the list. Those are the `regional` candidates.
+It also returns `nearby`: the ids of the few stories that came from the local papers, which
+are held to a narrower rule and come last in the list. **They are not the same thing as the
+`regional` topic** — a story about the three towns can come from any feed, and VRT carries one
+or two most days. The topic is still yours to assign, from any headline in the list.
 
 Read all of them before choosing anything.
 
@@ -30,7 +32,7 @@ open it.
 **One of the six is an `oddity`** — the thing they would repeat to somebody. A front page of
 six serious stories is a worse morning than five and a praying mantis.
 
-Give every pick a **topic**, exactly one of these six words:
+Give every pick a **topic**, exactly one of these seven words:
 
 | topic | what goes in it |
 |---|---|
@@ -144,7 +146,7 @@ Finally call `harry_mark_done` for this job, so nothing reports it missing.
   that is easy to drop — `…prinskensmolen-in-meerhout-krijgt`, not `…in-meerhout`. Copy the
   string; do not retype it from memory. If `digest_build` says an id is unknown, you almost
   certainly lost the last word: find it in the candidate list again and copy the whole thing.
-- **Every pick needs a `topic`** from the six words above. No others.
+- **Every pick needs a `topic`** from the seven words above. No others.
 - **Never rewrite a headline or a summary.** Your words go in the `note` and the `intro`, and
   nowhere else.
 - **Six on the front page, 10 to 12 on the second.** Not twenty.

@@ -211,12 +211,42 @@ not matter in the end, because the feed is eleven years stale, but it is the sec
 you would have hit.
 
 **None of the regional feeds carry pictures** — ROB tv and KW both 0 of 8, where VRT carries
-one on every entry. Nearby leads the page by topic order, so on a day with local picks the
-first cards are plain text above a page of illustrated ones. The pictures are absent at the
-source; there is nothing to configure.
+one on every entry. Nearby sits near the back of the paper so this costs little, but a nearby
+story that does reach the front page will be the plain card among illustrated ones. The
+pictures are absent at the source; there is nothing to configure.
 
-Which stories are *about* those towns is Claude's judgement on the morning — Harry never
-matches a town name against a headline.
+### What Harry decides, and what Claude decides
+
+**Harry matches town names, and only to decide which candidates are worth handing over.** A
+local paper files about fifty stories a day and almost none of them are about these towns, so
+one from a feed named in `nearby_feeds` is passed on only if it names one of `nearby_places`.
+That is a rule you could apply by hand, and the connector already filters by `query` and
+`source` the same way.
+
+**Which topic a story belongs to is Claude's**, decided each morning from everything in the
+list. A story about the three towns can arrive from any feed — VRT carries one or two most
+days — and those are never filtered, because the filter only ever touches the local papers.
+
+These three settings live in `.harry/tools/digest_list_candidates/.env.local`, **not** beside
+the feeds:
+
+```bash
+cat > .harry/tools/digest_list_candidates/.env.local <<'ENV'
+NEARBY_FEEDS=rob|kw
+NEARBY_PLACES=Oostende|Leuven|Holsbeek
+NEARBY_LIMIT=5
+ENV
+```
+
+`NEARBY_FEEDS` holds feed slugs and has to spell them the way `FEEDS=` does. **Leave it empty
+and nothing is held back** — which is the state this feature was built to fix: measured on
+18 September 2026, KW alone took 17 of the newest 40 and left ROB tv, the feed that actually
+covers the towns, with one story. Harry logs a line at start-up when a slug here matches no
+configured feed.
+
+A nearby story also reaches the front page only when another paper carries the same event —
+`digest_build` refuses a front-page `regional` pick whose `also` is empty. Harry checks that a
+companion exists; which paper it is stays Claude's.
 
 ### When a feed dies
 

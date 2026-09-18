@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -176,8 +177,9 @@ def test_the_paper_runs_in_the_readers_order_whatever_order_it_was_handed(digest
 
 
 def test_a_nearby_pick_is_marked_as_its_own_topic_not_left_unknown(digest):
-    """An unknown topic also sorts near the end and draws no mark, so sorting proves nothing on
-    its own here. What separates them is the mark: `regional` has one and an unknown has none."""
+    """An unknown topic sorts near the end *and* draws no mark, so `regional` shares its shape
+    of failure twice over. Sorting is checked below; the mark is checked on the module the
+    tool actually loaded, because the drawing never reaches the extracted text."""
     answer = built(digest(news={'many': 4}))(
         intro='Marked.',
         picks=[
@@ -197,6 +199,13 @@ def test_a_nearby_pick_is_marked_as_its_own_topic_not_left_unknown(digest):
     # A topic the table does not carry sorts after every one it does. `regional` sorting
     # before it is what says the table carries it, rather than it having been ignored.
     assert prose.index('At home.') < prose.index('Round the corner.') < prose.index('A guess.')
+
+    # And it is drawn. Sorting alone passed with `regional` deleted from the table, because an
+    # unknown topic keeps the order it was handed in.
+    marks = next(sys.modules[name] for name in list(sys.modules) if name.endswith('.marks'))
+    drawn = marks.badge('regional')
+    assert '<svg' in drawn and '<path' in drawn, f'nearby has no mark of its own: {drawn!r}'
+    assert marks.badge('nonsense') == '', 'a topic the table does not carry was given a mark'
 
 
 def test_nearby_heads_the_second_sheet_and_vanishes_when_there_is_nothing_in_it(digest):
@@ -802,3 +811,36 @@ def test_a_nearby_story_on_the_second_sheet_needs_no_companion(digest):
 
     assert answer['more'] == 1
     assert says(text_of(answer['page']['path']), 'Nearby')
+
+
+def test_every_place_that_lists_the_topics_agrees():
+    """The topics are written out in four places and only one of them executes.
+
+    `marks.py` is the running order. `digest_build/TOOL.md` is what Claude reads when it calls
+    this tool. The brief is what it reads before choosing. The fourth is a copy of the brief in
+    the claude.ai routine, which no test can reach.
+
+    This caught a real one: the brief said "exactly one of these six words" above a table of
+    seven, and a model following the count rather than the table never emits the seventh at
+    all — which is silent, because a topic nobody uses looks exactly like a quiet week.
+    """
+    import re
+
+    marks = (REPO / '.harry' / 'tools' / 'digest_build' / 'marks.py').read_text(encoding='utf-8')
+    topics = re.findall(r"^    '(\w+)': \(", marks, re.MULTILINE)
+    assert len(topics) >= 6, topics
+
+    body = (REPO / '.harry' / 'tools' / 'digest_build' / 'TOOL.md').read_text(encoding='utf-8')
+    listed = re.search(r'`topic` is one of ([^,]+(?:, [^,]+)*), and it', body)
+    assert listed, 'the tool body no longer says what a topic may be'
+    assert re.findall(r'`(\w+)`', listed.group(1)) == topics, 'the tool body and the running order disagree'
+
+    brief = (REPO / '.harry' / 'jobs' / 'morning-page' / 'JOB.md').read_text(encoding='utf-8')
+    rows = re.findall(r'^\| `(\w+)` \|', brief, re.MULTILINE)
+    assert sorted(rows) == sorted(topics), f'the brief lists {rows}, the paper runs {topics}'
+
+    counts = re.findall(r'(?:one of these|from the) (\w+) words', brief)
+    assert counts, 'the brief no longer says how many topic words there are'
+    written = {'six': 6, 'seven': 7, 'eight': 8, 'nine': 9}
+    for said in counts:
+        assert written.get(said) == len(topics), f'the brief says {said} topic words and there are {len(topics)}'

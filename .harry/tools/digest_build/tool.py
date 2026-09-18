@@ -27,9 +27,16 @@ MOST = 12
 """Front-page picks this will accept. The brief asks for six; twelve is headroom, and an
 uncapped `picks` is an uncapped PDF at one to two pages each."""
 
-CANDIDATES = 60
-"""Candidates asked for when resolving ids. The same ceiling `digest_list_candidates` has, so
-an id it offered is an id this can still find."""
+CANDIDATES = 150
+"""Candidates asked for when resolving ids. **The same pool `digest_list_candidates` draws
+from**, so an id it offered is an id this can still find.
+
+The two numbers have to match, and for a while they did not. `digest_list_candidates` began
+asking for 150 so it could hold local papers back and still fill the page; this stayed at 60.
+Because the local ones are excluded from the rest rather than merged with them, the ordinary
+headlines it offers reach far deeper than 60 into the merged list — deep enough that a pick
+from the bottom of the page resolved to nothing and raised "no candidate is …, the feeds move
+on", which is not what had happened at all."""
 
 MOST_MORE = 20
 """Second-sheet stories. Past about a dozen they do not fit on one sheet and the answer says

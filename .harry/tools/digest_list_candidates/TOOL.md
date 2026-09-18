@@ -24,6 +24,10 @@ enabled: true
 Returns everything today could go on the morning page: the weather where it is read, what is
 on the calendar, and up to forty headlines with their summaries and ids.
 
+`nearby` names the few headlines that came from a local paper. **They are not the `regional`
+topic** — a story about those towns can arrive from any feed, and the topic is yours to
+assign from anything in the list.
+
 **Local papers are held to a narrower rule.** A feed named in `nearby_feeds` publishes far
 more than a national one and almost none of it is about the places this page cares about —
 measured on 2026-09-18, one of them put 17 of the newest 40 on the page and pushed the local
@@ -41,9 +45,9 @@ come **last** rather than competing on recency. Everything else is untouched.
                          "where": "meeting room", "calendar": "Shaun"}]},
  "headlines": [{"id": "vrt-2026-09-15-44-gemeenten-vragen-uitstel-voor",
                 "title": "44 gemeenten vragen uitstel voor sociale woonplicht",
-                "source": "VRT NWS", "feed": "vrt", "date": "2026-09-15",
-                "summary": "44 Vlaamse gemeenten vragen uitstel …",
-                "image": "https://images.vrt.be/…jpg"}],
+                "source": "VRT NWS", "date": "2026-09-15",
+                "summary": "44 Vlaamse gemeenten vragen uitstel …"}],
+ "nearby": ["kw-2026-09-15-ohana-bowls-more-sluit"],
  "dropped": 0,
  "unavailable": []}
 ```

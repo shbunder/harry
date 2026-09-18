@@ -97,7 +97,11 @@ def register(registry: Registry, context: Context) -> None:
         note(missing)
 
         found = stories.pop('candidates', []) if stories.get('available') else []
-        elsewhere, nearby = _split_off_the_local_ones(found, nearby_feeds, nearby_places)
+        elsewhere, nearby, seen = _split_off_the_local_ones(found, nearby_feeds, nearby_places)
+        # A slug that matches nothing in the whole pool is a misspelling or a feed that went
+        # away, and it looks exactly like a quiet week in those towns — so it is said out loud.
+        for slug in sorted(set(nearby_feeds) - seen):
+            log.warning('nearby_feeds names %r, and no story in the pool came from it', slug)
         # The local ones go last and are capped, so a paper that files fifty stories a day
         # cannot take the list over. Everything else keeps competing on recency as before.
         close_by = nearby[:nearby_limit]
@@ -128,7 +132,7 @@ def _split(setting: object) -> list[str]:
 
 def _split_off_the_local_ones(
     candidates: list[dict], feeds: list[str], places: list[str]
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], set[str]]:
     """Everything else, and the local stories that name one of the places.
 
     A local paper covers a whole province and files all day, so most of what it carries is
@@ -142,17 +146,18 @@ def _split_off_the_local_ones(
     enough to fix either would be one that reads the story.
     """
     if not feeds or not places:
-        return candidates, []
-    elsewhere, nearby = [], []
+        return candidates, [], set()
+    elsewhere, nearby, seen = [], [], set()
     for one in candidates:
         slug = str(one.get('feed') or str(one.get('id', '')).split('-')[0])
         if slug not in feeds:
             elsewhere.append(one)
             continue
+        seen.add(slug)
         haystack = f'{one.get("title", "")} {one.get("summary", "")}'.casefold()
         if any(place in haystack for place in places):
             nearby.append(one)
-    return elsewhere, nearby
+    return elsewhere, nearby, seen
 
 
 SPENT_HERE = ('image', 'feed')
