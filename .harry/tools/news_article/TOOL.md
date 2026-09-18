@@ -43,6 +43,8 @@ real reporting and the headline is still true.
 
 `summary` is always the feed's own one-line description, whether or not the page loaded, so
 a story never comes back with nothing to print. `image` is the address of the feed's picture,
-or `null`; nothing is fetched to produce it.
+or — when the feed published none — the one the article's own page shows when it is shared.
+It is still an address and still costs no request of its own: the page was fetched to get the
+text out of it. `null` when neither has one.
 
 Not for a URL of your own. It reads the stories Harry's own feeds carry, by their id.

@@ -144,8 +144,19 @@ listing the news. Whoever renders a page fetches the ones it chose, and owns the
 — `images.tijd.be` answers 403 to a plain request and 200 to a browser. See
 [ADR-260915-c01ab8](../project/decisions/ADR-260915-c01ab8-a-connector-hands-over-a-picture-s-address-never-the-picture.md).
 
-A feed that publishes no pictures is a feed, not a fault: `image` is `null` and nothing
-reaches Slack.
+A feed that publishes no pictures is a feed, not a fault. **`news_article` then falls back to
+the picture the article's own page shows when it is shared** — its `og:image` — which is how
+De Tijd, ROB tv and KW get illustrated at all: measured 2026-09-18, those three published a
+picture on 0 of 10, 0 of 13 and 0 of 50 entries, and every one of their article pages declares
+one. It costs no request, because the page was already fetched for its text.
+
+`news_search` and the candidate list are unchanged: they carry only the feed's picture, so
+`image` stays `null` there for those three. Only `article()` looks at a page, because only
+`article()` has already fetched one.
+
+When neither has a picture, `image` is `null` and nothing reaches Slack. A missing picture is
+on the page in front of the person reading it, which is the whole reason it needs no line —
+alerting is for the degradation a reader cannot see.
 
 **Claude reaches it with two tools**, both deferred, so a session finds them with
 `harry_find_tools("news")` first:

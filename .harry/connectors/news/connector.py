@@ -327,15 +327,20 @@ class News:
         known = {key: story[key] for key in ('id', 'title', 'source', 'published', 'link', 'summary', 'image')}
         reader = self._reader_for(story['link'])
         if reader is not None:
-            return {**known, **self._read_through(reader, story)}
+            # Same rule, a different fetcher in front of it: De Tijd's page reaches Harry only
+            # through the logged-in browser, and it carries the same tag every other page does.
+            read = self._read_through(reader, story)
+            return {**known, **read, 'image': known['image'] or read.pop('shown', None)}
         try:
-            text = self._read(story['link'])
+            text, shown = self._read(story['link'])
         except (httpx.HTTPError, Unreadable) as error:
             why = _why(error, story['source'], ARTICLE_TIMEOUT)
             self._log.warning('no text for %s: %s', story_id, why)
             self._alert(f'{story["source"]}: {why}', key=f'article:{story["feed"]}')
             return {**known, 'available': False, 'why': why}
-        return {**known, 'available': True, 'text': text}
+        # The feed's picture wins. It was chosen for the story; og:image is whatever the page
+        # hands out when it is shared, which is sometimes a section logo.
+        return {**known, 'available': True, 'text': text, 'image': known['image'] or shown}
 
     # -- what the tools call --------------------------------------------------
 
@@ -449,8 +454,8 @@ class News:
         self._cached[feed.url] = (self._now(), response.text)
         return response.text
 
-    def _read(self, link: str) -> str:
-        """One article page, as the prose a person would read."""
+    def _read(self, link: str) -> tuple[str, str | None]:
+        """One article page, as the prose a person would read and the picture it shows."""
         response = httpx.get(
             link,
             timeout=ARTICLE_TIMEOUT,
@@ -458,7 +463,7 @@ class News:
             headers={'User-Agent': USER_AGENT},
         )
         response.raise_for_status()
-        return _prose(response.text, str(response.url))
+        return _prose(response.text, str(response.url)), _shown(response.text)
 
     def _reader_for(self, link: str) -> Any:
         """The connector that reads this link's pages, if one says it does.
@@ -502,12 +507,42 @@ class News:
                 self._alert(f'{story["source"]}: {answer["why"]}', key=f'article:{story["feed"]}')
             return {'available': False, 'why': answer['why']}
         try:
-            return {'available': True, 'text': _prose(answer['html'], answer['url'])}
+            return {
+                'available': True,
+                'text': _prose(answer['html'], answer['url']),
+                'shown': _shown(answer['html']),
+            }
         except Unreadable as error:
             why = _why(error, story['source'], ARTICLE_TIMEOUT)
             self._log.warning('no text for %s: %s', story['id'], why)
             self._alert(f'{story["source"]}: {why}', key=f'article:{story["feed"]}')
             return {'available': False, 'why': why}
+
+
+SHOWN = re.compile(
+    r'<meta[^>]+property=["\']og:image(?::url)?["\'][^>]+content=["\']([^"\']+)["\']'
+    r'|<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image(?::url)?["\']',
+    re.IGNORECASE,
+)
+"""The picture a page gives out when it is shared, in either attribute order.
+
+Three of the five feeds here publish no picture at all — De Tijd 0 of 10, ROB tv 0 of 13, KW
+0 of 50, measured 2026-09-18 — and every one of their article pages declares one of these. It
+costs no request: the page was already fetched to get the text out of it.
+
+Not a parser, deliberately. The alternative is an HTML tree for one attribute on one tag, on
+a page that has already been through trafilatura. A malformed tag reads as no picture, which
+is the same answer as a page that has none.
+"""
+
+
+def _shown(html: str) -> str | None:
+    """The address of the page's own picture, or None."""
+    found = SHOWN.search(html or '')
+    if found is None:
+        return None
+    address = (found.group(1) or found.group(2) or '').strip()
+    return address or None
 
 
 def _prose(html: str, url: str) -> str:
