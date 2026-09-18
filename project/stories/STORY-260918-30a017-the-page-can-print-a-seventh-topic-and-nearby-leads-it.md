@@ -2,11 +2,14 @@
 id: STORY-260918-30a017
 title: The page can print a seventh topic, and Nearby leads it
 feature: FEAT-260918-4065d5
-status: In Progress
+status: Done
 created: 2026-09-18
 ---
 
-# STORY-260918-30a017 — The page can print a seventh topic, and Nearby leads it
+# STORY-260918-30a017 — The page can print a seventh topic
+
+<!-- Opened as "and Nearby leads it". It led the paper when this was written; the owner moved
+     it to the back on the same day, once there was a page to look at. -->
 
 Part of [[FEAT-260918-4065d5]].
 

@@ -131,14 +131,15 @@ Oostende gives all 146 items the timestamp of the fetch, and Nieuwsblad answers 
 carries the whole province, so Oostende arrives a few items at a time among fifty.
 
 **Which stories are local stays Claude's**, handed over with the pick. The brief names the
-three towns; Harry never matches a town name against a headline.
+three towns. Harry matches town names only to decide which of a local paper's stories are
+worth handing over; it never decides what a story is about.
 
 ## Consequences
 
 **Good:**
 
-- The reader's own towns lead the paper, and the running order now means something a person
-  could state: here, home, abroad, then the rest.
+- The running order means something a person can state: the day's news, then the things this
+  reader keeps an eye on — basketball, the three towns, and the one worth repeating.
 - The six-shape claim is replaced by a rendered page rather than a second opinion. The spike
   that produced it was thrown away — `scratch/` is gitignored, so nothing here survives a
   merge — which is why what it measured is written out above instead of pointed at. The
