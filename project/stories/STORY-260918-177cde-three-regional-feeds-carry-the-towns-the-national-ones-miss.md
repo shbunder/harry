@@ -28,7 +28,7 @@ Part of [[FEAT-260918-4065d5]].
 - [x] A regional feed answering 500 is named in `unavailable` and costs only itself: the national headlines still arrive, proved against a recorded fixture
 - [x] Each feed's format is recorded as a fixture under `tests/fixtures/news/`, and the parser is tested against it rather than against the live URL
 - [x] `by inspection: docs are prose` — `docs/sources.md` says which feed carries which town, which five sources were tried and why each is unusable, and where the three nearby settings live
-- [ ] `by inspection: the files hold this machine's configuration and are gitignored` — the two feeds are added to the NUC's `.harry/connectors/news/.env.local`, and the three nearby settings to `.harry/tools/digest_list_candidates/.env.local`
+- [x] `by inspection: the files hold this machine's configuration and are gitignored` — the two feeds are added to the NUC's `.harry/connectors/news/.env.local`, and the nearby settings to `.harry/tools/digest_list_candidates/.env.local`. Resolved through the loader on 2026-09-18: feeds vrt, bbc, tijd, rob, kw; nearby_feeds `rob|kw`; nearby_places `Oostende|Leuven|Holsbeek`; nearby_limit 5
 - [x] On the running stack, `digest_list_candidates` returns **at least 1** nearby candidate in the newest 40, and the page still comes back with a full 40. Fewer than 1 means the feeds are not being read or a slug is misspelled; the upper end is held by `nearby_limit` rather than by hope. Measured 2026-09-18: 40 headlines — 35 VRT, 4 ROB tv, 1 KW — with 5 nearby, last in the list
 
 ## Subtasks
