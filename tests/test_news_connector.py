@@ -33,6 +33,17 @@ WORLD = 'https://feeds.bbci.co.uk/news/world/rss.xml'
 
 THREE_FEEDS = f'FEEDS=vrt=VRT NWS={VRT}|bbc=BBC News={BBC}|world=BBC World={WORLD}\n'
 
+ROB = 'https://www.robtv.be/rss'
+HLN_LEUVEN = 'https://www.hln.be/leuven/rss.xml'
+HLN_OOSTENDE = 'https://www.hln.be/oostende/rss.xml'
+
+NEARBY_FEEDS = (
+    f'FEEDS=vrt=VRT NWS={VRT}|rob=ROB tv={ROB}'
+    f'|hln-leuven=HLN Leuven={HLN_LEUVEN}|hln-oostende=HLN Oostende={HLN_OOSTENDE}\n'
+)
+"""The national feed and the three that carry Oostende, Leuven and Holsbeek. All four are
+RSS 2.0 except VRT, which is Atom — measured 2026-09-18."""
+
 BOTH_BBC_FEEDS = 'https://www.bbc.co.uk/news/videos/cx2z5gjj838o'
 """The story `bbc-news.xml` and `bbc-world.xml` both carry, under two different headlines.
 Deduplicating on the headline would keep both, which is why it is the one used here."""
@@ -856,3 +867,43 @@ def test_a_story_whose_page_will_not_load_still_has_something_to_print(news):
     assert got['available'] is False and got['why']
     assert got['summary'] == story['summary'] and got['summary'] != ''
     assert got['image'] == story['image']
+
+
+# ---------------------------------------------------------------------------
+# The three feeds that carry the towns the national ones miss
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_the_regional_feeds_are_read_beside_the_national_one(news):
+    """VRT's own regional feeds answer 410 Gone, so the towns come from ROB tv and two HLN
+    sections instead. All three are RSS 2.0, the format the BBC feed already proves."""
+    serving(**{VRT: 'vrt-nws.xml', ROB: 'robtv.xml', HLN_LEUVEN: 'hln-leuven.xml', HLN_OOSTENDE: 'hln-oostende.xml'})
+
+    answer = connector(news(settings=NEARBY_FEEDS)).search(limit=60)
+    assert answer['unavailable'] == []
+
+    # Every id begins with its own feed's slug, which is what lets the digest tool drop the
+    # separate `feed` field without losing where a story came from.
+    first = {}
+    for candidate in answer['candidates']:
+        first.setdefault(candidate['source'], candidate['id'])
+
+    assert set(first) == {'VRT NWS', 'ROB tv', 'HLN Leuven', 'HLN Oostende'}, first
+    assert first['ROB tv'].startswith('rob-')
+    assert first['HLN Leuven'].startswith('hln-leuven-')
+    assert first['HLN Oostende'].startswith('hln-oostende-')
+
+
+@respx.mock
+def test_a_regional_feed_that_is_down_costs_only_itself(news):
+    """A short Nearby section reads exactly like a quiet week in Oostende, so the feed that
+    failed has to be named — the page cannot show the difference on its own."""
+    serving(**{VRT: 'vrt-nws.xml', HLN_LEUVEN: 'hln-leuven.xml', HLN_OOSTENDE: 'hln-oostende.xml'})
+    respx.get(ROB).mock(return_value=httpx.Response(500))
+
+    answer = connector(news(settings=NEARBY_FEEDS)).search(limit=60)
+
+    assert [one['source'] for one in answer['unavailable']] == ['ROB tv']
+    assert any(c['source'] == 'VRT NWS' for c in answer['candidates']), 'a dead feed took the national news with it'
+    assert any(c['source'] == 'HLN Leuven' for c in answer['candidates']), 'a dead feed took its neighbours with it'

@@ -178,6 +178,35 @@ you it is not except an empty section. An entry that is not `slug=Name=url` is s
 a line in the log, and a `FEEDS` with nothing usable in it skips the connector entirely — a
 news source with nothing to read is misconfigured, not degraded.
 
+### The three towns
+
+The page's **Nearby** section is Oostende, Leuven and Holsbeek. A national feed reaches those
+towns only when something large happens in them — two stories in fifty on 18 September 2026,
+and Holsbeek, at about ten thousand people, not in a normal week at all. So they have their
+own feeds:
+
+| Feed | Carries | Format |
+|---|---|---|
+| `rob=ROB tv=https://www.robtv.be/rss` | The Leuven region, including Holsbeek and its neighbours | RSS 2.0 |
+| `hln-leuven=HLN Leuven=https://www.hln.be/leuven/rss.xml` | Leuven and the Hageland | RSS 2.0 |
+| `hln-oostende=HLN Oostende=https://www.hln.be/oostende/rss.xml` | Oostende and the coast | RSS 2.0 |
+
+**HLN is paywalled**, like De Tijd. Headlines and summaries come from the feed and are fine;
+an article Claude picks from it prints the feed's summary rather than full text, because
+there is no HLN reader. ROB tv is free and reads in full.
+
+Three sources that were tried and are not usable, so nobody tries them again:
+
+- **VRT's own regional feeds** — `nl.rss.articles_regio_<province>.xml` answers **410 Gone**.
+  That naming was right once; the feeds are retired.
+- **Focus-WTV** and **Nieuwsblad** — both answer **403** to a scripted client, which is the
+  De Tijd problem without a De Tijd connector behind it.
+
+Measured on 18 September 2026 with all six feeds configured: the newest 40 carried 10
+regional stories, so local news is a share of the page rather than a takeover. Which stories
+are *about* those towns is Claude's judgement on the morning — Harry never matches a town
+name against a headline.
+
 ### When a feed dies
 
 **One line reaches Slack**, once per source per 24 hours:
