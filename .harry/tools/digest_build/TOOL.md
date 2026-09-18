@@ -49,10 +49,11 @@ about why it is worth their time. It goes on the page above the article, unedite
 is the second sheet** — ten to twelve others, grouped by subject, and no note: a card there is
 a glance, not an argument.
 
-`topic` is one of `belgium`, `world`, `tech`, `culture`, `sport`, `oddity`, and it decides
-where a story sits. **The whole paper is laid out in that order** — home, abroad, technology,
-culture, sport, and the one worth knowing — so the topic is not decoration, it is the
-running order.
+`topic` is one of `regional`, `belgium`, `world`, `tech`, `culture`, `sport`, `oddity`, and it
+decides where a story sits. **The whole paper is laid out in that order** — nearby, home,
+abroad, technology, culture, sport, and the one worth knowing — so the topic is not
+decoration, it is the running order. `regional` is the reader's own towns and prints as
+"Nearby"; which towns those are is in the brief, not here.
 
 `also` lists the ids of other pieces on the **same event**. They appear under the lead on the
 front page, in full at the foot of its article, and each gets a page of its own.

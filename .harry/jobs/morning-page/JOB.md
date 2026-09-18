@@ -32,6 +32,7 @@ Give every pick a **topic**, exactly one of these six words:
 
 | topic | what goes in it |
 |---|---|
+| `regional` | **Oostende, Leuven or Holsbeek** — the reader's own three towns |
 | `belgium` | anything happening in Belgium, or about Belgians |
 | `world` | anything happening outside Belgium |
 | `tech` | artificial intelligence, computing, software, telecoms, science |
@@ -42,6 +43,17 @@ Give every pick a **topic**, exactly one of these six words:
 Two rules about `sport`. It means basketball and nothing else — not football, not cycling,
 not athletics, not Formula 1. **On a day with no basketball, use no `sport` picks at all.**
 Leaving the section out is correct; putting another sport in it is not.
+
+Two rules about `regional`, and they work the same way. It means **Oostende, Leuven and
+Holsbeek** — the three places the reader lives in and cares about — and nowhere else. Bruges
+is not nearby. Brussels is not nearby. **On a day with nothing from those three towns, use no
+`regional` picks at all**, exactly as with basketball.
+
+A story about one of those towns is `regional` rather than `belgium`, even though it is also
+Belgian. That is the point of the topic: the reader wants their own streets separated from
+the country. A national story that merely mentions Leuven in passing — a minister who happens
+to be from there, a club playing an away game — is not regional. It is about the town or it
+is not.
 
 If a story could be two topics, use the one the reader would look under:
 
@@ -108,8 +120,11 @@ Finally call `harry_mark_done` for this job, so nothing reports it missing.
 
 ## When something is not there
 
-- **A source says unavailable.** Choose from what did arrive and carry on. Say so in the
-  intro only if it cost you a whole topic.
+- **A source says unavailable.** Choose from what did arrive and carry on, and **name it in
+  the intro whenever the section it feeds comes out thin** — not only when a whole topic is
+  lost. Three feeds carry the nearby towns, so one of them being down is a short Nearby
+  section, which looks exactly like a quiet week in Oostende. The reader cannot tell those
+  apart unless you say which one it was.
 - **Fewer than six good stories.** Use fewer. A thin front page is honest; padding it is not.
 - **`digest_build` returns an error.** Read it, fix what it names, call it once more. If it
   fails twice, stop and say what happened — do not try a third time.

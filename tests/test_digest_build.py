@@ -152,19 +152,65 @@ def test_the_intro_and_every_note_reach_the_page_unedited(digest):
 
 
 def test_the_paper_runs_in_the_readers_order_whatever_order_it_was_handed(digest):
-    """Home, abroad, technology, culture, sport, and the one worth knowing. The topic is not
-    decoration, it is the running order — so a caller may hand them over in any order."""
+    """Nearby, home, abroad, technology, culture, sport, and the one worth knowing. The topic
+    is not decoration, it is the running order — so a caller may hand them over in any order."""
     answer = built(digest(news={'many': 6}))(
         intro='Ordered.',
         picks=[
             {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'note': 'An oddity.', 'topic': 'oddity'},
             {'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'note': 'Abroad.', 'topic': 'world'},
             {'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'note': 'At home.', 'topic': 'belgium'},
+            {'id': 'vrt-2026-09-15-story-3-and-what-came-of-it', 'note': 'Round the corner.', 'topic': 'regional'},
         ],
     )
 
     prose = text_of(answer['page']['path'])
+    assert prose.index('Round the corner.') < prose.index('At home.')
     assert prose.index('At home.') < prose.index('Abroad.') < prose.index('An oddity.')
+
+
+def test_a_nearby_pick_is_marked_as_its_own_topic_not_left_unknown(digest):
+    """An unknown topic sorts last and draws no mark. That is the failure this shares a shape
+    with, so `regional` has to be shown doing the opposite: ahead of home, and drawn."""
+    answer = built(digest(news={'many': 4}))(
+        intro='Marked.',
+        picks=[
+            {'id': 'vrt-2026-09-15-story-0-and-what-came-of-it', 'note': 'At home.', 'topic': 'belgium'},
+            {'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'note': 'Round the corner.', 'topic': 'regional'},
+        ],
+    )
+
+    assert Path(answer['page']['path']).exists()
+    prose = text_of(answer['page']['path'])
+    assert prose.index('Round the corner.') < prose.index('At home.'), 'regional did not lead'
+
+
+def test_nearby_heads_the_second_sheet_and_vanishes_when_there_is_nothing_in_it(digest):
+    """`picks` is the front page and `more` is the second sheet, so the heading needs a `more`
+    entry. A section with nothing in it is not drawn — the same rule basketball already has."""
+    made = built(digest(news={'many': 10}))
+    answer = made(
+        intro='Two sheets.',
+        picks=[pick(0)],
+        more=[
+            {'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'regional'},
+            {'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'topic': 'belgium'},
+        ],
+    )
+    prose = text_of(answer['page']['path'])
+    assert says(prose, 'Nearby')
+    # Headings are letter-spaced, so compare in the same flattened form `says` uses.
+    flat = prose.replace(' ', '').casefold()
+    assert flat.index('nearby') < flat.index('athome'), 'Nearby did not lead the second sheet'
+
+    quiet = built(digest(news={'many': 10}))(
+        intro='Nothing close to home today.',  # never the word itself: says() would find it here
+        picks=[pick(0)],
+        more=[{'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'topic': 'belgium'}],
+    )
+    calm = text_of(quiet['page']['path'])
+    assert not says(calm, 'Nearby'), 'an empty Nearby section was drawn anyway'
+    assert says(calm, 'At home'), 'the other sections stopped rendering'
 
 
 def test_a_second_sheet_carries_the_rest_grouped_by_subject(digest):
