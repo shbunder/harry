@@ -24,10 +24,11 @@ Part of [[FEAT-260918-5fdfa6]].
 - [ ] `news.article()` returns the page's `og:image` as `image` when the feed entry carried none, parsed from the HTML it already fetched
 - [ ] A feed entry that carried a picture keeps it, and the article's is ignored — tested against a recorded page whose `og:image` differs from the feed's
 - [ ] A page with no `og:image` leaves `image` null, logs nothing and alerts nothing
-- [ ] The tijd connector carries the `og:image` back from the page its browser received, before the text is extracted
+- [ ] De Tijd is covered by the same parse, from the HTML its reader already returns — no second copy of the rule inside the tijd connector, and no change to what a reader must hand back
 - [ ] `digest_build` illustrates a card from the article's picture when the feed gave none, and prefers the feed's when both exist
-- [ ] Every page used as evidence is a recorded fixture under `tests/fixtures/news/`, not a live URL
-- [ ] Live, through the running stack: a De Tijd article on the page carries a picture
+- [ ] `.harry/tools/news_article/TOOL.md` no longer tells Claude that nothing is fetched to produce `image`, because now something is
+- [ ] Every page used as evidence is a recorded fixture under `tests/fixtures/`, not a live URL. De Tijd's is the one already there, `tests/fixtures/tijd/article-logged-in.html`, which carries an `og:image`
+- [ ] `live` — through the running stack, a De Tijd article on the page carries a picture
 
 ## Subtasks
 
