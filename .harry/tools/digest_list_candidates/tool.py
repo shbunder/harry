@@ -86,7 +86,7 @@ def register(registry: Registry, context: Context) -> None:
         note(missing)
 
         found = stories.pop('candidates', []) if stories.get('available') else []
-        headlines = found[:wanted]
+        headlines = [_only_what_is_chosen_on(one) for one in found[:wanted]]
         # The news connector reports its own dead feeds by name; they belong in the same list
         # a caller checks rather than in a second one nobody looks at.
         unavailable += [str(one.get('source', 'a feed')) for one in stories.pop('unavailable', []) or []]
@@ -99,6 +99,31 @@ def register(registry: Registry, context: Context) -> None:
             'dropped': len(found) - len(headlines),
             'unavailable': sorted(set(unavailable)),
         }
+
+
+SPENT_HERE = ('image', 'feed')
+"""Fields the news connector supplies that nothing on this page is chosen by.
+
+Measured on 2026-09-18, on a 40-headline answer of 21,959 characters: `image` was 14.3% of it
+and `feed` 2.8%. Neither comes back — a pick is an id, a note and a topic — and `digest_build`
+re-reads the feeds itself, so it resolves the picture from its own copy rather than from
+anything the caller returns. `feed` says nothing the id does not: every id begins with that
+feed's slug, and `source` is the name a person reads.
+
+**`date` is not one of these, and looks like it should be.** Every candidate carried today's
+date the day this was measured, which makes it appear to repeat the answer's own `date`. It
+does not: `news.search` applies no date filter, so the newest forty can include yesterday's
+stories on a quiet morning, and a candidate that lost its date would be put on today's page
+as today's news.
+
+Trimmed here rather than in the connector's `CONCISE_FIELDS`, which `news_search` shares —
+there the caller is asking across days and across feeds, and both fields are the answer.
+"""
+
+
+def _only_what_is_chosen_on(candidate: dict) -> dict:
+    """One headline, with the fields this page is not chosen by removed."""
+    return {key: value for key, value in candidate.items() if key not in SPENT_HERE}
 
 
 def forecast_of(weather: Any) -> dict:

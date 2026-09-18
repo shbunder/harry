@@ -223,3 +223,35 @@ def test_a_source_reporting_its_own_failure_is_logged_too(digest, caplog):
 
     assert 'weather says it could not answer' in caplog.text
     assert 'open-meteo answered 503' in caplog.text
+
+
+def test_a_headline_carries_only_what_the_page_is_chosen_on(digest):
+    """Measured on 2026-09-18: `image` was 14.3% of a 40-headline answer and `feed` 2.8%, and
+    neither comes back. A pick is an id, a note and a topic; `digest_build` re-reads the feeds
+    and resolves the picture from its own copy. `feed` repeats the id's own prefix."""
+    answer = called(digest(news={'image': 'https://images.vrt.be/a-very-long-url-indeed.jpg'}))()
+
+    assert answer['headlines'], 'nothing came back, so this proves nothing'
+    for headline in answer['headlines']:
+        assert 'image' not in headline, f'the picture URL is still being sent: {headline}'
+        assert 'feed' not in headline, f'the feed slug is still being sent: {headline}'
+
+
+def test_a_headline_keeps_its_date_because_the_newest_forty_are_not_all_today(digest):
+    """`news.search` applies no date filter, so a quiet morning's newest forty can carry
+    yesterday's stories. A candidate stripped of its date would go on today's page as today's
+    news, which is why `date` is not trimmed with the rest."""
+    answer = called(digest(news={}))()
+
+    assert answer['headlines'], 'nothing came back, so this proves nothing'
+    for headline in answer['headlines']:
+        assert headline.get('date'), f'a candidate lost the day it happened: {headline}'
+
+
+def test_the_id_still_says_which_feed_it_came_from(digest):
+    """`feed` is dropped rather than lost: every id begins with that feed's slug, which is
+    what makes dropping it safe."""
+    answer = called(digest(news={}))()
+
+    assert [h['id'] for h in answer['headlines']], 'nothing came back'
+    assert all(h['id'].startswith('vrt-') for h in answer['headlines']), answer['headlines']
