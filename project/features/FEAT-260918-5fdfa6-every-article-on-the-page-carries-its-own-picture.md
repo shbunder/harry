@@ -27,22 +27,23 @@ logged-in browser, which is the reader the tijd connector already is.
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] When a feed publishes no picture, the article's own `og:image` is used instead
-- [ ] A feed that does publish one keeps it — the page never overrides a feed's own picture
-- [ ] No request is made beyond the one that already fetched the article
-- [ ] De Tijd articles are illustrated, from the page the logged-in browser received — by the same parse as every other source, not a second one
-- [ ] A card whose feed carried no picture is illustrated on the page from the article's own
-- [ ] A story with no picture anywhere still prints, without one, and nothing reaches Slack
-- [ ] A picture whose address is dead costs that card its picture and nothing else
+- [x] When a feed publishes no picture, the article's own `og:image` is used instead
+- [x] A feed that does publish one keeps it — the page never overrides a feed's own picture
+- [x] No request is made beyond the one that already fetched the article
+- [x] De Tijd articles are illustrated, from the page the logged-in browser received — by the same parse as every other source, not a second one
+- [x] A card whose feed carried no picture is illustrated on the page from the article's own
+- [x] A story with no picture anywhere still prints, without one, and nothing reaches Slack
+- [x] A picture whose address is dead costs that card its picture and nothing else
 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
-- [ ] [[STORY-260918-568279]] — A picture comes from the article when the feed has none
+- [x] [[STORY-260918-568279]] — A picture comes from the article when the feed has none
 
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-18** — Proven on the deployed stack, harry:4c7b72b, 2026-09-18. All five sources now answer article() with a picture: De Tijd images.tijd.be through the logged-in browser, ROB tv shared.robtv.be, KW img.static-rmg.be — all three from the page's own og:image where the feed published none — and VRT and BBC still their feed's. The parse is in one place, the news connector's article path, out of HTML it already held; the tijd connector was not touched, because it already hands the whole page back. Two tests had to be made able to fail: the precedence one served VRT's own page to a VRT story, and VRT declares the same address in both places, so it passed whichever way round the code put them.
 
 ## Links
 
