@@ -45,7 +45,57 @@ a quiet day's timetable shows more of the afternoon so the left column reaches t
 
 <!-- Appended by `board.py note`. -->
 
-- 2026-09-19 — `.harry/jobs/morning-page/JOB.md` is also edited by FEAT-260913-fdd33f (a header comment, commit 3d01102), which declares only `docs, nuc, mcp-config`, so the lane check cannot see it. This feature edits step 3 only; the two diffs do not meet.
+- 2026-09-19 — `.harry/jobs/morning-page/JOB.md` is also edited by FEAT-260913-fdd33f (a header comment, commit 1c5d4fd), which declares only `docs, nuc, mcp-config`, so the lane check cannot see it. This feature edits step 3 only; the two diffs do not meet.
+- **2026-09-19** — Outstanding after merge: the claude.ai routine carries its own copy of the brief, and its step 3 still asks for about four stories in each category. The owner updates it; the new step 3 is in the merge's JOB.md. Once they have, the copy is compared with JOB.md through the routines API.
+
+## Lessons Learned
+
+**What worked**
+
+- **Reading the PDF the tablet opens, not the CSS.** Three columns are proved by where the
+  stories' link annotations land on the sheet page, and the way onward by its annotation sitting
+  above every story link on page one. A `column-count` check or an HTML check would have passed
+  the old button bug; these could not. Helpers: `links()` and `starts()` in
+  `tests/test_digest_build.py`, reading `/Dest` names and `get_destination_page_number`.
+- **Catching the page on its way to the renderer.** `drawn()` swaps the loaded tool's `render`
+  global for a spy, so a test reads the HTML production would print after every measuring and
+  fitting step has run — the timetable's hours and grid height, the sheet's markup.
+- **Mutants, run by name against the test meant to kill them.** 32 of them; three survivors in
+  the first pass each exposed something real: a rule no test day could tell apart from another
+  (fewest pages vs fullest), a 34pt ceiling that could never bind, and a KW summary whose
+  character codes sat after its first sentence and so never reached the page.
+- **A preview through the container's own connectors without touching `/data`**: tar the
+  worktree's tracked `digest_build` files into the container's `/tmp`, and
+  `load([*capability_roots(), Path('/tmp/preview-root/.harry')])` — a later root replaces an
+  earlier one. `HARRY_DIGEST_BUILD_OUT_DIR=/tmp/…` and `deliver=False`.
+
+**What to do differently**
+
+- **A claim that something is unreachable needs a measurement, every time.** The first forced
+  test said "nothing a caller can send reaches three pages". Twenty stories with nine companions
+  each do, through the tool. `SECOND_SHEET_PAGES` had recorded exactly this lesson once before,
+  and the rewrite deleted it.
+- **Pin a threshold from both sides.** Deleting the `crowded` gate was caught; moving
+  `SECOND_SHEET_PAGES` to 1 or 6 was not, until one test built a real two-page sheet that must
+  not be reported and another an exactly-three-page one that must.
+- **Cutting a block of a test file by "from this test to that one" takes whatever sat
+  between.** It silently deleted a helper and a test; a mutant then "failed" in 0.18s on a
+  `NameError`. A mutation run should treat pytest's exit code 5 (no tests) and a sub-second
+  failure as errors, not kills.
+- **Two agents shared one scratchpad file name** (`mutate.py`) and the verifier overwrote mine.
+  Give scratch scripts a feature-specific name.
+
+**Patterns to reuse**
+
+- `settle()` in `.harry/tools/digest_build/page.py`: render one region alone at each setting on
+  a ladder, keep `min(tried, key=(pages, -fill))`, measure the fill as the lowest classed box on
+  the last page from `_boxes()`.
+- `span()` in `.harry/tools/digest_build/timetable.py`: pick the extent first (run the day on
+  until 34pt hours fill the room), then the scale — rather than stretching a fixed extent.
+- `gist()`: strip tags and unescape until nothing changes, capped at three — ROB tv encodes its
+  codes twice (`&amp;nbsp;`), KW sends HTML.
+- `headline_sizes()` in the tests: walk WeasyPrint's box tree carrying an ancestor flag, and read
+  `box.style['font_size']` to assert what CSS actually applied.
 
 ## Links
 
