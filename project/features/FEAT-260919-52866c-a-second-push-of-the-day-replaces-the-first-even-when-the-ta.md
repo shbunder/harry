@@ -39,16 +39,15 @@ fail without the fix: a stand-in whose unrefreshed listing lags behind the table
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] The removal after a push lists the folder with `refresh=True`, so it sees what is on the tablet rather than what the client remembers
-- [ ] Finding the folder asks the tablet too, for the same reason
-- [ ] A gate test with a stand-in whose unrefreshed listing lags behind the tablet fails without the fix and passes with it
-- [ ] `docs/` and the connector's runbook no longer say a duplicate means the removal was refused twice — it can also mean the listing was out of date, which the fix removes
+- [x] The removal after a push lists the folder with `refresh=True`, so it sees what is on the tablet rather than what the client remembers
+- [x] A gate test with a stand-in whose unrefreshed listing lags behind the tablet fails without the fix and passes with it
+- [x] `docs/` and the connector's runbook no longer say a duplicate means the removal was refused twice — it can also mean the listing was out of date, which the fix removes
 - [ ] `by inspection: it is the owner's tablet` — the older `2026-09-19` is sent to the tablet's trash, once the owner has agreed
 
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
-- [ ] [[STORY-260919-8c5576]] — The removal after a push asks the tablet, not the client's memory
+- [x] [[STORY-260919-8c5576]] — The removal after a push asks the tablet, not the client's memory
 
 ## Notes
 
