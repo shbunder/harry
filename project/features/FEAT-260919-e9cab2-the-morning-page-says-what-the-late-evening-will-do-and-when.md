@@ -36,6 +36,60 @@ This adds 23:00 as a fifth hour on the strip and a "Sunrise 07:22 · Sunset 19:4
 <!-- Maintained by `board.py new-story`. -->
 - [ ] [[STORY-260919-745492]] — The weather panel shows 23:00 and when the sun rises and sets
 
+## Lessons Learned
+
+### What worked
+
+**Running the real connector into the real page.** `test_the_real_forecast_reaches_the_panel`
+loads `.harry/connectors/weather/` beside the stand-in news and mocks only Open-Meteo, with the
+answer recorded on 19 September 2026. Every other page test hands over a stand-in, so it is the
+only test where the connector and the page could disagree about a key's name. Setting
+`PLACE=Ghent` in it is what exposed the hard-coded `Leuven` in `page.py`, which every fixture
+had matched for as long as the page existed.
+
+**Picking the strip's hours by clock time.** `[2::4][:4]` gave 08, 12, 16 and 20 only because
+the list started at 06:00. A forecast starting at 07:00 turned the same rule into 09, 13, 17 and
+21. `STRIP` in `sheet.py` names the five hours, and the strip's width is worked out from it.
+
+**Measuring the page on WeasyPrint's layout, not the PDF.** The PDF says where a label starts
+and never where it ends, so the first margin test bounded the end by a whole cell — sound, but
+it would have gone red on a correct flush-right strip. `strip_cells` captures the HTML
+`digest_build` hands to `render` and reads each cell's border box and its label's text box off
+the same layout call `render` makes. The 23:00 label ends at 467.11pt, its cell at 469.66pt,
+the margin at 475.34pt.
+
+### What to do differently
+
+**A flex row fails by squeezing, not by spilling.** With the strip left at its old 118pt, five
+25pt cells did not cross the margin: flex shrank them to 19pt and the labels nearly touched.
+The margin assertion stayed green and only a spacing assertion (25pt cells, 6pt apart) caught
+it. When a row gains an item, assert the item's size as well as the row's edge.
+
+**I ticked two criteria no test could fail.** "Each hour with its own icon" had no test at all
+— every hour drawing the day's icon passed 859 of 859. "No empty slot" was untested and untrue:
+with hours ending at 22:00 the strip keeps its width and the right end is blank. The pre-close
+verifier found both by mutating the code. Break each ticked claim once before ticking it.
+
+**A test fed 06:00 to 22:00 cannot fail for 23:00.** The old strip test used `range(6, 23)` and
+checked four labels, so it would have stayed green if 23:00 were never drawn. Re-read a test's
+input, not only its assertions, when the feature moves the boundary it sits on.
+
+**Docs promised "Weather unavailable" in six places and nothing prints it.** Found by the plan
+check rendering the case; opened as FEAT-260919-f11974 rather than fixed here.
+
+### Patterns to reuse
+
+- **`captured(catalogue, monkeypatch)` and `strip_cells(html)`** in `tests/test_digest_build.py`
+  — capture the HTML a tool renders by patching `render` in the loaded tool's globals, then
+  measure any box on it with WeasyPrint. Reusable for any "does it fit" claim on the front sheet.
+- **`front_runs(path)`** in the same file — each text run on the front sheet with its x
+  position, from pypdf's `visitor_text`.
+- **`Weather._sun` and `_clock`** in `.harry/connectors/weather/connector.py` — a field read
+  softly beside facts read strictly: `fullmatch` or `None`, always present, one INFO line naming
+  what was missing. A missing field costs its line, never the forecast.
+- **An old recording as the degraded case.** `leuven-hourly.json` predates the sun fields, so it
+  is also *the service answered without them*, with nothing hand-edited.
+
 ## Notes
 
 <!-- Appended by `board.py note`. -->
