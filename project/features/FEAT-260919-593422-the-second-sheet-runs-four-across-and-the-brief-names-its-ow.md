@@ -37,10 +37,10 @@ change is one word in a markdown file with no Python, and it comes out of the sa
 <!-- One box per scenario. These are what the pre-close-verifier builds its
      traceability matrix from. -->
 
-- [ ] The second sheet lays its cards out four across, each card narrower with a shorter picture
-- [ ] A test fails if the second sheet goes back to three across
-- [ ] On a heavy day the second sheet takes fewer pages than the three-across layout did — measured on the same data, before and after
-- [ ] `SECOND_SHEET_PAGES`'s comment no longer says three pages cannot be reached, and says what was measured
+- [x] The second sheet lays its cards out four across, each card narrower with a shorter picture
+- [x] A test fails if the second sheet goes back to three across
+- [x] On a heavy day the second sheet takes fewer pages than the three-across layout did — measured on the same data, before and after
+- [x] `SECOND_SHEET_PAGES`'s comment no longer says three pages cannot be reached, and says what was measured
 - [ ] The brief calls `harry_mark_done("morning-page")` by name, in both `JOB.md` and the routine's copy
 
 ## Stories
@@ -51,6 +51,7 @@ change is one word in a markdown file with no Python, and it comes out of the sa
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-19** — Deployed as harry:9a4b987 and measured on the deployed code, one heavy day (20 on the second sheet, six sections, companions on four cards): four across puts five sections on the first page — At home, Abroad, AI and technology, Culture, Nearby — and moves only 'And one more thing' to the second. The same day at three across fitted four, with a half-empty second page. JOB.md names harry_mark_done('morning-page'). The routine's own copy still says 'for this job': updating it means round-tripping a 94KB job_config whose start-up event is not understood, into a routine that had only just been made to work, so it is left to the owner as a one-line edit. Until then a run wastes one call guessing the name, and recovers.
 
 ## Links
 
