@@ -18,6 +18,7 @@ on the calendar, and up to forty headlines with their summaries and ids.
 {"date": "2026-09-15",
  "weather": {"available": true, "place": "Leuven", "summary": "overcast",
              "high": 29, "low": 17, "rain_chance": 53,
+             "sunrise": "07:22", "sunset": "19:46",
              "hours": [{"at": "06:00", "temperature": 17, "summary": "clear"}, …]},
  "agenda":  {"available": true,
              "events": [{"at": "09:30", "ends": "10:00", "title": "standup",

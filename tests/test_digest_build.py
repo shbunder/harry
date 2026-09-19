@@ -632,15 +632,21 @@ def test_the_strip_chooses_its_hours_by_the_clock_not_by_position(digest):
 
 
 def test_the_eleven_oclock_hour_sits_inside_the_right_margin(digest):
-    """Read back off the PDF. The strip has a fixed width worked out from its hours; set for
-    four, a fifth hour spills over its edge. A label is centred in its cell, so a label that
-    starts a whole cell inside the margin ends inside it."""
+    """Read back off the PDF. Each hour is a 25pt cell, 6pt from the next, and a label is
+    centred in its cell — so a label that starts a whole cell inside the margin ends inside it.
+
+    The spacing is checked too. The strip's width is worked out from its hours, and set for
+    four it does not spill: it squeezes all five into 19pt cells, which stays inside the page
+    and puts the labels nearly touching."""
     answer = built(digest(news={'many': 4}, **sky()))(intro='Hourly.', picks=[pick(0)])
 
     right_edge = 509.34 - 34.0
     labels = {text: x for x, text in front_runs(answer['page']['path']) if text in STRIP}
     assert set(labels) == set(STRIP), 'every hour is on the front sheet, each as its own run'
     assert labels['23:00'] + 25.0 <= right_edge, f'23:00 starts at {labels["23:00"]:.1f}pt'
+    starts = [labels[at] for at in STRIP]
+    pitches = [round(later - earlier, 1) for earlier, later in zip(starts, starts[1:])]
+    assert pitches == [31.0] * 4, f'the hours are {pitches}pt apart'
     assert answer['page']['crowded'] == []
 
 
@@ -654,6 +660,20 @@ def test_an_hourly_block_that_stops_before_eleven_draws_the_hours_it_has(digest)
     assert not says(prose, '23:00')
     labels = [text for _, text in front_runs(answer['page']['path']) if text in STRIP]
     assert labels == list(STRIP[:4])
+
+
+def test_no_forecast_draws_dashes_with_no_place_and_no_sun(digest):
+    """What the panel does today when the forecast failed: `digest_build` hands it an empty
+    answer. The place went with the hard-coded Leuven, because nothing supplies one here."""
+    down = {'weather': {'answer': {'available': False, 'place': 'Leuven', 'why': 'open-meteo could not be reached'}}}
+    answer = built(digest(news={'many': 4}, **down))(intro='No sky.', picks=[pick(0)])
+
+    prose = text_of(answer['page']['path'])
+    assert says(prose, 'High –° · Low –°') and says(prose, 'Rain –%')
+    assert not says(prose, 'Leuven') and not says(prose, 'Sunrise')
+    assert [text for _, text in front_runs(answer['page']['path']) if text in STRIP] == []
+    assert says(prose, 'No sky.'), 'the rest of the page renders'
+    assert answer['page']['crowded'] == []
 
 
 def test_the_panel_says_when_the_sun_rises_and_sets(digest):

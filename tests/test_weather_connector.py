@@ -450,7 +450,7 @@ def test_the_docs_describe_the_shape_of_the_day():
     """The greppable half of the docs criterion."""
     prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
 
-    assert 'Seventeen readings, 06:00 to 22:00' in prose
+    assert 'Eighteen readings, 06:00 to 23:00' in prose
     assert '"at": "06:00", "temperature": 17' in prose
     assert 'loses only the strip' in prose, 'what a missing hourly block costs'
 
@@ -469,7 +469,7 @@ def test_the_tool_body_tells_claude_the_hours_are_there():
     body = (REPO / '.harry' / 'tools' / 'weather_forecast' / 'TOOL.md').read_text(encoding='utf-8')
 
     assert 'hours' in body
-    assert '06:00' in body and '22:00' in body
+    assert '06:00' in body and '23:00' in body
 
 
 @respx.mock
