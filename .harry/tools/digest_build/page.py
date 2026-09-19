@@ -162,27 +162,47 @@ def short(headline: str, most: int = 38) -> str:
     return to_a_glance(headline, most)
 
 
+FOOTER = re.compile(r'<p>\s*The post\b(?:(?!</p>).)*?\bappeared first on\b(?:(?!</p>).)*?</p>\s*$', re.DOTALL)
+"""WordPress's footer on every item of its feeds — *"The post <headline> appeared first on
+KW.be."* It is the publishing platform's, not the paper's reporting, and as text it repeats
+the headline under the summary.
+
+**One paragraph, and only the last.** Without both, a summary whose own first paragraph began
+"The post-election talks…" was matched from there to the footer and lost entirely."""
+TAG = re.compile(r'</?[A-Za-z][^<>]*>')
+"""Something shaped like a tag. Not every `<` is one: "Temperaturen < 5 graden en > 20"
+lost the words between the two signs to a pattern that took anything in angle brackets."""
+
+
+def plain(summary: str | None) -> str:
+    """A feed's summary as the text a reader would have seen on the paper's site.
+
+    A summary is not always text. KW sends a paragraph, a link, character codes such as
+    `&#8230;`, and WordPress's footer; escaped as it came, the page printed the angle brackets.
+    So the footer goes, the tags are dropped and the codes read — a rule, not a rewording:
+    every word printed is the feed's own. A summary that was text already comes back as it
+    was, ampersands and all.
+
+    **Until nothing changes**, because ROB tv encodes twice: its summary arrives as
+    `&amp;nbsp;`, which reads once as `&nbsp;` and only the second time as a space. The loop
+    always ends: a pass that changes anything makes the text shorter — a tag becomes one space,
+    a character code one character — so it runs out of passes before it runs out of text.
+    """
+    text = summary or ''
+    while True:
+        read = html.unescape(TAG.sub(' ', FOOTER.sub(' ', text)))
+        if read == text:
+            return ' '.join(text.split())
+        text = read
+
+
 def gist(summary: str | None, most: int = 120) -> str:
-    """The first sentence of a feed's summary, as plain text, cut at a word within `most`.
+    """The first sentence of a feed's summary, as `plain` text, cut at a word within `most`.
 
     120 characters is about four lines of the sheet's small type under a headline: enough for
     a sentence that says what happened, short enough that the opener stays a headline.
-
-    Plain because a summary is not always text. KW sends a paragraph, a link and character
-    codes such as `&#8230;`, and escaping that as it came printed the angle brackets on the
-    page. So the tags are dropped and the codes read — a rule, not a rewording: every word
-    printed is the feed's own.
-
-    **Until nothing changes, three times at most**, because ROB tv encodes twice: its summary
-    arrives as `&amp;nbsp;`, which reads once as `&nbsp;` and only the second time as a space.
     """
-    text = summary or ''
-    for _ in range(3):
-        plain = html.unescape(re.sub(r'<[^>]+>', ' ', text))
-        if plain == text:
-            break
-        text = plain
-    text = ' '.join(text.split())
+    text = plain(summary)
     ends = text.find('. ')
     return text[: ends + 1] if 0 < ends < most else to_a_glance(text, most)
 
@@ -201,13 +221,19 @@ def article_page(a: dict, family: list[dict], before: dict | None, after: dict |
     was not.
     """
     # A story whose text could not be read still earns its page. Claude chose it, and the
-    # feed's own summary is real reporting — a blank page would throw away both.
+    # feed's own summary is real reporting — a blank page would throw away both. As text:
+    # KW's arrives as HTML, and ROB tv's encoded twice.
     body = paragraphs(a.get('text') or '')
     if not body:
         why = escaped(a.get('why') or 'the text could not be read')
+        summary = plain(a.get('summary'))
         body = (
-            f'<p class="lede">{escaped(a["summary"])}</p>' if a.get('summary') else ''
-        ) + f'<p class="missing">Full text unavailable — {why}. This is the summary the feed carried.</p>'
+            f'<p class="lede">{escaped(summary)}</p>'
+            f'<p class="missing">Full text unavailable — {why}. This is the summary the feed carried.</p>'
+            if summary
+            # ROB tv's daily bulletin is a video, and its summary is three encoded spaces.
+            else f'<p class="missing">Full text unavailable — {why}. The feed carried no summary either.</p>'
+        )
     lead = a.get('lead')
     shot = picture(a['shot'])
     topic = TOPICS.get(a.get('topic') or '')

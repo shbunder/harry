@@ -32,7 +32,7 @@ class News:
                 'source': 'VRT NWS',
                 'published': '2026-09-15T06:00:00+00:00',
                 'link': f'https://example.test/{story_id}',
-                'summary': 'A summary.',
+                'summary': wanted.get('summary') or 'A summary.',
                 'image': None,
                 'why': 'it answered 403',
             }
