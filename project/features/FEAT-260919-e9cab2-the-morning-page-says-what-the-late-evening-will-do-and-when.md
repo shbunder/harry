@@ -18,18 +18,18 @@ This adds 23:00 as a fifth hour on the strip and a "Sunrise 07:22 · Sunset 19:4
 
 ## Acceptance criteria
 
-- [ ] The strip on the front sheet shows 08:00, 12:00, 16:00, 20:00 and 23:00, in that order, each with its own temperature and icon, chosen by clock time rather than by position in the list
-- [ ] Read back off the PDF, the 23:00 label ends inside the 34pt right margin, and the page reports nothing crowded
-- [ ] `forecast()['hours']` carries eighteen readings, 06:00 to 23:00; 05:00 and earlier stay off
-- [ ] `forecast()` carries `sunrise` and `sunset` as local "HH:MM" strings, asked for in the `daily` list of the one request Harry already makes
-- [ ] The weather panel reads "Sunrise 07:22 · Sunset 19:46" for a forecast carrying those two times
-- [ ] `sunrise` and `sunset` are always in the forecast, each null when it cannot be read. With both null the panel prints no sun line and keeps the high, low, rain chance and strip; with one, that one prints on its own. One INFO line names what was missing, and nothing reaches Slack
-- [ ] An hourly block that stops before 23:00 draws whichever of the five hours it has; no other hour takes 23:00's place, and there is no empty slot
-- [ ] With no forecast at all, the panel draws dashes with no place and no sun line, and the rest of the page renders
-- [ ] The `weather_forecast` tool returns `sunrise`, `sunset` and the eighteen hours, and its `TOOL.md` says so and no longer says it is not for sunrise
-- [ ] With `PLACE=Ghent`, the weather panel says Ghent, not Leuven
-- [ ] The `digest_list_candidates` `TOOL.md` example shows `sunrise` and `sunset` in the weather Claude reads each morning
-- [ ] `docs/sources.md`, `docs/morning-page.md`, the weather `CONNECTOR.md` runbook and the fixtures README describe the fifth hour and the sun line, and the runbook names the missing-sunrise case
+- [x] The strip on the front sheet shows 08:00, 12:00, 16:00, 20:00 and 23:00, in that order, each with its own temperature and icon, chosen by clock time rather than by position in the list
+- [x] Read back off the PDF, the 23:00 label ends inside the 34pt right margin, and the page reports nothing crowded
+- [x] `forecast()['hours']` carries eighteen readings, 06:00 to 23:00; 05:00 and earlier stay off
+- [x] `forecast()` carries `sunrise` and `sunset` as local "HH:MM" strings, asked for in the `daily` list of the one request Harry already makes
+- [x] The weather panel reads "Sunrise 07:22 · Sunset 19:46" for a forecast carrying those two times
+- [x] `sunrise` and `sunset` are always in the forecast, each null when it cannot be read. With both null the panel prints no sun line and keeps the high, low, rain chance and strip; with one, that one prints on its own. One INFO line names what was missing, and nothing reaches Slack
+- [x] An hourly block that stops before 23:00 draws whichever of the five hours it has; no other hour takes 23:00's place, and there is no empty slot
+- [x] With no forecast at all, the panel draws dashes with no place and no sun line, and the rest of the page renders
+- [x] The `weather_forecast` tool returns `sunrise`, `sunset` and the eighteen hours, and its `TOOL.md` says so and no longer says it is not for sunrise
+- [x] With `PLACE=Ghent`, the weather panel says Ghent, not Leuven
+- [x] The `digest_list_candidates` `TOOL.md` example shows `sunrise` and `sunset` in the weather Claude reads each morning
+- [x] `docs/sources.md`, `docs/morning-page.md`, the weather `CONNECTOR.md` runbook and the fixtures README describe the fifth hour and the sun line, and the runbook names the missing-sunrise case
 
 ## Stories
 
