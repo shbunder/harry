@@ -46,7 +46,7 @@ change is one word in a markdown file with no Python, and it comes out of the sa
 ## Stories
 
 <!-- Maintained by `board.py new-story`. -->
-- [ ] [[STORY-260919-606b47]] — Four across, and the job named in the brief
+- [x] [[STORY-260919-606b47]] — Four across, and the job named in the brief
 
 ## Notes
 
