@@ -22,12 +22,12 @@ One story because the two halves meet on one panel. The connector reads 23:00 an
 - [x] `forecast()` carries `sunrise` and `sunset` as local "HH:MM" strings, asked for in the `daily` list of the one request Harry already makes
 - [x] The weather panel reads "Sunrise 07:22 · Sunset 19:46" for a forecast carrying those two times
 - [x] `sunrise` and `sunset` are always in the forecast, each null when it cannot be read. With both null the panel prints no sun line and keeps the high, low, rain chance and strip; with one, that one prints on its own. One INFO line names what was missing, and nothing reaches Slack
-- [x] An hourly block that stops before 23:00 draws whichever of the five hours it has; no other hour takes 23:00's place, and there is no empty slot
+- [x] An hourly block that stops before 23:00 draws whichever of the five hours it has, each where it sits in a full strip. Nothing stands in for 23:00 — not 22:00 and not an empty cell — so the right end of the strip is left blank
 - [x] With no forecast at all, the panel draws dashes with no place and no sun line, and the rest of the page renders
 - [x] The `weather_forecast` tool returns `sunrise`, `sunset` and the eighteen hours, and its `TOOL.md` says so and no longer says it is not for sunrise
 - [x] With `PLACE=Ghent`, the weather panel says Ghent, not Leuven
 - [x] The `digest_list_candidates` `TOOL.md` example shows `sunrise` and `sunset` in the weather Claude reads each morning
-- [x] `docs/sources.md`, `docs/morning-page.md`, the weather `CONNECTOR.md` runbook and the fixtures README describe the fifth hour and the sun line, and the runbook names the missing-sunrise case
+- [x] `docs/sources.md`, `docs/morning-page.md` and the fixtures README describe the fifth hour and the sun line, and the weather `CONNECTOR.md` runbook names the missing-sunrise case
 
 ## Subtasks
 
