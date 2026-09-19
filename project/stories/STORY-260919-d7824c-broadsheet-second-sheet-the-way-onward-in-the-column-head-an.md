@@ -2,7 +2,7 @@
 id: STORY-260919-d7824c
 title: Broadsheet second sheet, the way onward in the column head, and a timetable that reaches the foot
 feature: FEAT-260919-f580cd
-status: Backlog
+status: Done
 created: 2026-09-19
 ---
 
@@ -31,20 +31,20 @@ fault and the second sheet's emptiness were found and designed as one page.
 
 ## Acceptance criteria
 
-- [ ] The front page carries "Other news →" in its right column head, linking to the second sheet, above every story link, and no `.onward` button
-- [ ] With no `more`, no page carries an "Other news" link
-- [ ] Built through `digest_build`, one 09:30–11:30 event draws hours past 13:00 in a grid as tall as `fits.timetable`, at most 34pt an hour
-- [ ] Built through `digest_build`, a 07:00–21:00 day draws 07 to 22 and no more, at 18pt an hour or more
-- [ ] Built through `digest_build`, a day with nothing timed draws 07 to 21 sized to the room, and `crowded` is empty
-- [ ] Built through `digest_build`, a 06:00–23:00 day draws 18pt hours and `crowded` names the day column
-- [ ] Every k-th story on the sheet carries a picture, a larger headline and the first sentence of its summary; the rest carry neither; headlines are whole; companions print a line each
-- [ ] The second sheet is drawn in three columns, with no topic heading, a mark per story, in the paper's order
-- [ ] The answer's `fits.sheet` names the chosen setting, and it has the fewest pages of any ladder setting and the fullest last page among those, for 20 and for 10 stories
-- [ ] With the ladder forced to one generous setting, `crowded` says "also today" runs to 3 pages or more
-- [ ] KW's recorded summary prints as its first sentence, with no `<` and no `&#`
-- [ ] A 404 picture on a second-sheet story is requested once per build
-- [ ] The article page's link to the sheet reads "Other news"
-- [ ] `JOB.md` step 3 no longer asks for about four per category; `TOOL.md` and `docs/morning-page.md` describe the sheet as it is drawn
+- [x] The front page carries "Other news →" in its right column head, linking to the second sheet, above every story link, and no `.onward` button
+- [x] With no `more`, no page carries an "Other news" link
+- [x] Built through `digest_build`, one 09:30–11:30 event draws hours past 13:00 in a grid as tall as `fits.timetable`, at most 34pt an hour
+- [x] Built through `digest_build`, a 07:00–21:00 day draws 07 to 22 and no more, at 18pt an hour or more
+- [x] Built through `digest_build`, a day with nothing timed draws 07 to 21 sized to the room, and `crowded` is empty
+- [x] Built through `digest_build`, a 06:00–23:00 day draws 18pt hours and `crowded` names the day column
+- [x] Every k-th story on the sheet carries a picture, a larger headline and the first sentence of its summary; the rest carry neither; headlines are whole; companions print a line each
+- [x] The second sheet is drawn in three columns, with no topic heading, a mark per story, in the paper's order
+- [x] The answer's `fits.sheet` names the chosen setting, and it has the fewest pages of any ladder setting and the fullest last page among those, for 20 and for 10 stories
+- [x] With the ladder forced to one generous setting, `crowded` says "also today" runs to 3 pages or more
+- [x] KW's recorded summary prints as its first sentence, with no `<` and no `&#`
+- [x] A 404 picture on a second-sheet story is requested once per build
+- [x] The article page's link to the sheet reads "Other news"
+- [x] `JOB.md` step 3 no longer asks for about four per category; `TOOL.md` and `docs/morning-page.md` describe the sheet as it is drawn
 
 ## Tests this retires
 
@@ -66,3 +66,6 @@ Each asserts the layout the ADR replaces. Each is rewritten, not deleted without
 ## Subtasks
 
 ## Notes
+
+- **2026-09-19** — Built from today's real stories through the container's own connectors, with the new digest_build loaded from a /tmp root and delivered nowhere: 18 second-sheet stories set one page at a picture every 6 at 48pt, 96% full; 10 set one page at every 2 at 86pt, 91% full; builds took 36s and 27s. The front page's timetable ran 08–16 in its 302pt room. 22 mutants of the new controls, each killed by the test named for it — the fewest-pages rule needed a forced ladder to be killed, because on the real ladder no two-page setting has filled its last page better than the best one-page one; a 34pt ceiling on the hour was removed as unreachable, since sixteen hours at 34pt is taller than any room a page leaves.
+
