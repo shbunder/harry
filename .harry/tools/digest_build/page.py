@@ -458,11 +458,14 @@ It was one. The second sheet then held about a dozen stories and a category with
 story in it looked broken rather than quiet — so the brief now asks for up to twenty, about
 four in each category the day supports, and two pages is what a full second sheet looks like.
 
-**`MOST_MORE` is what really bounds the sheet.** Twenty cards with pictures and real headlines
-make two pages, measured, so three is not reachable while the tool refuses a twenty-first.
-This stays as the guard for a day of unusually long headlines, and it is deliberately the one
-control here with no test that makes it fire — the reachable boundary is the cap, which has
-its own."""
+**Three pages is reachable, and was reached.** This said otherwise for a day, on the strength of
+twenty test stand-ins that made two pages. On 2026-09-19 a real morning ran the sheet to three
+and this reported it — real headlines are longer, every card by then carried a picture, and
+companions add a line under a card. The claim was measured on the wrong thing.
+
+The sheet has since gone four across, which on one heavy day put five of six sections on the
+first page. `MOST_MORE` still refuses a twenty-first story; this is the guard for the day
+twenty fill more than two pages anyway."""
 
 
 def render(html: str, where: Path, log: Any) -> dict:
