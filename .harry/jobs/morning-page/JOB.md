@@ -78,14 +78,13 @@ If a story could be two topics, use the one the reader would look under:
 ## 3. Choose the second page: up to 20 more stories
 
 Everything else worth knowing, as a `more` list. Same `id` and `topic` fields; **no note** —
-the second page is a glance, not an argument. It runs to two sheets and that is fine.
+the second page is a glance, not an argument. Harry sets it in three columns, each story
+marked with its topic, and fits it to one page or two.
 
-**Aim for about four in each category.** A section with one story in it looks broken; four
-looks like a section. Twenty is the most the tool accepts.
-
-**But take what the day actually has.** A category with two good stories gets two — do not
-pad it with something you would not have chosen. A category with none is left out entirely.
-Four is what to aim for, never a quota to fill.
+**A category gets what the day has.** The page has no section headings, so one good story
+in a category is one good story, not a thin section. A category with none is left out. Do not
+pad it with something you would not have chosen: twenty is the most the tool accepts, not a
+number to reach.
 
 Nothing may appear on both pages, and nothing twice.
 

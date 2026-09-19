@@ -46,8 +46,9 @@ on the tablet.
 
 **`picks` is the front page** — six or so, each with a `note`, which is the line you write
 about why it is worth their time. It goes on the page above the article, unedited. **`more`
-is the second sheet** — ten to twelve others, grouped by subject, and no note: a card there is
-a glance, not an argument.
+is the second sheet** — up to twenty others, and no note: a story there is a glance, not an
+argument. It is set in three columns with no section headings, each story marked with its
+topic, and fitted to one page or two.
 
 `topic` is one of `belgium`, `world`, `tech`, `culture`, `sport`, `regional`, `oddity`, and it
 decides where a story sits. **The whole paper is laid out in that order** — home, abroad,
@@ -75,7 +76,8 @@ meant.
 **Up to 12 on the front page and 20 on the second.** Past that it is not a morning page.
 
 This blocks for a minute or two: it fetches every article and every picture. The answer says
-how many pages, whether either sheet ran over, and what the tablet said.
+how many pages, whether either sheet ran over, how the second sheet was fitted, and what the
+tablet said.
 
 **A second build for the same day replaces the first on the tablet** rather than sitting
 beside it, so calling this twice leaves one document. The page is also on disk either way, at

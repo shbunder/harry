@@ -57,31 +57,18 @@ MARGIN_LEFT, MARGIN_OTHER = 34.0 + TOOLBAR, 34.0
 CONTENT = PAGE[0] - MARGIN_LEFT - MARGIN_OTHER  # 417.3pt
 GUTTER = 17.0
 LEFT_COLUMN = 186.0
-CARD_GAP = 12.0
-CARDS_ACROSS = 4
-CARD = int((CONTENT - CARD_GAP * (CARDS_ACROSS - 1)) / CARDS_ACROSS * 10) / 10
-"""The second sheet, four cards across.
+LADDER = ((2, 86.0), (2, 70.0), (3, 80.0), (3, 66.0), (4, 66.0), (4, 54.0), (5, 54.0), (6, 48.0), (8, 44.0))
+"""The ways the second sheet can be set, most generous first: a picture on every *k*-th story,
+and how tall, in points.
 
-Two was tried first and could not hold the paper's six sections on one page: a heading plus
-one row of two-up cards is about 105pt, and six of those is 630 against 581pt of page. Three
-across brought a row to about 70pt and fitted a dozen stories.
+**Harry sets the sheet at every one and keeps the fewest pages, then the fullest last page.**
+How much room twenty stories take depends on their headlines, their pictures and their
+companions, none of which is known before the morning, so the sheet is measured rather than
+guessed. Laid out from one real morning on 2026-09-19, a full day of eighteen and a light day
+of ten each filled one page to 97%, at different settings.
 
-**Four, since the second sheet grew to twenty and every card gained a picture.** On 2026-09-19
-a real morning ran "also today" to three pages. One heavy day laid out three ways: three
-across took about a page and a half, four across put five of six sections on the first page.
-A picture beside the headline would be denser still, and WeasyPrint drew the headline over the
-picture rather than beside it — so that is an unsolved layout, not a rejected one.
-
-The cost is the headline. A four-across card is about 95pt wide, so two clipped lines hold
-less of it; the whole headline is one tap away on the story's own page.
-
-**Rounded down, not to nearest.** The stylesheet carries one decimal, and three cards at the
-rounded-up width plus their gutters came to more than the content width — so every row
-wrapped to a single card, which reads as a design choice rather than as arithmetic. Down by a
-tenth of a point costs nothing visible and cannot do that."""
-CARD_PICTURE = 26.0
-"""A second-sheet picture's height. It was 38pt on a card 131pt wide; a card 95pt wide at the
-same height reads as a tall crop, and the height is most of what a card costs."""
+It stops at 44pt because below that a crop reads as a coloured stripe, and at eight because a
+column with no picture in it reads as a list."""
 RIGHT_COLUMN = CONTENT - LEFT_COLUMN - GUTTER  # 214.3pt
 
 
@@ -144,19 +131,17 @@ h1, h2, .display { font-family: Didot, 'Bodoni 72', Georgia, serif; font-weight:
 /* Point widths, not percentages: a percentage width on an absolutely positioned child
    inside a flex item sent WeasyPrint's layout into minutes of work for one page. */
 .day .left { flex: 0 0 {{LEFT_COLUMN}}pt; min-width: 0; }
-/* A column, so the way onward can be pinned to the foot of it. How much of the sheet six
-   headlines fill is not something an editor controls — Haiku's six left 78pt of white under
-   them where mine left 6 — and a button floating in the middle of that reads as a mistake.
-   `flex: 0 0 auto` on the children because a flex column shrinks them by default, and the
-   index rows collapsed into one another the first time this was tried. */
-.day .right { flex: 0 0 {{RIGHT_COLUMN}}pt; min-width: 0; display: flex; flex-direction: column; }
-.day .right > * { flex: 0 0 auto; }
-.day .right .list { min-width: 0; }
-/* A spacer rather than `margin-top: auto` on the button: WeasyPrint put the auto margin
-   somewhere around two thirds down and the button landed across the fifth story. */
-.day .right .filler { flex: 1 1 auto; min-height: 0; }
+.day .right { flex: 0 0 {{RIGHT_COLUMN}}pt; min-width: 0; }
 .colhead { display: flex; justify-content: space-between; align-items: baseline;
            border-bottom: 0.6pt solid {{RULE}}; padding-bottom: 4pt; margin-bottom: 7pt; }
+/* The way to the second sheet, in the head of the column it follows. It was a button pinned
+   under the six stories, and the column it was pinned in was shorter than they were — the
+   timetable's hours are absolutely positioned, so the left column has no height of its own —
+   so it landed across the fifth. A link in the head is placed by nothing but the head.
+   Ink rather than grey, because it is the one thing in the row that goes somewhere. */
+.colhead .onward { font-family: 'Avenir Next Condensed', 'Helvetica Neue', sans-serif;
+                   font-size: 7.2pt; font-weight: 600; letter-spacing: 0.16em;
+                   text-transform: uppercase; color: {{INK}}; white-space: nowrap; }
 
 /* ---- timetable ---- */
 .allday { font-size: 8pt; margin-bottom: 2pt; padding-left: 2pt; }
@@ -201,40 +186,28 @@ a { color: inherit; text-decoration: none; }
 .item .also .one b { font-family: 'Avenir Next Condensed', sans-serif; font-weight: normal;
                      letter-spacing: 0.06em; text-transform: uppercase; font-size: 6.2pt; }
 
-/* ---- the second sheet ---- */
+/* ---- the second sheet: a broadsheet ---- */
+/* Three ruled columns, no section headings: the topic is the mark beside each source, and the
+   paper's running order is kept. Headings cost their height whether they head one story or
+   four, and a section of two left half a row white — the sheet read as empty. Columns flow, so
+   a topic with one story costs one story's height. */
 .sheet.two { page-break-before: always; }
-.sheet.two .group { margin-bottom: 6pt; }
-.sheet.two h2 { display: flex; align-items: center; gap: 4pt; margin: 0 0 5pt;
-                font-family: 'Avenir Next Condensed', sans-serif; font-size: 7.6pt; font-weight: normal;
-                letter-spacing: 0.2em; text-transform: uppercase; color: {{INK}};
-                border-top: 1.4pt solid {{INK}}; padding-top: 4pt; break-after: avoid; }
-.sheet.two h2 .count { margin-left: auto; color: {{MUTED}}; letter-spacing: 0.1em; }
-.cards { display: flex; flex-wrap: wrap; gap: 9pt {{CARD_GAP}}pt; }
-.card { flex: 0 0 {{CARD}}pt; min-width: 0; break-inside: avoid; margin-bottom: 2pt; }
-.card .shot { display: block; margin-bottom: 4pt; }
-.card .shot img { width: {{CARD}}pt; height: {{CARD_PICTURE}}pt; object-fit: cover; }
-/* Two lines, clipped. A second-page card is a glance — the full headline is one tap
-   away on the story's own page — and a grid whose rows are all the same height is what
-   makes an inside page read like a newspaper rather than like a list that ran long. */
-.card .head { display: block; font-family: Didot, serif; font-size: 8.4pt; line-height: 1.15;
-              height: 19.4pt; overflow: hidden; }
-.card .src { display: flex; align-items: center; gap: 3pt; margin-top: 2pt;
-             font-family: 'Avenir Next Condensed', sans-serif; font-size: 6.4pt;
-             letter-spacing: 0.1em; text-transform: uppercase; color: {{MUTED}}; }
-.card .note { font-size: 7pt; font-style: italic; color: {{MUTED}}; margin-top: 2pt;
-              line-height: 1.28; }
-.card .also { min-width: 0; margin-top: 4pt; padding-left: 5pt; border-left: 0.8pt solid {{RULE}}; }
-.card .also .one { display: block; font-size: 6.9pt; line-height: 1.24; color: {{MUTED}};
-                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.card .also .one b { font-family: 'Avenir Next Condensed', sans-serif; font-weight: normal;
-                     letter-spacing: 0.08em; text-transform: uppercase; }
-
-/* ---- the way onward, at the foot of the front page's column ---- */
-.onward { display: flex; align-items: baseline; justify-content: space-between; gap: 8pt;
-          margin-top: 7pt; padding: 6pt 8pt; border: 0.8pt solid {{INK}};
-          font-family: 'Avenir Next Condensed', sans-serif; }
-.onward .what { font-size: 8.4pt; letter-spacing: 0.14em; text-transform: uppercase; color: {{INK}}; }
-.onward .how { font-size: 7pt; letter-spacing: 0.08em; text-transform: uppercase; color: {{MUTED}}; }
+.sheet.two .columns { column-count: 3; column-gap: 13pt; column-rule: 0.5pt solid {{RULE}}; }
+.story { break-inside: avoid; padding-bottom: 7pt; margin-bottom: 7pt;
+         border-bottom: 0.5pt solid {{RULE}}; }
+.story .lead { display: block; }
+.story .lead img { display: block; width: 100%; object-fit: cover; margin-bottom: 3pt; }
+.story .head { display: block; font-family: Didot, serif; font-size: 9pt; line-height: 1.16; }
+.story.opens .head { font-size: 11.5pt; }
+.story .gist { display: block; font-size: 7.1pt; line-height: 1.3; color: {{MUTED}}; margin-top: 2pt; }
+.story .src { display: flex; align-items: center; gap: 3pt; margin-top: 3pt;
+              font-family: 'Avenir Next Condensed', sans-serif; font-size: 6.2pt;
+              letter-spacing: 0.1em; text-transform: uppercase; color: {{MUTED}}; }
+.story .also { min-width: 0; margin-top: 4pt; padding-left: 5pt; border-left: 0.8pt solid {{RULE}}; }
+.story .also .one { display: block; font-size: 6.9pt; line-height: 1.24; color: {{MUTED}};
+                    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.story .also .one b { font-family: 'Avenir Next Condensed', sans-serif; font-weight: normal;
+                      letter-spacing: 0.08em; text-transform: uppercase; }
 .colhead .back { font-family: 'Avenir Next Condensed', sans-serif; font-size: 7.2pt;
                  letter-spacing: 0.12em; text-transform: uppercase; color: {{MUTED}};
                  margin-left: 12pt; white-space: nowrap; }
@@ -333,12 +306,9 @@ def _filled(css: str) -> str:
         'ROW': ROW,
         'LEFT_COLUMN': LEFT_COLUMN,
         'RIGHT_COLUMN': RIGHT_COLUMN,
-        'CARD': f'{CARD:.1f}',
-        'CARD_PICTURE': CARD_PICTURE,
         'MARGIN_LEFT': MARGIN_LEFT,
         'MARGIN_OTHER': MARGIN_OTHER,
         'GUTTER': GUTTER,
-        'CARD_GAP': CARD_GAP,
     }.items():
         css = css.replace('{{' + token + '}}', str(value))
     left = re.findall(r'\{\{[A-Z_]+\}\}', css)

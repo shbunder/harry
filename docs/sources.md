@@ -246,6 +246,11 @@ one on every entry. Nearby sits near the back of the paper so this costs little,
 story that does reach the front page will be the plain card among illustrated ones. The
 pictures are absent at the source; there is nothing to configure.
 
+**Their summaries are not plain text either.** KW sends a paragraph, a link and character codes
+such as `&#8230;`; ROB tv encodes its codes twice, so a summary of spaces arrives as
+`&amp;nbsp;`. The second sheet prints the first sentence of a summary, so it drops the tags
+and reads the codes until nothing changes. The words are the feed's own.
+
 ### What Harry decides, and what Claude decides
 
 **Harry matches town names, and only to decide which candidates are worth handing over.** A

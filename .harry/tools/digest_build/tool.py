@@ -1,13 +1,13 @@
 """One verb: build the morning page from what Claude chose, and put it on the tablet.
 
 The other half of the pair. `digest_list_candidates` hands over everything today could
-contain; this takes back six stories for the front page, ten or so for the second, a line
+contain; this takes back six stories for the front page, up to twenty for the second, a line
 about each of the six, and an intro — and turns them into a PDF.
 
 **Every judgement on that call is Claude's and none of it is repeated here.** Which stories,
 what to say about them, which are the same event, what subject each belongs to. Harry sorts
-them into the reader's order, fetches the pictures, lays the sheet out twice so both columns
-reach the bottom, and delivers.
+them into the reader's order, fetches the pictures, measures the front sheet so the timetable
+reaches the bottom, fits the second sheet to the fewest pages it will take, and delivers.
 """
 
 from __future__ import annotations
@@ -39,8 +39,8 @@ from the bottom of the page resolved to nothing and raised "no candidate is …,
 on", which is not what had happened at all."""
 
 MOST_MORE = 20
-"""Second-sheet stories. Past about a dozen they do not fit on one sheet and the answer says
-so; twenty is the point at which it stops being worth rendering to find out."""
+"""Second-sheet stories. The sheet fits itself to one page or two, and twenty real stories fit
+one at its leaner settings; past twenty it is not a glance any more."""
 
 
 class Unknown(Exception):

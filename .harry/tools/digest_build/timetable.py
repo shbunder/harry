@@ -11,6 +11,7 @@ from .sheet import GUTTER, LEFT_COLUMN, UNCOLOURED
 FIRST_HOUR, LAST_HOUR = 7, 21
 
 MIN_BLOCK = 13.0  # points: a block shorter than this cannot show even its time
+TALLEST, SMALLEST = 34.0, 18.0  # points per hour — see `span`
 
 
 def when(clock: str | None) -> int | None:
@@ -28,22 +29,40 @@ def when(clock: str | None) -> int | None:
         return None
 
 
-def hour_height(day_events: list[dict], room: float) -> float:
-    """Points per hour, chosen so the day fills the column it has.
+def span(day_events: list[dict], room: float) -> tuple[int, int, float]:
+    """The first and last hour the timetable shows, and how tall an hour is, in points.
 
     A fixed scale is wrong in both directions: a day running 07:00 to 21:00 overflows the
     sheet, and a day of three morning meetings leaves two thirds of the column blank. So the
-    scale comes from the span and the `room` the column was measured to have, bounded — below
-    about 18pt a half-hour meeting cannot show its own name, and above about 34pt a quiet day
-    looks like a spreadsheet.
+    height comes from the hours shown and the `room` the column was measured to have — never
+    below 18pt, where a half-hour meeting cannot show its own name, and never above 34pt, where
+    a quiet day looks like a spreadsheet.
+
+    **A quiet day shows more of itself rather than stretching.** Six hours at 34pt came to
+    204pt of a 302pt column on 2026-09-19, and the bottom third of the front page was white. So
+    while the hours at 34pt would not fill the room, the day runs on an hour later. The evening
+    is the part of a quiet day still to be planned.
+
+    A day with nothing timed, which is also a calendar that could not be read, shows 07 to 21
+    and is sized the same way, so it fits the column like any other day.
+
+    **Why there is no 34pt ceiling in the arithmetic.** The most room a page leaves is about
+    466pt, measured with no intro at all. A timed day starts by 08:00, so running on to 23:00
+    gives it sixteen hours, 544pt at 34pt — more than that room, so the day always runs on far
+    enough before an hour would pass 34pt. A day with nothing timed has fifteen hours, which is
+    31pt each at 466pt. The test that builds a page with no intro holds both. The loop still
+    stops at 23:00, because that is where the clock does and it is what ends the loop, not
+    because any page reaches it.
     """
     timed = [e for e in day_events if not e['all_day']]
-    if not timed:
-        return 24.0
-    first = max(min(min(e['from'] // 60 for e in timed), FIRST_HOUR + 1), 5)
-    last = min(max(max(((e['to'] or e['from']) // 60) + 1 for e in timed), first + 4), 23)
-    hours = max(last - first + 1, 1)
-    return max(min(room / hours, 34.0), 18.0)
+    if timed:
+        first = max(min(min(e['from'] // 60 for e in timed), FIRST_HOUR + 1), 5)
+        last = min(max(max(((e['to'] or e['from']) // 60) + 1 for e in timed), first + 4), 23)
+        while (last - first + 1) * TALLEST < room and last < 23:
+            last += 1
+    else:
+        first, last = FIRST_HOUR, LAST_HOUR
+    return first, last, max(room / (last - first + 1), SMALLEST)
 
 
 def lay_out(events: list[dict]) -> list[tuple[dict, float, float]]:
@@ -115,12 +134,11 @@ def lay_out(events: list[dict]) -> list[tuple[dict, float, float]]:
     return placed
 
 
-def timetable(day_events: list[dict], palette: dict[str, tuple[str, str]], row: float) -> str:
-    """The day as a proportional timetable: a block is as tall as the time it takes."""
+def timetable(day_events: list[dict], palette: dict[str, tuple[str, str]], room: float) -> str:
+    """The day as a proportional timetable, `room` points tall: a block is as tall as the time
+    it takes."""
     timed = [e for e in day_events if not e['all_day']]
-    first = min([e['from'] // 60 for e in timed], default=FIRST_HOUR)
-    last = max([((e['to'] or e['from']) // 60) + 1 for e in timed], default=LAST_HOUR)
-    first, last = max(min(first, FIRST_HOUR + 1), 5), min(max(last, first + 4), 23)
+    first, last, row = span(day_events, room)
 
     rows = ''.join(
         f'<div class="hour" style="top:{(hour - first) * row:.1f}pt"><span>{hour:02d}</span></div>'

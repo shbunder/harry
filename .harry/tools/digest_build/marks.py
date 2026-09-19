@@ -93,25 +93,26 @@ PIN = (
 )
 
 TOPICS = {
-    'belgium': ('Belgium', 'At home', '#3f6b3a', HOUSE),
-    'world': ('Abroad', 'Abroad', '#23496b', GLOBE),
-    'tech': ('AI & technology', 'AI and technology', '#5b4a8a', CHIP),
-    'culture': ('Culture', 'Culture', '#a8447a', BOOK),
-    'sport': ('Basketball', 'Basketball', '#9c3d2e', BALL),
-    'regional': ('Nearby', 'Nearby', '#1f6f6b', PIN),
-    'oddity': ('Worth knowing', 'And one more thing', '#9a7b16', SPARK),
+    'belgium': ('Belgium', '#3f6b3a', HOUSE),
+    'world': ('Abroad', '#23496b', GLOBE),
+    'tech': ('AI & technology', '#5b4a8a', CHIP),
+    'culture': ('Culture', '#a8447a', BOOK),
+    'sport': ('Basketball', '#9c3d2e', BALL),
+    'regional': ('Nearby', '#1f6f6b', PIN),
+    'oddity': ('Worth knowing', '#9a7b16', SPARK),
 }
 """The subjects worth a shape of their own — and **the order the paper runs in.**
 
 Home first, then abroad, then technology, then culture, then sport, then what is nearby, then
 the one worth knowing. **The front of the paper is the day's news and the back is the
 reader's own interests** — basketball, then the three towns, then the story worth repeating.
-That order is the reader's, stated once and applied everywhere: the second page's
-sections, and the article pages behind both pages, are all laid out in it. A newspaper you
-can predict the shape of is one you can read at arm's length without hunting.
+That order is the reader's, stated once and applied everywhere: the front page, the second
+sheet, and the article pages behind both are all laid out in it. A newspaper you can predict
+the shape of is one you can read at arm's length without hunting.
 
-Each entry is `(mark, heading, ink, shape)` — the short label that sits beside a source, the
-longer one that heads a section, the colour, and the drawing.
+Each entry is `(label, ink, shape)` — the word that names the subject on an article page, the
+colour, and the drawing. The second sheet has no headings, so the mark beside each story's
+source is how a reader finds a subject there.
 
 **Which topic a story belongs to is Claude's**, handed over with the pick — the same line the
 grouping is on. A keyword rule would file every article mentioning a company under technology
@@ -144,7 +145,7 @@ def badge(topic: str | None, size: int = 11) -> str:
     found = TOPICS.get(topic or '')
     if found is None:
         return ''
-    _, _, colour, shape = found
+    _, colour, shape = found
     return f'<svg class="topic" viewBox="0 0 16 16" width="{size}" height="{size}">{shape.format(ink=colour)}</svg>'
 
 

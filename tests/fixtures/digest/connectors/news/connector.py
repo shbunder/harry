@@ -9,6 +9,12 @@ from _plan import plan, refuse  # noqa: E402
 from harry.sdk import Context, Registry  # noqa: E402
 
 
+LONG = 'Vlaams minister stuurt West-Vlaams gouverneur naar de kust voor verkennend onderzoek'
+"""A real headline runs to a dozen words and wraps to three lines, which is most of a story's
+height on the second sheet. `Story 5` wraps to none, so a sheet built from those holds about
+twice what a morning's actually does."""
+
+
 class News:
     def __init__(self) -> None:
         self.asked: list[dict] = []
@@ -33,11 +39,14 @@ class News:
         return {
             'available': True,
             'id': story_id,
-            'title': f'Story {story_id[-1]}',
+            # The page prints the article's title, not the candidate's, so a long headline has
+            # to be here to reach the page at all.
+            'title': f'{LONG} {story_id[-1]}' if wanted.get('real_titles') else f'Story {story_id[-1]}',
             'source': 'VRT NWS',
             'published': '2026-09-15T06:00:00+00:00',
             'link': f'https://example.test/{story_id}',
-            'summary': 'A summary.',
+            # `summary` is a feed's own, markup and all — KW's arrives as HTML.
+            'summary': wanted.get('summary') or 'A summary.',
             # `page_image` is what the article's own page shows when the feed published none —
             # the real connector answers with the feed's picture or the page's, in that order.
             'image': wanted.get('image') or wanted.get('page_image'),
@@ -73,14 +82,7 @@ class News:
                 },
             ]
             return {'candidates': made, 'unavailable': []}
-        # A real headline runs to a dozen words and wraps to three lines, which is most of a
-        # card's height. `Story 5` wraps to none, so a sheet built from those holds about
-        # twice what a morning's actually does.
-        headline = (
-            'Vlaams minister stuurt West-Vlaams gouverneur naar de kust voor verkennend onderzoek'
-            if wanted.get('real_titles')
-            else 'Story'
-        )
+        headline = LONG if wanted.get('real_titles') else 'Story'
         made = [
             {
                 'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it',
@@ -88,7 +90,7 @@ class News:
                 'source': 'VRT NWS',
                 'feed': 'vrt',
                 'date': '2026-09-15',
-                'summary': 'A summary.' * (40 if wanted.get('long') else 1),
+                'summary': wanted.get('summary') or 'A summary.' * (40 if wanted.get('long') else 1),
                 'image': wanted.get('image'),
             }
             for n in range(many)
