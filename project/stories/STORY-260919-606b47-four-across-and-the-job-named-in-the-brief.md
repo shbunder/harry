@@ -2,7 +2,7 @@
 id: STORY-260919-606b47
 title: Four across, and the job named in the brief
 feature: FEAT-260919-593422
-status: In Progress
+status: Done
 created: 2026-09-19
 ---
 
@@ -26,7 +26,7 @@ Part of [[FEAT-260919-593422]].
 - [x] Measured on one heavy day before and after: the second sheet's page count and how many of its sections fit on the first page
 - [x] `page.py`'s `SECOND_SHEET_PAGES` comment says three pages were reached on 2026-09-19, not that they cannot be
 - [x] `JOB.md` says `harry_mark_done("morning-page")`, and the routine's copy is updated to match
-- [ ] `by inspection: the routine lives on claude.ai` — the routine's brief names the job the same way
+- [x] `by inspection: the routine lives on claude.ai` — the routine's brief names the job the same way
 
 ## Subtasks
 
