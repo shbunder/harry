@@ -93,6 +93,7 @@ check rendering the case; opened as FEAT-260919-f11974 rather than fixed here.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-19** — Reflection: plan-verifier WARN (8 plan-wording findings, all folded in); pre-close verifier REQUEST CHANGES then APPROVE WITH NOTES, both notes fixed. Traceability 12/12. Degraded paths exercised: no sunrise or sunset (recorded answer from before they were asked for), one of the two unreadable in 7 shapes, an hourly block stopping at 22:00, no forecast at all. Mutants: 17 run on source across three rounds, all red at close. Scope drift: the hard-coded Leuven on the panel, folded in as Scenario 7 because it sits on the line this feature edits. Live check: weather_forecast against Open-Meteo on 2026-09-19 answered sunrise 07:22, sunset 19:46, 18 hours to 23:00. Gate at 051fcb7: 860 passed, coverage 92%.
 
 ## Links
 
