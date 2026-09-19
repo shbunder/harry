@@ -868,3 +868,24 @@ def test_a_card_is_illustrated_from_the_article_when_the_feed_had_no_picture(dig
     assert drawn.called, 'the article picture was never fetched'
     assert answer['page']['crowded'] == []
     assert 'Why story 0 matters.' in text_of(answer['page']['path'])
+
+
+def test_the_second_sheet_is_drawn_four_across(digest):
+    """Twenty stories with a picture on every card ran the sheet to three pages at three
+    across. Four across put five of six sections on the first page of the same heavy day.
+
+    Checked on the stylesheet the page is actually drawn with, since a number in `sheet.py`
+    that nothing reads is the kind of control this repo has had to rewrite twice.
+    """
+    answer = built(digest(news={'many': 10}))(
+        intro='Four across.',
+        picks=[pick(0)],
+        more=[{'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': 'belgium'} for n in range(1, 9)],
+    )
+    assert answer['more'] == 8
+
+    sheet = sys.modules[next(n for n in sys.modules if n.endswith('digest_build.sheet'))]
+    card = float(sheet.CARD)
+    across = int((sheet.CONTENT + sheet.CARD_GAP) // (card + sheet.CARD_GAP))
+    assert across == 4, f'the second sheet fits {across} cards across'
+    assert f'flex: 0 0 {card:.1f}pt' in sheet.STYLE, 'the stylesheet does not draw the card at that width'

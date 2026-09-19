@@ -131,7 +131,8 @@ Then call `digest_build` with the intro, the picks and the more list:
 }
 ```
 
-Finally call `harry_mark_done` for this job, so nothing reports it missing.
+Finally call `harry_mark_done("morning-page")`, so nothing reports it missing. That is the
+job's name — not the paper's, and not the routine's.
 
 ## When something is not there
 

@@ -58,19 +58,30 @@ CONTENT = PAGE[0] - MARGIN_LEFT - MARGIN_OTHER  # 417.3pt
 GUTTER = 17.0
 LEFT_COLUMN = 186.0
 CARD_GAP = 12.0
-CARDS_ACROSS = 3
+CARDS_ACROSS = 4
 CARD = int((CONTENT - CARD_GAP * (CARDS_ACROSS - 1)) / CARDS_ACROSS * 10) / 10
-"""The second sheet, three cards across.
+"""The second sheet, four cards across.
 
 Two was tried first and could not hold the paper's six sections on one page: a heading plus
 one row of two-up cards is about 105pt, and six of those is 630 against 581pt of page. Three
-across brings a row to about 70pt, which fits all six sections with room for a dozen stories
-— and a dense grid of small pictures is what an inside page actually looks like.
+across brought a row to about 70pt and fitted a dozen stories.
+
+**Four, since the second sheet grew to twenty and every card gained a picture.** On 2026-09-19
+a real morning ran "also today" to three pages. One heavy day laid out three ways: three
+across took about a page and a half, four across put five of six sections on the first page.
+A picture beside the headline would be denser still, and WeasyPrint drew the headline over the
+picture rather than beside it — so that is an unsolved layout, not a rejected one.
+
+The cost is the headline. A four-across card is about 95pt wide, so two clipped lines hold
+less of it; the whole headline is one tap away on the story's own page.
 
 **Rounded down, not to nearest.** The stylesheet carries one decimal, and three cards at the
 rounded-up width plus their gutters came to more than the content width — so every row
 wrapped to a single card, which reads as a design choice rather than as arithmetic. Down by a
 tenth of a point costs nothing visible and cannot do that."""
+CARD_PICTURE = 26.0
+"""A second-sheet picture's height. It was 38pt on a card 131pt wide; a card 95pt wide at the
+same height reads as a tall crop, and the height is most of what a card costs."""
 RIGHT_COLUMN = CONTENT - LEFT_COLUMN - GUTTER  # 214.3pt
 
 
@@ -201,12 +212,12 @@ a { color: inherit; text-decoration: none; }
 .cards { display: flex; flex-wrap: wrap; gap: 9pt {{CARD_GAP}}pt; }
 .card { flex: 0 0 {{CARD}}pt; min-width: 0; break-inside: avoid; margin-bottom: 2pt; }
 .card .shot { display: block; margin-bottom: 4pt; }
-.card .shot img { width: {{CARD}}pt; height: 38pt; object-fit: cover; }
+.card .shot img { width: {{CARD}}pt; height: {{CARD_PICTURE}}pt; object-fit: cover; }
 /* Two lines, clipped. A second-page card is a glance — the full headline is one tap
    away on the story's own page — and a grid whose rows are all the same height is what
    makes an inside page read like a newspaper rather than like a list that ran long. */
-.card .head { display: block; font-family: Didot, serif; font-size: 9.2pt; line-height: 1.15;
-              height: 21.2pt; overflow: hidden; }
+.card .head { display: block; font-family: Didot, serif; font-size: 8.4pt; line-height: 1.15;
+              height: 19.4pt; overflow: hidden; }
 .card .src { display: flex; align-items: center; gap: 3pt; margin-top: 2pt;
              font-family: 'Avenir Next Condensed', sans-serif; font-size: 6.4pt;
              letter-spacing: 0.1em; text-transform: uppercase; color: {{MUTED}}; }
@@ -323,6 +334,7 @@ def _filled(css: str) -> str:
         'LEFT_COLUMN': LEFT_COLUMN,
         'RIGHT_COLUMN': RIGHT_COLUMN,
         'CARD': f'{CARD:.1f}',
+        'CARD_PICTURE': CARD_PICTURE,
         'MARGIN_LEFT': MARGIN_LEFT,
         'MARGIN_OTHER': MARGIN_OTHER,
         'GUTTER': GUTTER,
