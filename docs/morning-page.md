@@ -111,7 +111,7 @@ Every section fails on its own. **The page renders with any of them gone.**
 |---|---|---|
 | No weather connector, or it raises | The panel is absent; everything else is untouched | Nothing — weather is the deliberate exception |
 | The calendar raises, or its password lapsed | An empty timetable, 07:00 to 21:00; the six stories beside it | The calendar connector's own line |
-| A story's text cannot be fetched | Its page, with the headline, your note and the feed's own summary, saying the full text was unavailable | The news connector's own line |
+| A story's text cannot be fetched | Its page, with the headline, your note and the feed's own summary as text, saying the full text was unavailable — or that the feed carried no summary either | The news connector's own line |
 | A picture will not come | The story without it. Nothing is retried beyond the one browser User-Agent, and a failed address is not asked for again in the same build | Nothing — a feed with no pictures is a feed, not a fault |
 | A calendar has no colour assigned | Its events in grey, and the legend says so | Nothing |
 | No tablet, or `deliver=false` | The page on disk, and the answer says where | Nothing |

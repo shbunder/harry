@@ -1268,23 +1268,51 @@ def test_a_fuller_second_page_does_not_beat_a_single_page(digest, monkeypatch):
         (
             'kw-west-vlaanderen.xml',
             'Ardooise senioren nemen sportieve start',
-            ['Na een welverdiende pauze zijn de senioren opnieuw gestart', 'Er …'],
+            [
+                'Na een welverdiende pauze zijn de senioren opnieuw gestart',
+                'Er …',
+                'This is the summary the feed carried',
+            ],
             ['<', '&#', 'appeared first on'],
         ),
-        ('robtv.xml', 'Nieuws donderdag 17 september', [], ['nbsp', '&']),
+        (
+            'robtv.xml',
+            'Nieuws donderdag 17 september',
+            ['The feed carried no summary either'],
+            ['nbsp', '&', 'This is the summary the feed carried'],
+        ),
         (
             'tijd-nieuws.xml',
             'Ontsnapt het Franstalig hoger onderwijs aan de hakbijl?',
             ['politiek & economie'],
             ['&amp;'],
         ),
+        (
+            '<p>The post-election talks stalled in Brugge.</p>\n'
+            '<p>The post <a href="https://kw.be/x/">Talks stall</a> appeared first on <a href="https://kw.be">KW.be</a>.</p>\n',
+            None,
+            ['The post-election talks stalled in Brugge.'],
+            ['appeared first on', 'Talks stall'],
+        ),
+        (
+            'Temperaturen < 5 graden in het noorden en > 20 in het zuiden.',
+            None,
+            ['< 5 graden in het noorden en > 20'],
+            [],
+        ),
+        ('Vier keer &amp;amp;amp;amp;nbsp;gecodeerd.', None, ['Vier keer gecodeerd.'], ['nbsp', '&']),
     ],
 )
 def test_a_page_whose_text_could_not_be_read_prints_the_feeds_summary_as_text(digest, feed, title, printed, never):
     """The summary is what a page prints when the article will not load, and it arrives as the
-    feed wrote it: KW's is HTML with WordPress's footer on the end, ROB tv's is encoded twice.
-    De Tijd's is plain text with a real ampersand in it, which must come through as written."""
-    summary = recorded_summary(feed, title)
+    feed wrote it: KW's is HTML with WordPress's footer on the end, ROB tv's is encoded twice and
+    reads as nothing. De Tijd's is plain text with a real ampersand in it, which must come
+    through as written.
+
+    The last three are written here rather than recorded, because they are the edges of the
+    rule: a paper's own paragraph that begins "The post", angle brackets that are not a tag, and
+    a code encoded more times than any feed has done yet."""
+    summary = recorded_summary(feed, title) if title else feed
     answer = built(digest(news={'many': 4, 'summary': summary, 'unreadable': [pick(0)['id']]}))(
         intro='Unread.', picks=[pick(0)]
     )

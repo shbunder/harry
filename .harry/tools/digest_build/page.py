@@ -162,10 +162,16 @@ def short(headline: str, most: int = 38) -> str:
     return to_a_glance(headline, most)
 
 
-FOOTER = re.compile(r'<p>\s*The post\b.*?\bappeared first on\b.*?</p>', re.DOTALL)
+FOOTER = re.compile(r'<p>\s*The post\b(?:(?!</p>).)*?\bappeared first on\b(?:(?!</p>).)*?</p>\s*$', re.DOTALL)
 """WordPress's footer on every item of its feeds — *"The post <headline> appeared first on
 KW.be."* It is the publishing platform's, not the paper's reporting, and as text it repeats
-the headline under the summary."""
+the headline under the summary.
+
+**One paragraph, and only the last.** Without both, a summary whose own first paragraph began
+"The post-election talks…" was matched from there to the footer and lost entirely."""
+TAG = re.compile(r'</?[A-Za-z][^<>]*>')
+"""Something shaped like a tag. Not every `<` is one: "Temperaturen < 5 graden en > 20"
+lost the words between the two signs to a pattern that took anything in angle brackets."""
 
 
 def plain(summary: str | None) -> str:
@@ -177,16 +183,17 @@ def plain(summary: str | None) -> str:
     every word printed is the feed's own. A summary that was text already comes back as it
     was, ampersands and all.
 
-    **Until nothing changes, three times at most**, because ROB tv encodes twice: its summary
-    arrives as `&amp;nbsp;`, which reads once as `&nbsp;` and only the second time as a space.
+    **Until nothing changes**, because ROB tv encodes twice: its summary arrives as
+    `&amp;nbsp;`, which reads once as `&nbsp;` and only the second time as a space. The loop
+    always ends: a pass that changes anything makes the text shorter — a tag becomes one space,
+    a character code one character — so it runs out of passes before it runs out of text.
     """
     text = summary or ''
-    for _ in range(3):
-        read = html.unescape(re.sub(r'<[^>]+>', ' ', FOOTER.sub(' ', text)))
+    while True:
+        read = html.unescape(TAG.sub(' ', FOOTER.sub(' ', text)))
         if read == text:
-            break
+            return ' '.join(text.split())
         text = read
-    return ' '.join(text.split())
 
 
 def gist(summary: str | None, most: int = 120) -> str:
@@ -220,8 +227,12 @@ def article_page(a: dict, family: list[dict], before: dict | None, after: dict |
     if not body:
         why = escaped(a.get('why') or 'the text could not be read')
         summary = plain(a.get('summary'))
-        body = (f'<p class="lede">{escaped(summary)}</p>' if summary else '') + (
+        body = (
+            f'<p class="lede">{escaped(summary)}</p>'
             f'<p class="missing">Full text unavailable — {why}. This is the summary the feed carried.</p>'
+            if summary
+            # ROB tv's daily bulletin is a video, and its summary is three encoded spaces.
+            else f'<p class="missing">Full text unavailable — {why}. The feed carried no summary either.</p>'
         )
     lead = a.get('lead')
     shot = picture(a['shot'])

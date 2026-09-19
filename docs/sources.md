@@ -252,7 +252,8 @@ item. ROB tv encodes its codes twice, so a summary of spaces arrives as `&amp;nb
 prints a summary in two places: its first sentence on the second sheet, and the whole of it on
 a story's own page when the article would not load. Both drop the footer and the tags and read
 the codes until nothing changes. The words are the feed's own, and a summary that was text
-already prints as it came.
+already prints as it came — a `<` in a sentence included. A summary that reads as nothing,
+like ROB tv's video bulletin, is said to be missing rather than printed empty.
 
 ### What Harry decides, and what Claude decides
 
