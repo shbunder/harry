@@ -72,6 +72,11 @@ rounded-up width plus their gutters came to more than the content width — so e
 wrapped to a single card, which reads as a design choice rather than as arithmetic. Down by a
 tenth of a point costs nothing visible and cannot do that."""
 RIGHT_COLUMN = CONTENT - LEFT_COLUMN - GUTTER  # 214.3pt
+STRIP = ('08:00', '12:00', '16:00', '20:00', '23:00')
+"""The hours the weather panel shows: four across the day, and 23:00 for whether the late
+evening is still warm enough to sit outside."""
+HOUR_CELL, HOUR_GAP = 25.0, 6.0
+STRIP_W = len(STRIP) * HOUR_CELL + (len(STRIP) - 1) * HOUR_GAP  # 149pt
 
 
 # ---------------------------------------------------------------------------
@@ -117,10 +122,10 @@ h1, h2, .display { font-family: Didot, 'Bodoni 72', Georgia, serif; font-weight:
               line-height: 1.55; padding-left: 4pt; }
 .sky .range b { color: {{INK}}; font-weight: normal; }
 /* An explicit width, not `auto`: the strip's children have fixed widths, and flex sized the
-   strip from its text instead — so the last hour sat 9.6pt into the right margin.
-   4 cells of 25pt plus 3 gaps of 6pt = 118pt. */
-.strip { flex: 0 0 118pt; display: flex; gap: 6pt; text-align: center; }
-.strip .h { width: 25pt; }
+   strip from its text instead — so the last hour sat 9.6pt into the right margin. The width
+   is worked out from the hours in `STRIP`, so one more hour widens it rather than spilling. */
+.strip { flex: 0 0 {{STRIP_W}}pt; display: flex; gap: {{HOUR_GAP}}pt; text-align: center; }
+.strip .h { width: {{HOUR_CELL}}pt; }
 .strip .h .t { font-size: 7pt; color: {{MUTED}}; letter-spacing: 0.06em; }
 .strip .h .d { font-family: Didot, serif; font-size: 10.5pt; line-height: 1.1; }
 .strip .h .s { margin-top: 1pt; height: 16pt; }
@@ -327,6 +332,9 @@ def _filled(css: str) -> str:
         'MARGIN_OTHER': MARGIN_OTHER,
         'GUTTER': GUTTER,
         'CARD_GAP': CARD_GAP,
+        'STRIP_W': STRIP_W,
+        'HOUR_CELL': HOUR_CELL,
+        'HOUR_GAP': HOUR_GAP,
     }.items():
         css = css.replace('{{' + token + '}}', str(value))
     left = re.findall(r'\{\{[A-Z_]+\}\}', css)
