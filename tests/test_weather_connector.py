@@ -699,3 +699,11 @@ def test_the_docs_and_the_tool_body_describe_the_sun():
     assert 'No sunrise or sunset in the answer' in runbook
     record = (REPO / 'tests' / 'fixtures' / 'weather' / 'README.md').read_text(encoding='utf-8')
     assert 'leuven-sun.json' in record
+    # What Claude reads every morning passes the forecast through whole, so its example should
+    # show what arrives.
+    candidates = ' '.join(
+        (REPO / '.harry' / 'tools' / 'digest_list_candidates' / 'TOOL.md').read_text(encoding='utf-8').split()
+    )
+    assert '"sunrise": "07:22", "sunset": "19:46"' in candidates
+    paper = ' '.join((REPO / 'docs' / 'morning-page.md').read_text(encoding='utf-8').split())
+    assert 'when the sun rises and sets, and five hours — 08:00, 12:00, 16:00, 20:00 and 23:00' in paper
