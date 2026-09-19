@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 from harry.sdk import Context, Registry
 
 from .page import fit, forget, render
-from .sheet import colours
+from .sheet import STRIP, colours
 from .timetable import when
 
 MOST = 12
@@ -254,13 +254,15 @@ def _forecast(weather: Any, log: Any) -> dict:
 
 
 def _strip(forecast: dict) -> str:
+    """The hours in `STRIP` that the forecast has, and nothing in place of one it has not."""
     from .marks import face
 
     return ''.join(
         f'<div class="h"><div class="t">{hour["at"]}</div>'
         f'<div class="d">{hour["temperature"]}°</div>'
         f'<div class="s">{face(hour.get("summary"), size=15)}</div></div>'
-        for hour in (forecast.get('hours') or [])[2::4][:4]
+        for hour in (forecast.get('hours') or [])
+        if hour.get('at') in STRIP
     )
 
 

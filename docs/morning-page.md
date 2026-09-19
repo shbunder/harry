@@ -20,8 +20,9 @@ belongs to — never happens inside Harry. See
 ## What the paper looks like
 
 **One front sheet.** A masthead with the name you chose and today's date. A weather panel: an
-icon for the day, the high in display type, and four hours across the afternoon each with a
-temperature and an icon of its own. Claude's intro, set across two columns. Then the day's
+icon for the day, the high in display type, the low and the chance of rain, when the sun rises
+and sets, and five hours — 08:00, 12:00, 16:00, 20:00 and 23:00 — each with a temperature and
+an icon of its own. The last one is there for the late evening. Claude's intro, set across two columns. Then the day's
 timetable beside the six stories.
 
 **The timetable is a real calendar.** A block is as tall as the time it takes and drawn in its

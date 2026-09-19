@@ -75,9 +75,11 @@ def test_today_is_four_facts_from_one_call(weather):
 
 
 @respx.mock
-def test_the_call_asks_for_exactly_the_four_fields_it_reads(weather):
+def test_the_call_asks_for_exactly_the_fields_it_reads(weather):
     """`precipitation_probability_max`, not `_mean`. They are different numbers for the same
-    day, and the page answers "will I need a coat" — the chance it rains at all."""
+    day, and the page answers "will I need a coat" — the chance it rains at all.
+
+    `sunrise` and `sunset` ride on the same `daily` list: one call, not two."""
     route = respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-today.json')))
     connector(weather()).today()
 
@@ -91,6 +93,8 @@ def test_the_call_asks_for_exactly_the_four_fields_it_reads(weather):
         'temperature_2m_max',
         'temperature_2m_min',
         'precipitation_probability_max',
+        'sunrise',
+        'sunset',
     ]
     assert asked['hourly'] == 'temperature_2m,weather_code', 'the shape of the day rides on the same request'
 
@@ -286,6 +290,8 @@ async def test_claude_can_ask_for_the_forecast(weather, tmp_path):
         'high': 22,
         'low': 18,
         'rain_chance': 59,
+        'sunrise': None,
+        'sunset': None,
         'hours': [],
     }
 
@@ -322,31 +328,32 @@ def test_the_forecast_carries_the_day_hour_by_hour(weather):
     """The high alone cannot say whether the warm part is the morning or the evening.
 
     Against a real answer recorded on 15 September 2026: twenty-four readings, of which the
-    seventeen between 06:00 and 22:00 are the ones a person glances at.
+    eighteen between 06:00 and 23:00 are the ones a person glances at.
     """
     respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-hourly.json')))
 
     hours = connector(weather()).forecast()['hours']
 
-    assert [entry['at'] for entry in hours] == [f'{hour:02d}:00' for hour in range(6, 23)]
+    assert [entry['at'] for entry in hours] == [f'{hour:02d}:00' for hour in range(6, 24)]
     assert hours[0] == {'at': '06:00', 'temperature': 17, 'summary': 'clear'}
     # 20.5 at 22:00 in the recording, and Python rounds a half to even — so 20, not 21.
-    assert hours[-1] == {'at': '22:00', 'temperature': 20, 'summary': 'overcast'}
+    assert hours[-2] == {'at': '22:00', 'temperature': 20, 'summary': 'overcast'}
+    assert hours[-1] == {'at': '23:00', 'temperature': 20, 'summary': 'overcast'}
     assert all(isinstance(entry['temperature'], int) for entry in hours), 'decimals are noise on paper'
 
 
 @respx.mock
-def test_the_night_is_left_off_the_strip(weather):
+def test_the_small_hours_are_left_off_and_eleven_at_night_is_kept(weather):
     """Twenty-four numbers is a table. The recorded answer carries all of them, so this goes
-    red if the window goes."""
+    red if the window goes — at either end."""
     assert len(recorded('leuven-hourly.json')['hourly']['time']) == 24
     respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-hourly.json')))
 
     hours = connector(weather()).forecast()['hours']
 
-    assert len(hours) == 17
+    assert len(hours) == 18
     assert '05:00' not in [entry['at'] for entry in hours]
-    assert '23:00' not in [entry['at'] for entry in hours]
+    assert '23:00' in [entry['at'] for entry in hours], 'the late evening is what the strip ends on'
 
 
 @respx.mock
@@ -396,6 +403,7 @@ def test_an_hour_that_cannot_be_read_drops_out_rather_than_taking_the_panel(weat
         '20:00',
         '21:00',
         '22:00',
+        '23:00',
     ]
     assert connector(weather()).forecast()['available'] is True
 
@@ -413,14 +421,15 @@ def test_two_arrays_of_different_lengths_give_the_part_that_lines_up(weather):
 
 
 @respx.mock
-def test_today_stays_four_facts_now_that_the_forecast_has_five(weather):
+def test_today_stays_four_facts_however_much_the_forecast_carries(weather):
     """`today()` is the narrow answer on purpose. A caller wanting one line should not have to
-    carry seventeen temperatures past it."""
-    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-hourly.json')))
+    carry eighteen temperatures and the sun's times past it."""
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-sun.json')))
     client = connector(weather())
 
     assert set(client.today()) == {'summary', 'high', 'low', 'rain_chance'}
-    assert len(client.forecast()['hours']) == 17
+    assert client.forecast()['sunrise'] == '07:22', 'the forecast does carry it, so today() is choosing'
+    assert len(client.forecast()['hours']) == 18
 
 
 @respx.mock
@@ -434,14 +443,14 @@ async def test_the_shape_of_the_day_reaches_claude(weather, tmp_path):
         answer = (await connected.call_tool('weather_forecast', {})).data
 
     assert answer['hours'][0] == {'at': '06:00', 'temperature': 17, 'summary': 'clear'}
-    assert len(answer['hours']) == 17
+    assert len(answer['hours']) == 18
 
 
 def test_the_docs_describe_the_shape_of_the_day():
     """The greppable half of the docs criterion."""
     prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
 
-    assert 'Seventeen readings, 06:00 to 22:00' in prose
+    assert 'Eighteen readings, 06:00 to 23:00' in prose
     assert '"at": "06:00", "temperature": 17' in prose
     assert 'loses only the strip' in prose, 'what a missing hourly block costs'
 
@@ -460,7 +469,7 @@ def test_the_tool_body_tells_claude_the_hours_are_there():
     body = (REPO / '.harry' / 'tools' / 'weather_forecast' / 'TOOL.md').read_text(encoding='utf-8')
 
     assert 'hours' in body
-    assert '06:00' in body and '22:00' in body
+    assert '06:00' in body and '23:00' in body
 
 
 @respx.mock
@@ -505,8 +514,8 @@ def test_an_hourly_block_with_no_codes_still_draws_the_numbers(weather, caplog):
     with caplog.at_level(logging.INFO, logger='harry.capability.weather'):
         hours = connector(weather()).forecast()['hours']
 
-    assert len(hours) == 17
-    assert [entry['summary'] for entry in hours] == [None] * 17
+    assert len(hours) == 18
+    assert [entry['summary'] for entry in hours] == [None] * 18
     assert hours[0]['temperature'] == 17
     # The whole day losing its sky must not be quieter than one hour losing it. This is the
     # only trace a person gets of a strip that has been drawing bare numbers for a month.
@@ -530,8 +539,8 @@ def test_a_code_the_table_does_not_carry_keeps_the_number(weather, caplog):
 
 
 @respx.mock
-def test_a_day_of_one_unknown_code_says_so_once_not_seventeen_times(weather, caplog):
-    """`_read` warns once because it reads one code. Seventeen hours of the same code is how
+def test_a_day_of_one_unknown_code_says_so_once_not_eighteen_times(weather, caplog):
+    """`_read` warns once because it reads one code. Eighteen hours of the same code is how
     a useful line becomes noise nobody reads."""
     body = recorded('leuven-hourly.json')
     body['hourly']['weather_code'] = [42] * 24
@@ -540,7 +549,7 @@ def test_a_day_of_one_unknown_code_says_so_once_not_seventeen_times(weather, cap
     with caplog.at_level(logging.WARNING, logger='harry.capability.weather'):
         hours = connector(weather()).forecast()['hours']
 
-    assert [entry['summary'] for entry in hours] == [None] * 17
+    assert [entry['summary'] for entry in hours] == [None] * 18
     hourly_lines = [line for line in caplog.text.splitlines() if 'hourly forecast' in line]
     assert len(hourly_lines) == 1
     assert '42' in hourly_lines[0]
@@ -572,9 +581,9 @@ def test_a_codes_array_shorter_than_the_hours_costs_the_words_not_the_readings(w
     with caplog.at_level(logging.INFO, logger='harry.capability.weather'):
         hours = connector(weather()).forecast()['hours']
 
-    assert len(hours) == 17
+    assert len(hours) == 18
     assert [entry['summary'] for entry in hours[:2]] == ['clear', 'clear']
-    assert [entry['summary'] for entry in hours[2:]] == [None] * 15
+    assert [entry['summary'] for entry in hours[2:]] == [None] * 16
     assert '8 code(s) for 24 hour(s)' in caplog.text
 
 
@@ -593,3 +602,108 @@ def test_the_docs_and_the_tool_body_describe_the_hourly_sky():
     )
     assert 'An hourly code with no word' in runbook
     assert 'no `weather_code`' in runbook, 'the operator page must name the quiet failure too'
+
+
+# ---------------------------------------------------------------------------
+# The sun
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+def test_the_forecast_says_when_the_sun_rises_and_sets(weather):
+    """Against a real answer recorded in Leuven on 19 September 2026, which carried
+    `2026-09-19T07:22` and `2026-09-19T19:46`: local time, because the request names a zone."""
+    route = respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-sun.json')))
+
+    answer = connector(weather()).forecast()
+
+    assert (answer['sunrise'], answer['sunset']) == ('07:22', '19:46')
+    assert route.call_count == 1, 'the sun rides on the call that already fetches the day'
+
+
+@respx.mock
+def test_an_answer_without_the_sun_keeps_the_forecast(weather, caplog):
+    """`leuven-hourly.json` is a real answer from before the sun was asked for. A sunrise
+    nobody can read must cost the sunrise — read strictly, like the four facts, it would
+    have turned the whole panel into `Weather unavailable`."""
+    assert 'sunrise' not in recorded('leuven-hourly.json')['daily']
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-hourly.json')))
+
+    with caplog.at_level(logging.INFO, logger='harry.capability.weather'):
+        answer = connector(weather()).forecast()
+
+    assert answer['available'] is True
+    assert (answer['summary'], answer['high'], answer['low'], answer['rain_chance']) == ('overcast', 29, 17, 63)
+    assert len(answer['hours']) == 18
+    assert (answer['sunrise'], answer['sunset']) == (None, None)
+    assert 'no sunrise or sunset for Leuven' in caplog.text
+    # Not a fault, and Slack hears nothing: weather is the deliberate exception.
+    assert [record for record in caplog.records if record.levelno > logging.INFO] == []
+
+
+@pytest.mark.parametrize(
+    'stamps',
+    [
+        [],
+        [None],
+        ['07:22'],
+        ['2026-09-19T07:22:00'],
+        ['2026-09-19T7:22'],
+        '2026-09-19T07:22',
+        [1726723320],
+    ],
+    ids=['empty', 'null', 'no-date', 'seconds', 'one-digit-hour', 'not-a-list', 'unixtime'],
+)
+@respx.mock
+def test_a_sunrise_that_cannot_be_read_is_none_and_the_sunset_survives(weather, caplog, stamps):
+    """Anything that is not exactly a date and a minute gives no time, rather than one Harry
+    guessed at. Each of the two is read on its own."""
+    body = recorded('leuven-sun.json')
+    body['daily']['sunrise'] = stamps
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=body))
+
+    with caplog.at_level(logging.INFO, logger='harry.capability.weather'):
+        answer = connector(weather()).forecast()
+
+    assert answer['available'] is True
+    assert (answer['sunrise'], answer['sunset']) == (None, '19:46')
+    assert 'no sunrise for Leuven' in caplog.text
+
+
+@respx.mock
+async def test_the_sun_reaches_claude(weather, tmp_path):
+    """A field the connector returns and the tool drops is a field nobody can use."""
+    respx.get(FORECAST).mock(return_value=httpx.Response(200, json=recorded('leuven-sun.json')))
+    server = build_server(weather(with_tool=True), Store(tmp_path / 'jobs.json'))
+
+    async with Client(server) as connected:
+        await connected.call_tool(FIND_TOOLS, {'query': 'weather'})
+        answer = (await connected.call_tool('weather_forecast', {})).data
+
+    assert (answer['sunrise'], answer['sunset']) == ('07:22', '19:46')
+    assert answer['hours'][-1] == {'at': '23:00', 'temperature': 20, 'summary': 'overcast'}
+
+
+def test_the_docs_and_the_tool_body_describe_the_sun():
+    """The body of a TOOL.md is the description Claude reads to choose. It used to say it was
+    not for sunrise, which is now false."""
+    body = ' '.join((REPO / '.harry' / 'tools' / 'weather_forecast' / 'TOOL.md').read_text(encoding='utf-8').split())
+    prose = ' '.join((REPO / 'docs' / 'sources.md').read_text(encoding='utf-8').split())
+    runbook = ' '.join(
+        (REPO / '.harry' / 'connectors' / 'weather' / 'CONNECTOR.md').read_text(encoding='utf-8').split()
+    )
+
+    assert '"sunrise": "07:22", "sunset": "19:46"' in body
+    assert 'or sunrise' not in body
+    assert '"sunrise": "07:22", "sunset": "19:46"' in prose
+    assert 'No sunrise or sunset in the answer' in runbook
+    record = (REPO / 'tests' / 'fixtures' / 'weather' / 'README.md').read_text(encoding='utf-8')
+    assert 'leuven-sun.json' in record
+    # What Claude reads every morning passes the forecast through whole, so its example should
+    # show what arrives.
+    candidates = ' '.join(
+        (REPO / '.harry' / 'tools' / 'digest_list_candidates' / 'TOOL.md').read_text(encoding='utf-8').split()
+    )
+    assert '"sunrise": "07:22", "sunset": "19:46"' in candidates
+    paper = ' '.join((REPO / 'docs' / 'morning-page.md').read_text(encoding='utf-8').split())
+    assert 'when the sun rises and sets, and five hours — 08:00, 12:00, 16:00, 20:00 and 23:00' in paper

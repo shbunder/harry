@@ -665,15 +665,14 @@ def test_the_reader_sets_the_name_and_the_colours(digest):
     assert says(prose, 'Shaun') and says(prose, 'Kids')
 
 
-def test_the_weather_strip_carries_four_hours(digest):
-    """Every other test hands over one hour, so the strip was empty everywhere and fifteen of
-    the sixteen weather icons were drawn by nothing."""
-    hours = [
-        {'at': f'{h:02d}:00', 'temperature': 15 + h, 'summary': 'clear' if h < 18 else 'rain'} for h in range(6, 23)
-    ]
-    catalogue = digest(
-        news={'many': 4},
-        weather={
+STRIP = ('08:00', '12:00', '16:00', '20:00', '23:00')
+
+
+def sky(**changed) -> dict:
+    """A working forecast in the shape the weather connector answers, with a strip's worth of
+    hours. Every other test hands over one hour."""
+    return {
+        'weather': {
             'answer': {
                 'available': True,
                 'place': 'Leuven',
@@ -681,15 +680,235 @@ def test_the_weather_strip_carries_four_hours(digest):
                 'high': 29,
                 'low': 17,
                 'rain_chance': 53,
-                'hours': hours,
+                'sunrise': '07:22',
+                'sunset': '19:46',
+                'hours': [
+                    {'at': f'{h:02d}:00', 'temperature': 15 + h, 'summary': 'clear' if h < 18 else 'rain'}
+                    for h in range(6, 24)
+                ],
+                **changed,
             }
-        },
-    )
+        }
+    }
+
+
+def front_runs(path: str) -> list[tuple[float, str]]:
+    """Each run of text on the front sheet with where it starts, in points from the left."""
+    runs: list[tuple[float, str]] = []
+
+    def visit(text, cm, tm, font, size):
+        if text.strip():
+            runs.append((tm[4] * cm[0] + tm[5] * cm[2] + cm[4], text.strip()))
+
+    PdfReader(path).pages[0].extract_text(visitor_text=visit)
+    return runs
+
+
+def captured(catalogue, monkeypatch) -> list[str]:
+    """The HTML `digest_build` hands to `render`, kept on its way through."""
+    tool = built(catalogue).__globals__
+    real, seen = tool['render'], []
+
+    def keeping(html, where, log):
+        seen.append(html)
+        return real(html, where, log)
+
+    monkeypatch.setitem(tool, 'render', keeping)
+    return seen
+
+
+CONTENT_RIGHT = 509.34 - 34.0
+"""The right edge of the text on every sheet: the Paper Pro's page less its right margin."""
+
+
+def strip_cells(html: str) -> list[tuple[float, float, float]]:
+    """Left and right edge of each hour's cell on the front sheet, and where its time label's
+    text ends, in points, exactly as WeasyPrint lays out the page `digest_build` rendered. Read
+    off the layout rather than the PDF, which says where a label starts and never where it
+    ends."""
+    from weasyprint import HTML
+
+    def classes(box) -> list[str]:
+        element = getattr(box, 'element', None)
+        return element.get('class', '').split() if element is not None else []
+
+    def find(box):
+        if 'strip' in classes(box):
+            return box
+        for child in getattr(box, 'children', ()):
+            if (found := find(child)) is not None:
+                return found
+        return None
+
+    def text_ends(box) -> list[float]:
+        """The right edge of every run of text inside a box. Only text boxes carry `text`."""
+        own = [box.position_x + box.width] if isinstance(getattr(box, 'text', None), str) else []
+        return own + [end for child in getattr(box, 'children', ()) for end in text_ends(child)]
+
+    def label_end(cell) -> float:
+        label = next(child for child in cell.children if 't' in classes(child))
+        return max(text_ends(label))
+
+    strip = find(HTML(string=html).render().pages[0]._page_box)
+    assert strip is not None, 'no strip on the front sheet'
+    return [
+        (
+            round(cell.border_box_x() * 72 / 96, 2),
+            round((cell.border_box_x() + cell.border_width()) * 72 / 96, 2),
+            round(label_end(cell) * 72 / 96, 2),
+        )
+        for cell in strip.children
+        if 'h' in classes(cell)
+    ]
+
+
+def test_the_weather_strip_carries_five_hours_ending_at_eleven(digest):
+    """Every other test hands over one hour, so the strip was empty everywhere and most of the
+    weather icons were drawn by nothing."""
+    answer = built(digest(news={'many': 4}, **sky()))(intro='Hourly.', picks=[pick(0)])
+
+    prose = text_of(answer['page']['path'])
+    assert [says(prose, at) for at in STRIP] == [True] * 5
+    starts = [prose.index(at) for at in STRIP]
+    assert starts == sorted(starts), 'the hours read left to right, morning to night'
+    assert answer['page']['crowded'] == []
+
+
+def test_the_strip_chooses_its_hours_by_the_clock_not_by_position(digest):
+    """Picking every fourth entry gave 08:00 only because the list happened to start at 06:00.
+    A forecast starting at 07:00 turned the same rule into 09:00, 13:00, 17:00 and 21:00."""
+    late_start = [{'at': f'{h:02d}:00', 'temperature': 15 + h, 'summary': 'clear'} for h in range(7, 24)]
+    answer = built(digest(news={'many': 4}, **sky(hours=late_start)))(intro='Hourly.', picks=[pick(0)])
+
+    prose = text_of(answer['page']['path'])
+    assert [says(prose, at) for at in STRIP] == [True] * 5
+    assert [says(prose, at) for at in ('09:00', '13:00', '17:00', '21:00')] == [False] * 4
+
+
+def test_the_eleven_oclock_hour_sits_inside_the_right_margin(digest, monkeypatch):
+    """Each hour is a 25pt cell, 6pt from the next, and the strip's width is worked out from its
+    hours. Set for four, it did not spill: it squeezed five into 19pt cells, which stays inside
+    the page and puts the labels nearly touching. Set a cell too wide, it left a blank at the
+    right end. Both are checked here, on the layout of the page that was actually rendered."""
+    catalogue = digest(news={'many': 4}, **sky())
+    pages = captured(catalogue, monkeypatch)
+    answer = built(catalogue)(intro='Hourly.', picks=[pick(0)])
+
+    cells = strip_cells(pages[-1])
+    assert len(cells) == 5
+    assert [round(right - left, 1) for left, right, _ in cells] == [25.0] * 5, 'no hour is squeezed'
+    assert [round(b[0] - a[1], 1) for a, b in zip(cells, cells[1:])] == [6.0] * 4
+    assert all(end <= right for _, right, end in cells), 'every time fits its own cell, so none overlaps the next'
+    label, last = cells[-1][2], cells[-1][1]
+    assert label <= CONTENT_RIGHT, f'the 23:00 label ends at {label}pt, past the margin at {CONTENT_RIGHT}pt'
+    assert last > CONTENT_RIGHT - 31.0, f'the 23:00 cell ends at {last}pt, a whole hour short of the edge'
+    assert answer['page']['crowded'] == []
+
+
+def test_an_hourly_block_that_stops_before_eleven_draws_the_hours_it_has(digest, monkeypatch):
+    """Nothing stands in for 23:00 — not 22:00, the last hour there is, and not an empty cell.
+    The four hours keep the places they have in a full strip, so the right end is left blank."""
+    early = [{'at': f'{h:02d}:00', 'temperature': 15 + h, 'summary': 'clear'} for h in range(6, 23)]
+    catalogue = digest(news={'many': 4}, **sky(hours=early))
+    pages = captured(catalogue, monkeypatch)
     answer = built(catalogue)(intro='Hourly.', picks=[pick(0)])
 
     prose = text_of(answer['page']['path'])
-    assert [says(prose, at) for at in ('08:00', '12:00', '16:00', '20:00')] == [True] * 4
+    assert [says(prose, at) for at in STRIP[:4]] == [True] * 4
+    assert not says(prose, '23:00') and not says(prose, '22:00')
+
+    # Built second: both write today's file to the same place.
+    full = digest(news={'many': 4}, **sky())
+    full_pages = captured(full, monkeypatch)
+    built(full)(intro='Hourly.', picks=[pick(0)])
+    # Four cells, not five: an empty one for 23:00 would be a fifth. The full strip is counted
+    # first, so two empty lists cannot agree.
+    full_cells = strip_cells(full_pages[-1])
+    assert len(full_cells) == 5
+    assert strip_cells(pages[-1]) == full_cells[:4], 'each hour keeps its place'
+
+
+def test_no_forecast_draws_dashes_with_no_place_and_no_sun(digest):
+    """What the panel does today when the forecast failed: `digest_build` hands it an empty
+    answer. The place went with the hard-coded Leuven, because nothing supplies one here."""
+    down = {'weather': {'answer': {'available': False, 'place': 'Leuven', 'why': 'open-meteo could not be reached'}}}
+    answer = built(digest(news={'many': 4}, **down))(intro='No sky.', picks=[pick(0)])
+
+    prose = text_of(answer['page']['path'])
+    assert says(prose, 'High –° · Low –°') and says(prose, 'Rain –%')
+    assert not says(prose, 'Leuven') and not says(prose, 'Sunrise')
+    assert [text for _, text in front_runs(answer['page']['path']) if text in STRIP] == []
+    assert says(prose, 'No sky.'), 'the rest of the page renders'
     assert answer['page']['crowded'] == []
+
+
+def test_each_hour_on_the_strip_draws_its_own_sky(digest, monkeypatch):
+    """Five hours, five different skies, and a day whose own icon is none of them — so a strip
+    that drew the day's icon, or one icon for every hour, cannot pass."""
+    skies = dict(zip(STRIP, ('clear', 'fog', 'rain', 'thunderstorm', 'snow'), strict=True))
+    hours = [{'at': at, 'temperature': 20, 'summary': summary} for at, summary in skies.items()]
+    catalogue = digest(news={'many': 4}, **sky(summary='overcast', hours=hours))
+    pages = captured(catalogue, monkeypatch)
+    built(catalogue)(intro='Every sky.', picks=[pick(0)])
+    face = inside(catalogue, 'face')
+
+    drawn = {at: face(summary, size=15) for at, summary in skies.items()}
+    assert len(set(drawn.values()) | {face('overcast', size=15)}) == 6, 'the six skies must look different'
+    strip = pages[-1].split('<div class="strip">', 1)[1]
+    cells = strip.split('<div class="h">')[1:]
+    assert len(cells) == 5
+    for at, cell in zip(STRIP, cells, strict=True):
+        assert f'<div class="t">{at}</div>' in cell
+        assert drawn[at] in cell, f'{at} does not draw {skies[at]}'
+
+
+def test_the_panel_says_when_the_sun_rises_and_sets(digest):
+    answer = built(digest(news={'many': 4}, **sky()))(intro='Sunny.', picks=[pick(0)])
+
+    assert says(text_of(answer['page']['path']), 'Sunrise 07:22 · Sunset 19:46')
+
+
+def test_a_forecast_with_no_sun_prints_no_sun_line_and_keeps_the_rest(digest):
+    """The weather connector answers None for a time it could not read."""
+    answer = built(digest(news={'many': 4}, **sky(sunrise=None, sunset=None)))(intro='Grey.', picks=[pick(0)])
+
+    prose = text_of(answer['page']['path'])
+    assert not says(prose, 'Sunrise') and not says(prose, 'Sunset')
+    assert says(prose, 'High 29°') and says(prose, 'Rain 53%')
+    assert [says(prose, at) for at in STRIP] == [True] * 5
+
+
+def test_one_time_of_the_two_still_prints(digest):
+    answer = built(digest(news={'many': 4}, **sky(sunrise=None)))(intro='Grey.', picks=[pick(0)])
+
+    prose = text_of(answer['page']['path'])
+    assert says(prose, 'Sunset 19:46')
+    assert not says(prose, 'Sunrise')
+
+
+@respx.mock
+def test_the_real_forecast_reaches_the_panel(digest, tmp_path, monkeypatch):
+    """Every other test here hands the page a stand-in. This one runs the real weather
+    connector against the answer recorded in Leuven on 19 September 2026, so a key the
+    connector names one way and the page reads another cannot pass.
+
+    Set to Ghent, because the panel used to print Leuven whatever the setting said."""
+    for key in ('LATITUDE', 'LONGITUDE', 'TIMEZONE', 'PLACE'):
+        monkeypatch.delenv(f'HARRY_WEATHER_{key}', raising=False)
+    real = copy_capability(REPO / '.harry' / 'connectors' / 'weather', tmp_path / 'root' / 'connectors' / 'weather')
+    (real / '.env.local').write_text('PLACE=Ghent\n', encoding='utf-8')
+    recording = json.loads((REPO / 'tests' / 'fixtures' / 'weather' / 'leuven-sun.json').read_text(encoding='utf-8'))
+    respx.get('https://api.open-meteo.com/v1/forecast').mock(return_value=httpx.Response(200, json=recording))
+
+    answer = built(digest(sources=('news',), news={'many': 4}))(intro='Real sky.', picks=[pick(0)])
+
+    prose = text_of(answer['page']['path'])
+    assert says(prose, 'Sunrise 07:22 · Sunset 19:46')
+    assert says(prose, 'Rain 53% · Ghent')
+    assert not says(prose, 'Leuven')
+    # 16.1, 19.3, 22.6, 21.2 and 20.0 in the recording, rounded.
+    temperatures = [text for _, text in front_runs(answer['page']['path']) if text.endswith('°')]
+    assert temperatures[-5:] == ['16°', '19°', '23°', '21°', '20°']
 
 
 def test_the_file_a_reader_opens_is_the_size_and_shape_it_should_be(digest):

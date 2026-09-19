@@ -9,8 +9,14 @@ from _plan import plan, refuse  # noqa: E402
 from harry.sdk import Context, Registry  # noqa: E402
 
 WORKING = {
-    'available': True, 'place': 'Leuven', 'summary': 'overcast',
-    'high': 29, 'low': 17, 'rain_chance': 53,
+    'available': True,
+    'place': 'Leuven',
+    'summary': 'overcast',
+    'high': 29,
+    'low': 17,
+    'rain_chance': 53,
+    'sunrise': '07:22',
+    'sunset': '19:46',
     'hours': [{'at': '06:00', 'temperature': 17, 'summary': 'clear'}],
 }
 

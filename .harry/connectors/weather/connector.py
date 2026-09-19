@@ -13,6 +13,7 @@ that raises tells the model it did something wrong, and it did not.
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -26,10 +27,14 @@ TIMEOUT = 5.0
 """Seconds. The morning page's build is already the call that blocks, and a hanging weather
 lookup adds to it directly."""
 
-DAILY = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max'
+DAILY = 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset'
 """`precipitation_probability_max`, not `_mean`. They are different numbers for the same day
 and the page answers "will I need a coat" — the chance it rains at all, not the average
-across the hours."""
+across the hours.
+
+`sunrise` and `sunset` arrive as local ISO stamps, `2026-09-19T07:22`, because the request
+names a timezone. They are read softly, apart from the four facts: a missing sunrise costs
+that line on the page, not the forecast."""
 
 HOURLY = 'temperature_2m,weather_code'
 """The shape of the day, on the same request as the summary of it. One endpoint answers both,
@@ -39,9 +44,10 @@ so asking twice would be a second call for something the first could have carrie
 nine degrees under a sun and nine under a thundercloud are different mornings. Claude reads
 both through `weather_forecast`."""
 
-FIRST_HOUR, LAST_HOUR = 6, 22
-"""The hours worth printing. Before six nobody is reading and after ten nobody is going out,
-and a strip of twenty-four numbers is a table rather than a glance."""
+FIRST_HOUR, LAST_HOUR = 6, 23
+"""The hours worth printing. Before six nobody is reading. Eleven at night is the last hour
+anybody plans around — whether it is still warm enough to sit outside — and a strip of
+twenty-four numbers is a table rather than a glance."""
 
 WORDS = {
     0: 'clear',
@@ -134,8 +140,21 @@ class Weather:
             'high': round(daily['temperature_2m_max'][0]),
             'low': round(daily['temperature_2m_min'][0]),
             'rain_chance': round(daily['precipitation_probability_max'][0]),
+            **self._sun(daily),
             'hours': self._hours(answered.get('hourly') or {}),
         }
+
+    def _sun(self, daily: Mapping[str, Any]) -> dict:
+        """`sunrise` and `sunset` as local `HH:MM`, each None when it cannot be read.
+
+        Never raises, for the same reason `_hours` does not: the day's four facts arrived in
+        the same response, and a sunrise nobody can read must cost the sunrise.
+        """
+        found = {key: _clock(daily.get(key)) for key in ('sunrise', 'sunset')}
+        missing = [key for key, at in found.items() if at is None]
+        if missing:
+            self._log.info('no %s for %s; the page leaves it off', ' or '.join(missing), self.place)
+        return found
 
     def _hours(self, hourly: Mapping[str, Any]) -> list[dict]:
         """The day's temperatures between `FIRST_HOUR` and `LAST_HOUR`, or an empty list.
@@ -182,7 +201,7 @@ class Weather:
                 found.append({'at': at, 'temperature': reading, 'summary': self._word(code, unknown)})
         if unknown:
             # Once per answer, not once per hour: a day of the same unrecognised code would
-            # otherwise say the same thing seventeen times and bury everything around it.
+            # otherwise say the same thing eighteen times and bury everything around it.
             self._log.warning(
                 'no word for WMO code(s) %s in the hourly forecast; those hours carry the number only',
                 ', '.join(str(code) for code in sorted(unknown)),
@@ -206,6 +225,18 @@ class Weather:
         if word is None:
             unknown.add(number)
         return word
+
+
+def _clock(stamps: object) -> str | None:
+    """`HH:MM` from the first of Open-Meteo's daily stamps, or None for anything else.
+
+    The same slice `_hours` takes, and the same reason: the default `timeformat` is iso8601.
+    Anything that is not exactly a date and a minute gives None rather than a time Harry
+    guessed at.
+    """
+    first = stamps[0] if isinstance(stamps, list) and stamps else None
+    matched = re.fullmatch(r'\d{4}-\d{2}-\d{2}T(\d{2}:\d{2})', first) if isinstance(first, str) else None
+    return matched.group(1) if matched else None
 
 
 def _why(error: Exception) -> str:

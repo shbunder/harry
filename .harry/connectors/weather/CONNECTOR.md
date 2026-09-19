@@ -64,4 +64,5 @@ ENV
 | An hourly code with no word | That hour keeps its temperature and has no sky. One WARNING per answer, naming every code it could not read | Add them to the same table — the day and the hours read it together, so one edit fixes both |
 | The hourly block arrives with no `weather_code` | Every hour keeps its temperature and none has a sky. One INFO line saying how many codes came for how many hours | Check open-meteo.com/en/docs. The strip still draws; it is numbers without weather |
 | No hourly block at all | `hours: []`. One INFO line | Same. The day's own four facts are unaffected |
+| No sunrise or sunset in the answer, or one that is not a date and a minute | `null` for that one. The panel prints the other on its own, or no sun line. One INFO line naming which | Check open-meteo.com/en/docs — the `daily` field may have been renamed. The rest of the panel is unaffected |
 | Coordinates in the sea | A forecast for the sea | Nothing validates this, and nothing can |

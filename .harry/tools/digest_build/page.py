@@ -357,6 +357,13 @@ def compose(intro: str, data: dict, room: float, sheet: tuple[int, float] = LADD
         pages += article_page(a, family, before, after, more=bool(rest))
 
     word = forecast.get('summary') or ''
+    place = escaped(forecast.get('place') or '')
+    # Each time prints on its own, so a forecast that carried one of the two still says it.
+    sun = ' · '.join(
+        f'{name} {escaped(at)}'
+        for name, at in (('Sunrise', forecast.get('sunrise')), ('Sunset', forecast.get('sunset')))
+        if at
+    )
     week = today.isocalendar().week
     return f"""<title>Morning page</title><style>{STYLE}</style>
 <div class="masthead" id="top">
@@ -370,7 +377,7 @@ def compose(intro: str, data: dict, room: float, sheet: tuple[int, float] = LADD
   <div class="now"><div class="deg">{forecast.get('high', '–')}°</div>
     <div class="word">{escaped(word)}</div></div>
   <div class="range"><b>High {forecast.get('high', '–')}°</b> · Low {forecast.get('low', '–')}°<br>
-    Rain {forecast.get('rain_chance', '–')}% · Leuven</div>
+    Rain {forecast.get('rain_chance', '–')}%{f' · {place}' if place else ''}{f'<br>{sun}' if sun else ''}</div>
   <div class="strip">{data['strip']}</div>
 </div>
 

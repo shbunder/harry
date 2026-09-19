@@ -20,7 +20,7 @@ invented when the page finally calls it:
 
 ```
 weather.today()          → {summary, high, low, rain_chance}, or None
-weather.forecast()       → the same four, plus available, place and hours
+weather.forecast()       → the same four, plus available, place, sunrise, sunset and hours
 calendar.today()         → [{at, ends, title, where, calendar}], empty list on a free day
 news.candidates(limit)   → [{id, title, source, feed, published, date, summary, link, image}], newest first
 news.article(id)         → {available, id, title, source, published, link, summary, image, text}
@@ -53,8 +53,8 @@ Open-Meteo. No account, no key, one call.
 
 `today()` is those four facts and nothing else — it is what a caller wanting one line asks
 for. `forecast()` is the same lookup for a caller that wants to be told why it failed, and it
-carries one thing more: **`hours`, the shape of the day.** Seventeen readings, 06:00 to 22:00
-in local time, one an hour:
+carries more: **`hours`, the shape of the day.** Eighteen readings, 06:00 to 23:00 in local
+time, one an hour:
 
 ```
 {"hours": [{"at": "06:00", "temperature": 17, "summary": "clear"},
@@ -68,17 +68,29 @@ day's word comes from**, so an hour and the day it belongs to can never disagree
 code means — and it is `null` for a code the table does not carry, exactly as the day's is.
 An unrecognised code is logged **once per answer naming every code it could not read**, not
 once per hour — a day of the same unknown code would otherwise print the same line
-seventeen times.
+eighteen times.
 
 **An answer that carries the day but not the hours gives `hours: []`** — the panel keeps its
 word, its high, its low and its rain chance, and loses only the strip. **An answer with the
-hours but no codes keeps all seventeen readings**, each with `summary: null`: the numbers are
+hours but no codes keeps all eighteen readings**, each with `summary: null`: the numbers are
 the part that cannot be guessed from the day's own word.
 
 Both of those say so in the log, at INFO — the second one naming how many codes arrived for
 how many hours. **Nothing reaches Slack for either**, because the day arrived; but a strip
 that has been drawing bare numbers since the endpoint changed is not something to discover by
 squinting at it, and one unrecognised code already warns.
+
+**`sunrise` and `sunset` ride on the same call**, in local time:
+
+```
+{"sunrise": "07:22", "sunset": "19:46"}
+```
+
+The page prints them under the rain chance. Both keys are always there. Each is `null` when
+Open-Meteo sent nothing that reads as a date and a minute, and the other is unaffected — the
+page then prints the one it has, or no sun line at all. The four day facts are read strictly
+and the sun softly, so a renamed field costs its line and never the forecast. It is said once,
+at INFO, naming which one was missing. Nothing reaches Slack, because the day arrived.
 
 Ships pointed at Leuven and works from a fresh clone. To point it somewhere else, put only
 what differs in `.env.local` beside the declaration — never in `.env`, which is generated:
