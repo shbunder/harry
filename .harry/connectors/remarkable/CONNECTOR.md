@@ -76,6 +76,11 @@ to the tablet's trash. A removal that fails does not fail the push — the page 
 does put one line in Slack, because a folder quietly filling with duplicates is not something
 anyone notices.
 
+The older copy is looked for **on the tablet**, never in the connection's memory of it. The
+connection lives as long as Harry does and answers from what it last saw unless asked to look
+again, and on 2026-09-19 that left a duplicate with no Slack line at all — nothing had failed,
+the older copy was simply never seen.
+
 A push that fails is tried **exactly once more**. A retry that works is not a fault and says
 nothing. Two failures raise — so whoever asked knows the page did not arrive — and put one
 line in Slack.
@@ -91,7 +96,8 @@ disk where it was, and whoever asked is told it did not arrive.
 | The token has been revoked | `the tablet refused the token — pair this machine again`; one Slack line | `make remarkable-pair CODE=…` with a fresh code |
 | A push succeeds but nothing appears on the device | — | The tablet syncs when it has wifi and the screen is on. Give it a minute, then open the folder |
 | A folder appeared that nobody asked for | — | Something pushed with a `folder` of its own. `remarkable_list_documents` shows what is in the configured one; the rest is whatever asked for it |
-| Two documents of the same name in the folder | One Slack line saying there is more than one | The removal was refused twice. Delete the older one on the tablet — the newest is the one pushed last, and nothing here will revisit that name because tomorrow's is different |
+| Two documents of the same name, **with** a Slack line saying there is more than one | One Slack line | The removal was refused twice. Delete the older one on the tablet — the newest is the one pushed last, and nothing here will revisit that name because tomorrow's is different |
+| Two documents of the same name, **with no** Slack line | Nothing | The removal never saw the older copy. Before 2026-09-19 the search trusted Harry's memory of the folder, which could lag behind the tablet; it now asks the tablet, so this should not recur. If it does, it is a new fault — say so rather than tidying it by hand |
 | Duplicates from before this connector replaced on push | — | A name Harry will push again is cleared by the next push. A name it will not — an older date, a one-off document — has to be deleted on the tablet; nothing here goes looking for them |
 | Everything is in a folder called `Harry` and nothing new arrives there | — | The default folder became `Daily` on 15 September 2026. Move them across on the tablet, or put `FOLDER=Harry` in `.env.local` |
 | Every write started failing and nothing here changed | Two failures, one Slack line | reMarkable changed the protocol. It happened in August 2026. Bump the exact `remarkapy` pin in `pyproject.toml` and run `make test-live ARGS=tests/test_remarkable_connector.py` |

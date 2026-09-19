@@ -170,9 +170,13 @@ class Tablet:
             where = self._find_folder(client, folder)
             if where is None:
                 return 0
+            # Asked of the tablet, not of the client's memory. The client lives as long as Harry
+            # does and answers from what it last saw unless told to look again; on 2026-09-19 it
+            # did not see a copy pushed two and a half hours earlier, and a second one sat beside
+            # it on the tablet with nothing said. One extra request a day is the whole cost.
             older = [
                 entry.id
-                for entry in client.list_directory_hydrated(where)
+                for entry in client.list_directory_hydrated(where, refresh=True)
                 if entry.type == 'DocumentType' and entry.visibleName == name and entry.id != keeping
             ]
             for one in older:

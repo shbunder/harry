@@ -69,6 +69,13 @@ class StandIn:
         self.folders_made = 0
         self.fail_for = 0
         self.fails_with: Exception = RemarkableAPIError('nope')
+        # What an unrefreshed call answers from. None means "always the tablet", which is how
+        # every test but one wants it; setting it makes the stand-in lag, the way remarkapy's
+        # client does once the tablet has changed underneath it.
+        self.remembered: list[Item] | None = None
+
+    def _seen(self, refresh: bool) -> list[Item]:
+        return self.documents if refresh or self.remembered is None else self.remembered
 
     def _maybe_fail(self) -> None:
         if self.fail_for > 0:
@@ -77,11 +84,11 @@ class StandIn:
 
     def list_directory(self, directory_ref: str = '', refresh: bool = False) -> list[Item]:
         self._maybe_fail()
-        return [*self.folders, *(d for d in self.documents if d.parent == directory_ref)]
+        return [*self.folders, *(d for d in self._seen(refresh) if d.parent == directory_ref)]
 
     def list_directory_hydrated(self, directory_ref: str = '', refresh: bool = False) -> list[Item]:
         self._maybe_fail()
-        return [d for d in self.documents if d.parent == directory_ref]
+        return [d for d in self._seen(refresh) if d.parent == directory_ref]
 
     def put_folder(self, visible_name: str, *, parent: str = '', refresh: bool = False) -> Item:
         self._maybe_fail()
@@ -1684,3 +1691,33 @@ def test_the_listing_takes_a_folder_and_the_push_does_not():
     assert 'folder: str | None = None' in listing
     assert 'folder' not in push.split('def register')[1], 'the push tool grew a folder argument'
     assert 'not a decision to hand a model' in listing, 'the reason is unwritten, so it will be removed'
+
+
+def test_a_second_push_replaces_the_first_even_after_the_tablet_changed(tablet, tmp_path):
+    """What happened on 2026-09-19: two documents called `2026-09-19` in `🗞️ Daily`.
+
+    The page went up at 08:08 and again at 10:39, and the second push reported `replaced: 0`.
+    Read afterwards with a fresh client, both copies were in the one folder. The listing the
+    second push trusted came from the client's memory, and that memory did not hold the 08:08
+    copy. **Why it did not is not pinned down** — the likeliest reason is the tablet itself
+    syncing in between, when the page was opened — but that it did not was measured, and
+    asking the tablet makes the reason not matter.
+
+    The stand-in's snapshot is taken **after** the 08:08 push and before the tablet changes,
+    so an unrefreshed listing answers as the long-lived client did: without the 08:08 copy,
+    because what it remembers is not what the tablet holds. FEAT-260915's test could not see
+    this, because it built a fresh client every time and a fresh client is never stale.
+    """
+    cloud = StandIn(folders=[a_folder()])
+    built = tablet(cloud=cloud)
+    tablet_now = connector(built)
+
+    first = tablet_now.push(a_pdf(tmp_path / 'morning.pdf'), '2026-09-19')
+    # The 08:08 copy is really there; the client's memory of the folder simply does not hold it.
+    cloud.remembered = [d for d in cloud.documents if d.id != first['id']]
+
+    second = tablet_now.push(a_pdf(tmp_path / 'again.pdf'), '2026-09-19')
+
+    left = [d.id for d in cloud.documents if d.visibleName == '2026-09-19']
+    assert second['replaced'] == 1, 'the second push found nothing to replace'
+    assert left == [second['id']], f'the tablet kept {left}'

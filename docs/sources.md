@@ -346,6 +346,13 @@ often enough that one attempt is too few, and a single blip would leave a duplic
 both times does not fail the push — the page arrived — but it does put one line in Slack,
 under its own key, so it can never silence the push's own alert.
 
+**The older copy is looked for on the tablet, not in Harry's memory of it.** Harry keeps one
+connection to reMarkable for as long as it runs, and that connection answers from what it last
+saw unless asked to look again. On 19 September 2026 it did not see a copy pushed two and a
+half hours earlier — the tablet had changed underneath it in between — so the second push
+found nothing to replace and a duplicate sat in the folder **with nothing said**, because
+nothing had failed. The search for the older copy now asks the tablet every time.
+
 ### Pairing, once per machine
 
 1. Open **my.remarkable.com/device/desktop/connect** and copy the 8-character code. It
