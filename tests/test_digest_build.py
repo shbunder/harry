@@ -1262,6 +1262,43 @@ def test_a_fuller_second_page_does_not_beat_a_single_page(digest, monkeypatch):
     assert (chosen['every'], chosen['picture'], chosen['pages']) == (8, 44.0, 1), chosen
 
 
+@pytest.mark.parametrize(
+    ('feed', 'title', 'printed', 'never'),
+    [
+        (
+            'kw-west-vlaanderen.xml',
+            'Ardooise senioren nemen sportieve start',
+            ['Na een welverdiende pauze zijn de senioren opnieuw gestart', 'Er …'],
+            ['<', '&#', 'appeared first on'],
+        ),
+        ('robtv.xml', 'Nieuws donderdag 17 september', [], ['nbsp', '&']),
+        (
+            'tijd-nieuws.xml',
+            'Ontsnapt het Franstalig hoger onderwijs aan de hakbijl?',
+            ['politiek & economie'],
+            ['&amp;'],
+        ),
+    ],
+)
+def test_a_page_whose_text_could_not_be_read_prints_the_feeds_summary_as_text(digest, feed, title, printed, never):
+    """The summary is what a page prints when the article will not load, and it arrives as the
+    feed wrote it: KW's is HTML with WordPress's footer on the end, ROB tv's is encoded twice.
+    De Tijd's is plain text with a real ampersand in it, which must come through as written."""
+    summary = recorded_summary(feed, title)
+    answer = built(digest(news={'many': 4, 'summary': summary, 'unreadable': [pick(0)['id']]}))(
+        intro='Unread.', picks=[pick(0)]
+    )
+
+    prose = text_of(answer['page']['path'])
+    assert 'Full text unavailable' in prose, 'the fallback was not taken'
+    # `says`, because the first line of an article's text is set in small caps, and the PDF's
+    # text reads some of those glyphs back as capitals: "Na eeN welverdieNde".
+    for phrase in printed:
+        assert says(prose, phrase), f'{phrase!r} is not on the page'
+    for phrase in never:
+        assert phrase not in prose, f'{phrase!r} reached the page'
+
+
 def test_a_summary_encoded_twice_prints_nothing_rather_than_its_codes(digest):
     """ROB tv encodes twice: a summary of three spaces arrives as `&amp;nbsp;` three times,
     which reads once as `&nbsp;` — and that is what the sheet would have printed."""

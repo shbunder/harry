@@ -246,10 +246,13 @@ one on every entry. Nearby sits near the back of the paper so this costs little,
 story that does reach the front page will be the plain card among illustrated ones. The
 pictures are absent at the source; there is nothing to configure.
 
-**Their summaries are not plain text either.** KW sends a paragraph, a link and character codes
-such as `&#8230;`; ROB tv encodes its codes twice, so a summary of spaces arrives as
-`&amp;nbsp;`. The second sheet prints the first sentence of a summary, so it drops the tags
-and reads the codes until nothing changes. The words are the feed's own.
+**Their summaries are not plain text either.** KW sends a paragraph, a link, character codes
+such as `&#8230;`, and WordPress's footer — *"The post … appeared first on KW.be."* — on every
+item. ROB tv encodes its codes twice, so a summary of spaces arrives as `&amp;nbsp;`. The page
+prints a summary in two places: its first sentence on the second sheet, and the whole of it on
+a story's own page when the article would not load. Both drop the footer and the tags and read
+the codes until nothing changes. The words are the feed's own, and a summary that was text
+already prints as it came.
 
 ### What Harry decides, and what Claude decides
 
