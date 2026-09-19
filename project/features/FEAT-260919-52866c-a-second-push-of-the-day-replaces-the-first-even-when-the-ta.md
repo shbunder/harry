@@ -42,7 +42,7 @@ fail without the fix: a stand-in whose unrefreshed listing lags behind the table
 - [x] The removal after a push lists the folder with `refresh=True`, so it sees what is on the tablet rather than what the client remembers
 - [x] A gate test with a stand-in whose unrefreshed listing lags behind the tablet fails without the fix and passes with it
 - [x] `docs/` and the connector's runbook no longer say a duplicate means the removal was refused twice — it can also mean the listing was out of date, which the fix removes
-- [ ] `by inspection: it is the owner's tablet` — the older `2026-09-19` is sent to the tablet's trash, once the owner has agreed
+- [x] `by inspection: it is the owner's tablet` — the older `2026-09-19` is sent to the tablet's trash, once the owner has agreed
 
 ## Stories
 
@@ -52,6 +52,7 @@ fail without the fix: a stand-in whose unrefreshed listing lags behind the table
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-19** — Deployed as harry:00e8d50. The duplicate from the morning was cleared by hand, on the owner's say-so: re-read with a fresh client, the folder still held exactly 0134bb70 (10:39) and 690bcfef (08:08); 690bcfef went to the tablet's trash and 0134bb70 stayed. The live proof of the fix is the next day with two pushes — the gate test proves the removal refreshes, not that remarkapy's memory lags in the way assumed.
 
 ## Links
 
