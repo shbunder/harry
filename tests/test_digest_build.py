@@ -608,6 +608,50 @@ def front_runs(path: str) -> list[tuple[float, str]]:
     return runs
 
 
+def captured(catalogue, monkeypatch) -> list[str]:
+    """The HTML `digest_build` hands to `render`, kept on its way through."""
+    tool = built(catalogue).__globals__
+    real, seen = tool['render'], []
+
+    def keeping(html, where, log):
+        seen.append(html)
+        return real(html, where, log)
+
+    monkeypatch.setitem(tool, 'render', keeping)
+    return seen
+
+
+CONTENT_RIGHT = 509.34 - 34.0
+"""The right edge of the text on every sheet: the Paper Pro's page less its right margin."""
+
+
+def strip_cells(html: str) -> list[tuple[float, float]]:
+    """Left and right edge of each hour's cell on the front sheet, in points, exactly as
+    WeasyPrint lays out the page `digest_build` rendered. Read off the layout rather than the
+    PDF, which says where a label starts and never where it ends."""
+    from weasyprint import HTML
+
+    def classes(box) -> list[str]:
+        element = getattr(box, 'element', None)
+        return element.get('class', '').split() if element is not None else []
+
+    def find(box):
+        if 'strip' in classes(box):
+            return box
+        for child in getattr(box, 'children', ()):
+            if (found := find(child)) is not None:
+                return found
+        return None
+
+    strip = find(HTML(string=html).render().pages[0]._page_box)
+    assert strip is not None, 'no strip on the front sheet'
+    return [
+        (round(cell.border_box_x() * 72 / 96, 2), round((cell.border_box_x() + cell.border_width()) * 72 / 96, 2))
+        for cell in strip.children
+        if 'h' in classes(cell)
+    ]
+
+
 def test_the_weather_strip_carries_five_hours_ending_at_eleven(digest):
     """Every other test hands over one hour, so the strip was empty everywhere and most of the
     weather icons were drawn by nothing."""
@@ -631,35 +675,43 @@ def test_the_strip_chooses_its_hours_by_the_clock_not_by_position(digest):
     assert [says(prose, at) for at in ('09:00', '13:00', '17:00', '21:00')] == [False] * 4
 
 
-def test_the_eleven_oclock_hour_sits_inside_the_right_margin(digest):
-    """Read back off the PDF. Each hour is a 25pt cell, 6pt from the next, and a label is
-    centred in its cell — so a label that starts a whole cell inside the margin ends inside it.
+def test_the_eleven_oclock_hour_sits_inside_the_right_margin(digest, monkeypatch):
+    """Each hour is a 25pt cell, 6pt from the next, and the strip's width is worked out from its
+    hours. Set for four, it did not spill: it squeezed five into 19pt cells, which stays inside
+    the page and puts the labels nearly touching. Set a cell too wide, it left a blank at the
+    right end. Both are checked here, on the layout of the page that was actually rendered."""
+    catalogue = digest(news={'many': 4}, **sky())
+    pages = captured(catalogue, monkeypatch)
+    answer = built(catalogue)(intro='Hourly.', picks=[pick(0)])
 
-    The spacing is checked too. The strip's width is worked out from its hours, and set for
-    four it does not spill: it squeezes all five into 19pt cells, which stays inside the page
-    and puts the labels nearly touching."""
-    answer = built(digest(news={'many': 4}, **sky()))(intro='Hourly.', picks=[pick(0)])
-
-    right_edge = 509.34 - 34.0
-    labels = {text: x for x, text in front_runs(answer['page']['path']) if text in STRIP}
-    assert set(labels) == set(STRIP), 'every hour is on the front sheet, each as its own run'
-    assert labels['23:00'] + 25.0 <= right_edge, f'23:00 starts at {labels["23:00"]:.1f}pt'
-    starts = [labels[at] for at in STRIP]
-    pitches = [round(later - earlier, 1) for earlier, later in zip(starts, starts[1:])]
-    assert pitches == [31.0] * 4, f'the hours are {pitches}pt apart'
+    cells = strip_cells(pages[-1])
+    assert len(cells) == 5
+    assert [round(right - left, 1) for left, right in cells] == [25.0] * 5, 'no hour is squeezed'
+    assert [round(b[0] - a[1], 1) for a, b in zip(cells, cells[1:])] == [6.0] * 4
+    last = cells[-1][1]
+    assert last <= CONTENT_RIGHT, f'23:00 ends at {last}pt, past the margin at {CONTENT_RIGHT}pt'
+    assert last > CONTENT_RIGHT - 31.0, f'23:00 ends at {last}pt, a whole hour short of the edge'
     assert answer['page']['crowded'] == []
 
 
-def test_an_hourly_block_that_stops_before_eleven_draws_the_hours_it_has(digest):
-    """No empty slot and no placeholder where 23:00 would be."""
+def test_an_hourly_block_that_stops_before_eleven_draws_the_hours_it_has(digest, monkeypatch):
+    """Nothing stands in for 23:00 — not 22:00, the last hour there is, and not an empty cell.
+    The four hours keep the places they have in a full strip, so the right end is left blank."""
     early = [{'at': f'{h:02d}:00', 'temperature': 15 + h, 'summary': 'clear'} for h in range(6, 23)]
-    answer = built(digest(news={'many': 4}, **sky(hours=early)))(intro='Hourly.', picks=[pick(0)])
+    catalogue = digest(news={'many': 4}, **sky(hours=early))
+    pages = captured(catalogue, monkeypatch)
+    answer = built(catalogue)(intro='Hourly.', picks=[pick(0)])
 
     prose = text_of(answer['page']['path'])
     assert [says(prose, at) for at in STRIP[:4]] == [True] * 4
-    assert not says(prose, '23:00')
-    labels = [text for _, text in front_runs(answer['page']['path']) if text in STRIP]
-    assert labels == list(STRIP[:4])
+    assert not says(prose, '23:00') and not says(prose, '22:00')
+
+    # Built second: both write today's file to the same place.
+    full = digest(news={'many': 4}, **sky())
+    full_pages = captured(full, monkeypatch)
+    built(full)(intro='Hourly.', picks=[pick(0)])
+    # Four cells, not five: an empty one for 23:00 would be a fifth.
+    assert strip_cells(pages[-1]) == strip_cells(full_pages[-1])[:4], 'each hour keeps its place'
 
 
 def test_no_forecast_draws_dashes_with_no_place_and_no_sun(digest):
@@ -674,6 +726,26 @@ def test_no_forecast_draws_dashes_with_no_place_and_no_sun(digest):
     assert [text for _, text in front_runs(answer['page']['path']) if text in STRIP] == []
     assert says(prose, 'No sky.'), 'the rest of the page renders'
     assert answer['page']['crowded'] == []
+
+
+def test_each_hour_on_the_strip_draws_its_own_sky(digest, monkeypatch):
+    """Five hours, five different skies, and a day whose own icon is none of them — so a strip
+    that drew the day's icon, or one icon for every hour, cannot pass."""
+    skies = dict(zip(STRIP, ('clear', 'fog', 'rain', 'thunderstorm', 'snow'), strict=True))
+    hours = [{'at': at, 'temperature': 20, 'summary': summary} for at, summary in skies.items()]
+    catalogue = digest(news={'many': 4}, **sky(summary='overcast', hours=hours))
+    pages = captured(catalogue, monkeypatch)
+    built(catalogue)(intro='Every sky.', picks=[pick(0)])
+    face = inside(catalogue, 'face')
+
+    drawn = {at: face(summary, size=15) for at, summary in skies.items()}
+    assert len(set(drawn.values()) | {face('overcast', size=15)}) == 6, 'the six skies must look different'
+    strip = pages[-1].split('<div class="strip">', 1)[1]
+    cells = strip.split('<div class="h">')[1:]
+    assert len(cells) == 5
+    for at, cell in zip(STRIP, cells, strict=True):
+        assert f'<div class="t">{at}</div>' in cell
+        assert drawn[at] in cell, f'{at} does not draw {skies[at]}'
 
 
 def test_the_panel_says_when_the_sun_rises_and_sets(digest):
