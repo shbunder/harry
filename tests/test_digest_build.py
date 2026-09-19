@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -121,6 +123,77 @@ def says(prose: str, phrase: str) -> bool:
     return phrase.replace(' ', '').casefold() in prose.replace(' ', '').casefold()
 
 
+INTRO = (
+    'A grey Saturday: breakfast in Aarschot at nine, gymnastics at eleven, then the afternoon '
+    'is yours. Drizzle until noon and around 21 degrees after, so the walk is better left for '
+    'four. The front page leads on the forty-four municipalities asking for more time with the '
+    'housing duty — three papers, three angles — and on a quiet night abroad, with the Dutch '
+    'railways back to a normal timetable after Thursday. Further in: a robot that sorts parcels '
+    'in Willebroek, a new exhibition at M Leuven, and a council vote in Holsbeek on the '
+    'Kortrijksebaan crossing that the school has been asking about since spring.'
+)
+"""An intro the length a real one runs to. It decides how much room the timetable gets, and
+the one-line intros most tests use leave about ninety points more than a morning does."""
+
+
+def drawn(catalogue, monkeypatch) -> dict:
+    """The page's HTML, caught on its way to the renderer.
+
+    Through the tool, not beside it: everything that decides the page — the measuring, the
+    fitting, the composing — has run by the time `render` is called, and the test reads what
+    production would have printed. The PDF is still written.
+    """
+    tool = built(catalogue).__globals__
+    real, caught = tool['render'], {}
+
+    def spy(html, where, log):
+        caught['html'] = html
+        return real(html, where, log)
+
+    monkeypatch.setitem(tool, 'render', spy)
+    return caught
+
+
+def the_sheet(html: str) -> str:
+    """The second sheet's part of the page: from its own `div` to the first article."""
+    start = html.index('<div class="sheet two" id="more">')
+    return html[start : html.index('<article', start)]
+
+
+def the_hours(html: str) -> tuple[list[int], float]:
+    """The hours the timetable labels, and how tall its grid is drawn, in points."""
+    hours = [int(h) for h in re.findall(r'<div class="hour" style="top:[\d.]+pt"><span>(\d\d)</span>', html)]
+    grid = re.search(r'<div class="grid" style="height:([\d.]+)pt">', html)
+    assert grid, 'no timetable on the page'
+    return hours, float(grid.group(1))
+
+
+def links(path: str) -> list[list[tuple[str, float, float]]]:
+    """Every internal link on every page of the PDF, as `(destination, left, top)` in points.
+
+    Read off the file the tablet opens. A link WeasyPrint did not write — it writes none for an
+    `<a>` that is itself a flex item — is simply not here, which is the point.
+    """
+    reader = PdfReader(path)
+    out = []
+    for page in reader.pages:
+        found = []
+        for annotation in page.get('/Annots') or []:
+            one = annotation.get_object()
+            if one.get('/Subtype') == '/Link' and '/Dest' in one:
+                x0, y0, _, y1 = (float(v) for v in one['/Rect'])
+                found.append((str(one['/Dest']), round(x0, 1), round(max(y0, y1), 1)))
+        out.append(found)
+    return out
+
+
+def starts(path: str) -> dict[str, int]:
+    """Which page each named place begins on — `more`, `story3`, and so on."""
+    reader = PdfReader(path)
+    found = {name: reader.get_destination_page_number(dest) for name, dest in reader.named_destinations.items()}
+    return {name: page for name, page in found.items() if page is not None}
+
+
 def test_a_page_is_built_and_says_what_it_is(digest):
     """The answer is what a caller has to act on: where the file is, how big it came out, and
     whether either sheet ran over."""
@@ -206,52 +279,6 @@ def test_a_nearby_pick_is_marked_as_its_own_topic_not_left_unknown(digest):
     drawn = marks.badge('regional')
     assert '<svg' in drawn and '<path' in drawn, f'nearby has no mark of its own: {drawn!r}'
     assert marks.badge('nonsense') == '', 'a topic the table does not carry was given a mark'
-
-
-def test_nearby_heads_the_second_sheet_and_vanishes_when_there_is_nothing_in_it(digest):
-    """`picks` is the front page and `more` is the second sheet, so the heading needs a `more`
-    entry. A section with nothing in it is not drawn — the same rule basketball already has."""
-    made = built(digest(news={'many': 10}))
-    answer = made(
-        intro='Two sheets.',
-        picks=[pick(0)],
-        more=[
-            {'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'regional'},
-            {'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'topic': 'belgium'},
-        ],
-    )
-    prose = text_of(answer['page']['path'])
-    assert says(prose, 'Nearby')
-    # Headings are letter-spaced, so compare in the same flattened form `says` uses.
-    flat = prose.replace(' ', '').casefold()
-    assert flat.index('athome') < flat.index('nearby'), 'Nearby did not sit behind At home'
-
-    quiet = built(digest(news={'many': 10}))(
-        intro='Nothing close to home today.',  # never the word itself: says() would find it here
-        picks=[pick(0)],
-        more=[{'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'topic': 'belgium'}],
-    )
-    calm = text_of(quiet['page']['path'])
-    assert not says(calm, 'Nearby'), 'an empty Nearby section was drawn anyway'
-    assert says(calm, 'At home'), 'the other sections stopped rendering'
-
-
-def test_a_second_sheet_carries_the_rest_grouped_by_subject(digest):
-    """Six on the front and everything else at a glance, under its own heading."""
-    answer = built(digest(news={'many': 10}))(
-        intro='Two sheets.',
-        picks=[pick(0)],
-        more=[
-            {'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'tech'},
-            {'id': 'vrt-2026-09-15-story-2-and-what-came-of-it', 'topic': 'culture'},
-        ],
-    )
-
-    prose = text_of(answer['page']['path'])
-    assert says(prose, 'Also today')
-    assert says(prose, 'AI and technology') and says(prose, 'Culture')
-    assert not says(prose, 'Basketball'), 'a section with nothing in it is not drawn'
-    assert answer['more'] == 2
 
 
 def test_a_companion_piece_gets_its_own_page(digest):
@@ -521,41 +548,6 @@ def test_a_front_sheet_that_will_not_fit_says_so(digest):
 
 
 @respx.mock
-def test_a_full_second_sheet_of_two_pages_is_not_reported_as_crowded(digest):
-    """This asserted the opposite until the owner chose two pages as a full second sheet.
-
-    The old assertion was right for a one-page sheet: twelve stories, and a category with one
-    story in it looked broken. The brief now asks for up to twenty across seven categories,
-    which is two pages, so reporting that as "one or two stories too many" would cry wolf
-    every morning.
-
-    Built the way a real morning is — with pictures, and with headlines the length real ones
-    are, because both decide a card's height. **Three pages cannot be reached from here:**
-    `MOST_MORE` refuses more than twenty, and twenty of these make two. The cap is what bounds
-    the sheet now, and it has its own test.
-    """
-    respx.get('https://pictures.test/0.jpg').mock(
-        return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
-    )
-    answer = built(digest(news={'many': 30, 'image': 'https://pictures.test/0.jpg', 'real_titles': True}))(
-        intro='Too much.',
-        picks=[pick(0)],
-        # Spread across the subjects: each section costs a heading, and it is the headings
-        # that make six groups not fit where twenty cards in one group would have.
-        more=[
-            {
-                'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it',
-                'topic': ('belgium', 'world', 'tech', 'culture', 'sport', 'oddity')[n % 6],
-            }
-            for n in range(1, 21)
-        ],
-    )
-
-    assert [one for one in answer['page']['crowded'] if 'also today' in one] == [], answer['page']['crowded']
-    assert answer['more'] == 20, 'the sheet under test is not a full one'
-
-
-@respx.mock
 def test_a_picture_is_fetched_once_per_build_and_not_once_forever(digest):
     """Harry runs for weeks on a NUC and yesterday's addresses are never asked for again, so a
     cache that outlives a build only ever grows — twenty base64 images a day, none of it
@@ -809,7 +801,10 @@ def test_a_nearby_story_may_lead_when_another_paper_carries_it(digest):
 
 def test_a_nearby_story_on_the_second_sheet_needs_no_companion(digest):
     """`more` is a glance, not an argument — the rule is about leading the paper, so a nearby
-    story with nobody else behind it belongs there rather than nowhere."""
+    story with nobody else behind it belongs there rather than nowhere.
+
+    Checked by the story's own link on the sheet. This read the word "Nearby" off the page
+    while the sheet had a heading by that name; it has none now."""
     answer = built(digest(news={'many': 6}))(
         intro='A glance.',
         picks=[pick(0)],
@@ -817,7 +812,8 @@ def test_a_nearby_story_on_the_second_sheet_needs_no_companion(digest):
     )
 
     assert answer['more'] == 1
-    assert says(text_of(answer['page']['path']), 'Nearby')
+    sheet = starts(answer['page']['path'])['more']
+    assert 'story2' in [dest for dest, _, _ in links(answer['page']['path'])[sheet]]
 
 
 def test_every_place_that_lists_the_topics_agrees():
@@ -870,22 +866,373 @@ def test_a_card_is_illustrated_from_the_article_when_the_feed_had_no_picture(dig
     assert 'Why story 0 matters.' in text_of(answer['page']['path'])
 
 
-def test_the_second_sheet_is_drawn_four_across(digest):
-    """Twenty stories with a picture on every card ran the sheet to three pages at three
-    across. Four across put five of six sections on the first page of the same heavy day.
+# ---- the front page's way onward -------------------------------------------------------------
 
-    Checked on the stylesheet the page is actually drawn with, since a number in `sheet.py`
-    that nothing reads is the kind of control this repo has had to rewrite twice.
-    """
-    answer = built(digest(news={'many': 10}))(
-        intro='Four across.',
-        picks=[pick(0)],
-        more=[{'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': 'belgium'} for n in range(1, 9)],
+
+def test_the_way_to_the_second_sheet_is_in_the_column_head_above_the_stories(digest):
+    """It was a button pinned under the six stories by a spacer. The timetable's hours are
+    absolutely positioned, so the left column had no height of its own, the right column was
+    stretched shorter than its stories, and the button landed across the fifth.
+
+    Read off the PDF: the one link on the front page that goes to the second sheet sits above
+    every link that goes to a story. A button under the list, or on top of it, is below one."""
+    answer = built(digest(news={'many': 12}))(
+        intro=INTRO,
+        picks=[pick(n) for n in range(6)],
+        more=[{'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': 'world'} for n in range(6, 9)],
     )
-    assert answer['more'] == 8
 
-    sheet = sys.modules[next(n for n in sys.modules if n.endswith('digest_build.sheet'))]
-    card = float(sheet.CARD)
-    across = int((sheet.CONTENT + sheet.CARD_GAP) // (card + sheet.CARD_GAP))
-    assert across == 4, f'the second sheet fits {across} cards across'
-    assert f'flex: 0 0 {card:.1f}pt' in sheet.STYLE, 'the stylesheet does not draw the card at that width'
+    front = links(answer['page']['path'])[0]
+    onward = [top for dest, _, top in front if dest == 'more']
+    stories = [top for dest, _, top in front if dest.startswith('story')]
+    assert len(onward) == 1, f'{len(onward)} links to the second sheet on the front page'
+    assert stories and onward[0] > max(stories), 'the way onward is not above the stories'
+
+    first = PdfReader(answer['page']['path']).pages[0].extract_text() or ''
+    assert says(first, 'Other news'), 'the column head does not say where it goes'
+    assert not says(first, 'by subject'), 'the old button is still drawn'
+
+
+def test_with_no_second_sheet_nothing_offers_a_way_to_it(digest):
+    """No `more`, no sheet — and no link to one. The article pages linked to `#more` whether
+    or not it existed, so on such a day that link went nowhere."""
+    answer = built(digest(news={'many': 4}))(intro='Front only.', picks=[pick(0), pick(1)])
+
+    prose = text_of(answer['page']['path'])
+    assert not says(prose, 'Other news'), 'a way to a sheet that is not there'
+    assert says(prose, 'The front page'), 'the article pages lost their other way out'
+    assert all(dest != 'more' for page in links(answer['page']['path']) for dest, _, _ in page)
+
+
+def test_an_article_page_calls_the_second_sheet_other_news(digest):
+    """One place, one name: the front page's column head and every article page's foot."""
+    answer = built(digest(news={'many': 4}))(
+        intro='Named.',
+        picks=[pick(0)],
+        more=[{'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'tech'}],
+    )
+
+    at = starts(answer['page']['path'])
+    reader = PdfReader(answer['page']['path'])
+    article = ' '.join((reader.pages[at['story1']].extract_text() or '').split())
+    assert says(article, 'Other news')
+    assert not says(article, 'Other articles')
+    assert 'more' in [dest for dest, _, _ in links(answer['page']['path'])[at['story1']]]
+
+
+# ---- the timetable fills its column ----------------------------------------------------------
+
+
+def event(at: str, ends: str, title: str = 'Something') -> dict:
+    return {'at': at, 'ends': ends, 'title': title, 'where': '', 'calendar': 'Shaun'}
+
+
+def test_a_quiet_days_timetable_shows_more_of_the_day_and_reaches_the_foot(digest, monkeypatch):
+    """Six hours at 34pt came to 204pt of a 302pt column on 2026-09-19, and the bottom third of
+    the front page was white. A quiet day now shows later hours rather than stopping short."""
+    catalogue = digest(news={'many': 4}, icloud={'events': [event('09:30', '11:30')]})
+    caught = drawn(catalogue, monkeypatch)
+    answer = built(catalogue)(intro=INTRO, picks=[pick(0)])
+
+    hours, grid = the_hours(caught['html'])
+    room = answer['fits']['timetable']
+    assert room > 6 * 34, f'the column has {room}pt, which six hours already fill'
+    assert max(hours) > 13, f'the timetable stops at {max(hours)}:00'
+    assert abs(grid - room) < 0.5, f'the grid is {grid}pt of the {room}pt it was given'
+    assert grid / len(hours) <= 34.0, 'an hour is drawn taller than 34pt'
+    assert answer['page']['crowded'] == []
+
+
+def test_a_busy_days_timetable_is_not_stretched_or_extended(digest, monkeypatch):
+    """07:00 to 21:00 already needs sixteen rows. It shows those, at 18pt or more, and no more
+    of the evening than the last event reaches into."""
+    catalogue = digest(news={'many': 4}, icloud={'events': [event('07:00', '08:00'), event('20:00', '21:00')]})
+    caught = drawn(catalogue, monkeypatch)
+    built(catalogue)(intro=INTRO, picks=[pick(0)])
+
+    hours, grid = the_hours(caught['html'])
+    assert hours == list(range(7, 23)), hours
+    assert grid / len(hours) >= 18.0, f'{grid / len(hours):.1f}pt an hour is too small to read'
+
+
+def test_a_day_with_nothing_timed_still_fits_its_column(digest, monkeypatch):
+    """A free day, or a calendar that could not be read. It drew fifteen hours at a fixed 24pt,
+    360pt against about 300 of room, and the whole day column went to page two."""
+    catalogue = digest(news={'many': 4}, icloud={'events': []})
+    caught = drawn(catalogue, monkeypatch)
+    answer = built(catalogue)(intro=INTRO, picks=[pick(0)])
+
+    hours, grid = the_hours(caught['html'])
+    assert hours == list(range(7, 22)), hours
+    assert abs(grid - answer['fits']['timetable']) < 0.5, f'the grid is {grid}pt of {answer["fits"]["timetable"]}'
+    assert answer['page']['crowded'] == [], answer['page']['crowded']
+
+
+def test_a_day_too_long_for_its_column_is_reported_rather_than_squeezed(digest, monkeypatch):
+    """Eighteen hours at 18pt is 324pt. Below 18pt a half-hour meeting cannot show its own name,
+    so the hours stay readable and the day column moves — and `crowded` says so, because it is
+    the only thing that would."""
+    catalogue = digest(news={'many': 4}, icloud={'events': [event('06:00', '07:00'), event('22:00', '23:00')]})
+    caught = drawn(catalogue, monkeypatch)
+    answer = built(catalogue)(intro=INTRO, picks=[pick(0)])
+
+    hours, grid = the_hours(caught['html'])
+    assert answer['fits']['timetable'] < len(hours) * 18.0, 'this day fits; the test needs one that does not'
+    assert grid / len(hours) == pytest.approx(18.0)
+    assert any('did not fit on the front sheet' in one for one in answer['page']['crowded']), answer['page']['crowded']
+
+
+# ---- the second sheet ------------------------------------------------------------------------
+
+EIGHTEEN = ['oddity', 'world', 'belgium', 'culture', 'tech', 'world', 'belgium', 'belgium', 'regional']
+EIGHTEEN = EIGHTEEN + EIGHTEEN[::-1]
+
+
+def test_the_second_sheet_is_three_columns_of_marked_stories_in_the_papers_order(digest, monkeypatch):
+    """No section headings. Each story carries its topic's mark, and the paper's order —
+    home, abroad, technology, culture, sport, nearby, the one worth knowing — is kept whatever
+    order they were handed in.
+
+    Three columns is read off the PDF, from where the stories' links landed. A `column-count`
+    in the stylesheet that the sheet's markup does not use would pass a check on the CSS."""
+    catalogue = digest(news={'many': 24})
+    caught = drawn(catalogue, monkeypatch)
+    more = [{'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': t} for n, t in enumerate(EIGHTEEN, 1)]
+    answer = built(catalogue)(intro='Eighteen.', picks=[pick(0)], more=more)
+
+    sheet = the_sheet(caught['html'])
+    assert '<h2' not in sheet, 'a section heading is still drawn'
+    assert sheet.count('<svg class="topic"') == len(more), 'a story on the sheet has no mark'
+
+    handed = {f'story{place}': one['topic'] for place, one in enumerate(more, start=2)}
+    running = [handed[a] for a in re.findall(r'<a class="lead" href="#(story\d+)"', sheet)]
+    order = ['belgium', 'world', 'tech', 'culture', 'sport', 'regional', 'oddity']
+    assert running == sorted(running, key=order.index), running
+    assert len(running) == len(more)
+
+    # A link is written once per piece of text it holds — the headline, the source beside its
+    # mark — so a story's column is where the leftmost of its pieces starts.
+    page = starts(answer['page']['path'])['more']
+    leftmost: dict[str, float] = {}
+    for dest, left, _ in links(answer['page']['path'])[page]:
+        if re.fullmatch(r'story\d+', dest):
+            leftmost[dest] = min(left, leftmost.get(dest, left))
+    lefts = set(leftmost.values())
+    assert len(lefts) == 3, f'the stories stand in {len(lefts)} columns: {sorted(lefts)}'
+
+
+@respx.mock
+def test_the_story_opening_each_run_leads_it(digest, monkeypatch):
+    """Every k-th story — k is what the sheet was fitted at — carries its picture, a larger
+    headline and the first sentence of its summary. The rest are headline and source. Every
+    headline is whole, and a companion still gets its line."""
+    respx.get('https://pictures.test/0.jpg').mock(
+        return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
+    )
+    catalogue = digest(
+        news={
+            'many': 14,
+            'image': 'https://pictures.test/0.jpg',
+            'real_titles': True,
+            'summary': 'The first sentence says what happened. The second would not fit.',
+        }
+    )
+    caught = drawn(catalogue, monkeypatch)
+    more: list[dict] = [
+        {'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': 'belgium'} for n in range(1, 11)
+    ]
+    more[4]['also'] = ['vrt-2026-09-15-story-12-and-what-came-of-it']
+    answer = built(catalogue)(intro='Runs.', picks=[pick(0)], more=more)
+
+    every = answer['fits']['sheet']['every']
+    stories = the_sheet(caught['html']).split('<div class="story')[1:]
+    assert len(stories) == 10
+    for place, one in enumerate(stories):
+        opens = place % every == 0
+        assert one.startswith(' opens"') == opens, (place, every)
+        assert ('<img' in one) == opens, f'story {place}: a picture where there should {"" if opens else "not "}be one'
+        assert ('The first sentence says what happened.' in one) == opens
+        assert 'The second would not fit' not in one
+        assert 'verkennend onderzoek' in one and '…' not in one.split('class="head">')[1].split('<')[0]
+
+    assert '<a class="one" href="#story6-1">' in stories[4], 'the companion lost its line'
+
+
+@respx.mock
+def test_the_second_sheet_takes_the_fewest_pages_then_the_fullest_last_page(digest, monkeypatch):
+    """The ladder is tried in full for each day, and the choice is checked against every
+    setting rendered independently here. Fewest pages first — a day that fits one page gets
+    one — and among those the setting that leaves the least white under its columns.
+
+    Twenty, with pictures and full-length headlines, is the heaviest sheet the tool accepts;
+    ten is a light day."""
+    respx.get('https://pictures.test/0.jpg').mock(
+        return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
+    )
+    from weasyprint import HTML
+
+    for many in (20, 10):
+        catalogue = digest(news={'many': 30, 'image': 'https://pictures.test/0.jpg', 'real_titles': True})
+        tool = built(catalogue).__globals__
+        real_fit, kept = tool['fit'], {}
+        page = real_fit.__globals__
+
+        def keep(intro, data, log, real_fit=real_fit, kept=kept):
+            kept['data'] = data
+            return real_fit(intro, data, log)
+
+        monkeypatch.setitem(tool, 'fit', keep)
+        more = [
+            {'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': EIGHTEEN[n % len(EIGHTEEN)]}
+            for n in range(1, many + 1)
+        ]
+        answer = built(catalogue)(intro='Fitted.', picks=[pick(0)], more=more)
+
+        second_page, style, boxes = page['second_page'], page['STYLE'], page['_boxes']
+        rest = page['in_reading_order']([a for a in kept['data']['articles'] if not a['front']])
+        tried = []
+        for every, tall in page['LADDER']:
+            done = HTML(string=f'<style>{style}</style>{second_page(rest, every, tall)}').render()
+            lowest = max(low for _, _, low in boxes(done.pages[-1]))
+            tried.append((len(done.pages), lowest, every, tall))
+        fewest = min(pages for pages, _, _, _ in tried)
+        fullest = max(low for pages, low, _, _ in tried if pages == fewest)
+
+        chosen = answer['fits']['sheet']
+        mine = next(t for t in tried if (t[2], t[3]) == (chosen['every'], chosen['picture']))
+        assert mine[0] == fewest, f'{many} stories: {mine[0]} pages where {fewest} would do — {tried}'
+        assert mine[1] == pytest.approx(fullest), f'{many} stories: not the fullest last page — {tried}'
+        assert chosen['pages'] <= 2, chosen
+        assert [one for one in answer['page']['crowded'] if 'also today' in one] == []
+
+        at = starts(answer['page']['path'])
+        first_article = min(page for name, page in at.items() if name.startswith('story'))
+        assert first_article - at['more'] == chosen['pages'], 'the sheet printed is not the sheet chosen'
+
+
+@respx.mock
+def test_a_sheet_that_cannot_fit_two_pages_still_renders_and_says_so(digest, monkeypatch):
+    """Twenty real stories fit one page at the ladder's leaner end, so nothing a caller can send
+    reaches this. The ladder is cut to one generous setting to make it happen: the page still
+    renders, and `crowded` — the only report of it — fires."""
+    respx.get('https://pictures.test/0.jpg').mock(
+        return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
+    )
+    catalogue = digest(news={'many': 30, 'image': 'https://pictures.test/0.jpg', 'real_titles': True})
+    page = built(catalogue).__globals__['fit'].__globals__
+    monkeypatch.setitem(page, 'LADDER', ((1, 240.0),))
+
+    answer = built(catalogue)(
+        intro='Too much.',
+        picks=[pick(0)],
+        more=[{'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': 'world'} for n in range(1, 21)],
+    )
+
+    assert answer['fits']['sheet']['pages'] >= 3, answer['fits']['sheet']
+    assert any('also today' in one and 'runs to' in one for one in answer['page']['crowded']), answer['page']['crowded']
+    assert Path(answer['page']['path']).is_file()
+
+
+def recorded_summary(feed: str, title: str) -> str:
+    """One item's summary exactly as the feed sent it, out of its recorded fixture."""
+    items = ET.parse(REPO / 'tests' / 'fixtures' / 'news' / feed).iter('item')
+    return next(i for i in items if i.findtext('title') == title).findtext('description') or ''
+
+
+def test_a_summary_that_arrives_as_html_prints_as_its_first_sentence(digest):
+    """KW sends its summary as HTML — a paragraph, a link, and character codes. Escaped as it
+    came, the page printed the angle brackets."""
+    summary = recorded_summary('kw-west-vlaanderen.xml', 'Ardooise senioren nemen sportieve start')
+    assert '<p>' in summary, 'the fixture no longer carries what this is about'
+
+    answer = built(digest(news={'many': 4, 'summary': summary}))(
+        intro='Markup.',
+        picks=[pick(0)],
+        more=[{'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'regional'}],
+    )
+
+    prose = text_of(answer['page']['path'])
+    assert 'Na een welverdiende pauze zijn de senioren opnieuw gestart met hun wekelijkse sportuurtje.' in prose
+    assert '<' not in prose, 'markup reached the page'
+
+
+@respx.mock
+def test_a_fuller_second_page_does_not_beat_a_single_page(digest, monkeypatch):
+    """Fewest pages first. On the real ladder a two-page setting has never filled its last page
+    better than the best one-page setting did, so the two rules have agreed on every day
+    measured — this forces the case where they would not. Ten stories at one tall picture each
+    fill most of a second page; at the lean setting they fit one page with room over. One page
+    wins."""
+    respx.get('https://pictures.test/0.jpg').mock(
+        return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
+    )
+    catalogue = digest(news={'many': 14, 'image': 'https://pictures.test/0.jpg', 'real_titles': True})
+    tool = built(catalogue).__globals__
+    real_fit, kept = tool['fit'], {}
+    page = real_fit.__globals__
+    monkeypatch.setitem(page, 'LADDER', ((1, 170.0), (8, 44.0)))
+
+    def keep(intro, data, log):
+        kept['data'] = data
+        return real_fit(intro, data, log)
+
+    monkeypatch.setitem(tool, 'fit', keep)
+    answer = built(catalogue)(
+        intro='One page.',
+        picks=[pick(0)],
+        more=[{'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': 'world'} for n in range(1, 11)],
+    )
+
+    from weasyprint import HTML
+
+    rest = page['in_reading_order']([a for a in kept['data']['articles'] if not a['front']])
+    measured = {}
+    for every, tall in page['LADDER']:
+        done = HTML(string=f'<style>{page["STYLE"]}</style>{page["second_page"](rest, every, tall)}').render()
+        measured[every] = (len(done.pages), max(low for _, _, low in page['_boxes'](done.pages[-1])))
+    assert measured[1][0] == 2 and measured[8][0] == 1, measured
+    assert measured[1][1] > measured[8][1], f'the case this is about did not arise: {measured}'
+
+    chosen = answer['fits']['sheet']
+    assert (chosen['every'], chosen['picture'], chosen['pages']) == (8, 44.0, 1), chosen
+
+
+def test_a_summary_encoded_twice_prints_nothing_rather_than_its_codes(digest):
+    """ROB tv encodes twice: a summary of three spaces arrives as `&amp;nbsp;` three times,
+    which reads once as `&nbsp;` — and that is what the sheet would have printed."""
+    summary = recorded_summary('robtv.xml', 'Nieuws donderdag 17 september')
+    assert '&amp;nbsp;' in summary, 'the fixture no longer carries what this is about'
+
+    answer = built(digest(news={'many': 4, 'summary': summary}))(
+        intro='Encoded.',
+        picks=[pick(0)],
+        more=[{'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'regional'}],
+    )
+
+    prose = text_of(answer['page']['path'])
+    assert 'nbsp' not in prose and '&' not in prose, 'a character code reached the page'
+
+
+@respx.mock
+def test_a_picture_that_will_not_come_is_asked_for_once_per_build(digest):
+    """The sheet is rendered once per setting on the ladder. A failed picture that is not
+    remembered is asked for again every time, each for up to fifteen seconds."""
+    dead = respx.get('https://pictures.test/0.jpg').mock(return_value=httpx.Response(404))
+    answer = built(digest(news={'many': 8, 'image': 'https://pictures.test/0.jpg'}))(
+        intro='No pictures.',
+        picks=[pick(0)],
+        more=[{'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': 'world'} for n in range(1, 6)],
+    )
+
+    assert dead.call_count == 1, f'one dead address was asked for {dead.call_count} times'
+    assert answer['page']['crowded'] == []
+
+
+def test_the_brief_lets_a_category_have_what_the_day_has():
+    """The sheet has no sections, so nothing looks broken with one story in it — and the brief
+    stops asking Claude to bend the news to the layout."""
+    brief = ' '.join((REPO / '.harry' / 'jobs' / 'morning-page' / 'JOB.md').read_text(encoding='utf-8').split())
+
+    assert 'about four in each category' not in brief.lower()
+    assert 'looks broken' not in brief
+    assert 'A category gets what the day has' in brief

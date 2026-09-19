@@ -29,12 +29,29 @@ calendar's colour, with a legend naming only the calendars that have something o
 Overlapping events get columns, and **the columns are local** — three meetings colliding at
 09:00 do not make a lone 20:00 event one third of a column wide.
 
-**A second sheet.** Everything else worth knowing, three cards across, in sections: at home,
-abroad, AI and technology, culture, basketball, and one more thing. A section with nothing in
-it is not drawn — on a day with no basketball, and that is most days, an empty heading would
-say a source is broken when the truth is that nothing happened.
+**The timetable reaches the foot of the page.** An hour is between 18 and 34 points tall,
+whatever fills the column. A quiet day shows later hours rather than stopping short: one
+meeting at half past nine gives a timetable running into the afternoon. A day with nothing
+timed shows 07:00 to 21:00. A day too long to fit at 18 points an hour keeps its hours
+readable, and the answer's `crowded` says the day column did not fit on the front sheet.
 
-**Then a page per article**, in the same order the sections run. Source and subject as a
+**"Other news →"** sits in the head of the news column, beside "In this page", and takes you
+to the second sheet. On a day with no second sheet it is not there.
+
+**A second sheet.** Everything else worth knowing, in three columns with rules between them,
+in the paper's order: at home, abroad, AI and technology, culture, basketball, nearby, and
+the one worth knowing. There are no section headings — each story carries its topic's mark
+beside its source, so a subject with one story in it costs one story's room. The story opening
+each run gets its picture, a larger headline and the first sentence of its summary; the rest
+are headline and source.
+
+**The second sheet fits itself.** How often a story gets a picture, and how tall, is tried
+nine ways, from a picture every second story at 86 points to one every eighth at 44. Harry
+keeps the setting with the fewest pages, then the one that fills its last page best — so a
+day that fits one page gets one, and a heavy day gets two. The answer's `fits.sheet` says
+which it chose. If a day ever needs three, the page still renders and `crowded` says so.
+
+**Then a page per article**, in the paper's order. Source and subject as a
 kicker, the headline, the picture, Claude's note set apart, and the text in two columns. At
 the foot: the other pieces on the same story as full rows, and the ways out.
 
@@ -93,9 +110,9 @@ Every section fails on its own. **The page renders with any of them gone.**
 | What is missing | What you get | What reaches Slack |
 |---|---|---|
 | No weather connector, or it raises | The panel is absent; everything else is untouched | Nothing — weather is the deliberate exception |
-| The calendar raises, or its password lapsed | No timetable; the six stories fill the sheet | The calendar connector's own line |
+| The calendar raises, or its password lapsed | An empty timetable, 07:00 to 21:00; the six stories beside it | The calendar connector's own line |
 | A story's text cannot be fetched | Its page, with the headline, your note and the feed's own summary, saying the full text was unavailable | The news connector's own line |
-| A picture will not come | The story without it. Nothing is retried beyond the one browser User-Agent | Nothing — a feed with no pictures is a feed, not a fault |
+| A picture will not come | The story without it. Nothing is retried beyond the one browser User-Agent, and a failed address is not asked for again in the same build | Nothing — a feed with no pictures is a feed, not a fault |
 | A calendar has no colour assigned | Its events in grey, and the legend says so | Nothing |
 | No tablet, or `deliver=false` | The page on disk, and the answer says where | Nothing |
 | **The task never fired at all** | Yesterday's paper, and no error anywhere | **`morning-page has not run today`**, from the watchdog |

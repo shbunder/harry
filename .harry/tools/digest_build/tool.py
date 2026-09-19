@@ -39,8 +39,8 @@ from the bottom of the page resolved to nothing and raised "no candidate is …,
 on", which is not what had happened at all."""
 
 MOST_MORE = 20
-"""Second-sheet stories. Past about a dozen they do not fit on one sheet and the answer says
-so; twenty is the point at which it stops being worth rendering to find out."""
+"""Second-sheet stories. The sheet fits itself to one page or two, and twenty real stories fit
+one at its leaner settings; past twenty it is not a glance any more."""
 
 
 class Unknown(Exception):

@@ -1,13 +1,17 @@
 """The morning page, composed.
 
 One front sheet — masthead, weather, Claude's intro, the day's timetable beside six stories —
-then a second sheet of everything else grouped by subject, then a page per article.
+then a second sheet of everything else in three columns, then a page per article.
 
-**The sheet is laid out twice.** The intro is Claude's, so nobody knows how deep it runs until
-it has been set, and the all-day band is as tall as today happens to be. A guessed constant
-was wrong by 40 points in both directions on consecutive days. So: set it once at a
+**The front sheet is laid out twice.** The intro is Claude's, so nobody knows how deep it runs
+until it has been set, and the all-day band is as tall as today happens to be. A guessed
+constant was wrong by 40 points in both directions on consecutive days. So: set it once at a
 deliberately short scale, read where the timetable actually begins, and give it every point
 between there and the bottom margin.
+
+**The second sheet is laid out once per setting on `LADDER`**, and kept at the fewest pages,
+then the fullest last page — for the same reason: what twenty stories take is not known until
+they have been set.
 """
 
 from __future__ import annotations
@@ -21,12 +25,14 @@ from typing import Any
 import httpx
 
 from .marks import TOPICS, badge, face, in_reading_order
-from .sheet import PAGE, STYLE
-from .timetable import hour_height, timetable
+from .sheet import LADDER, PAGE, STYLE
+from .timetable import timetable
 
 _SHOTS: dict[str, str] = {}
-"""Pictures already fetched, by address. A build asks for the same thumbnail twice — once in
-the index and once at the foot of an article — and the second is a dictionary lookup.
+"""Pictures already asked for, by address — and `''` for one that would not come. A build asks
+for the same picture many times: in the index, at the foot of an article, and once for every
+setting the second sheet is tried at. A failure is remembered too, because each attempt can
+wait fifteen seconds and a dead address was once asked for twenty-four times in one build.
 
 **Emptied at the start of every build.** Harry runs for weeks on a NUC, and yesterday's
 addresses are never asked for again — so without `forget()` this is twenty base64 images a
@@ -45,7 +51,7 @@ def picture(url: str | None) -> str:
     candidates carry about thirty pictures and six get printed. Embedding is not optional: a
     PDF cannot reference a remote image, so the bytes have to be in the file.
 
-    Fetched at most once per address per build, and a picture that will not come costs the
+    Asked for at most once per address per build, and a picture that will not come costs the
     picture. The story, its headline, its note and its text are untouched.
     """
     if not url:
@@ -69,6 +75,7 @@ def picture(url: str | None) -> str:
         )
         got.raise_for_status()
     except httpx.HTTPError:
+        _SHOTS[url] = ''
         return ''
     _SHOTS[url] = 'data:image/jpeg;base64,' + base64.b64encode(got.content).decode()
     return _SHOTS[url]
@@ -137,20 +144,16 @@ def index_entry(a: dict, *, also: bool = True) -> str:
     )
 
 
-def to_a_glance(headline: str, most: int = 62) -> str:
-    """A headline cut at a word, with an ellipsis, or left alone if it already fits.
-
-    A card clips at two lines whatever happens — a grid whose rows are all one height is what
-    makes an inside page read like a newspaper. Cutting here as well means the reader sees a
-    sentence that ends, rather than one that stops in the middle of "afbraakwerken".
+def to_a_glance(line: str, most: int) -> str:
+    """A line cut at a word, with an ellipsis, or left alone if it already fits — so the reader
+    sees a phrase that ends, rather than one that stops in the middle of "afbraakwerken".
 
     Counting characters, not measuring type: it is a rule that can be written down, which is
-    the only kind of work Harry does. Being a few characters shy of the clip is harmless; the
-    clip is still there for the headline that beats the estimate.
+    the only kind of work Harry does.
     """
-    if len(headline) <= most:
-        return headline
-    kept = headline[:most].rsplit(' ', 1)[0].rstrip(' ,;:–-')
+    if len(line) <= most:
+        return line
+    kept = line[:most].rsplit(' ', 1)[0].rstrip(' ,;:–-')
     return f'{kept}…'
 
 
@@ -159,11 +162,34 @@ def short(headline: str, most: int = 38) -> str:
     return to_a_glance(headline, most)
 
 
-def article_page(a: dict, family: list[dict], before: dict | None, after: dict | None) -> str:
+def gist(summary: str | None, most: int = 120) -> str:
+    """The first sentence of a feed's summary, as plain text, cut at a word within `most`.
+
+    Plain because a summary is not always text. KW sends a paragraph, a link and character
+    codes such as `&#8230;`, and escaping that as it came printed the angle brackets on the
+    page. So the tags are dropped and the codes read — a rule, not a rewording: every word
+    printed is the feed's own.
+
+    **Until nothing changes, three times at most**, because ROB tv encodes twice: its summary
+    arrives as `&amp;nbsp;`, which reads once as `&nbsp;` and only the second time as a space.
+    """
+    text = summary or ''
+    for _ in range(3):
+        plain = html.unescape(re.sub(r'<[^>]+>', ' ', text))
+        if plain == text:
+            break
+        text = plain
+    text = ' '.join(text.split())
+    ends = text.find('. ')
+    return text[: ends + 1] if 0 < ends < most else to_a_glance(text, most)
+
+
+def article_page(a: dict, family: list[dict], before: dict | None, after: dict | None, more: bool) -> str:
     """One story's page.
 
     `family` is the other pieces on the same story; `before` and `after` are its neighbours in
-    the paper's order.
+    the paper's order. `more` says whether there is a second sheet to go back to — on a day
+    with none, a link to it would lead nowhere.
 
     **The arrows only ever mean travel.** `←` is the story before this one and `→` is the one
     after, in the order the paper is read. Jumping home is not a direction, so the front page
@@ -187,7 +213,7 @@ def article_page(a: dict, family: list[dict], before: dict | None, after: dict |
         # The kicker carries `string-set`, so it holds the source and nothing else — a link
         # inside it would print the whole of "← The front page" in the running footer.
         f'<div class="top"><div class="kicker">{escaped(a["source"])}'
-        + (f'<span class="subject" style="color:{topic[2]}"> · {escaped(topic[0])}</span>' if topic else '')
+        + (f'<span class="subject" style="color:{topic[1]}"> · {escaped(topic[0])}</span>' if topic else '')
         + '</div><div class="back"><a href="#top">← The front page</a></div></div>'
         + (f'<a class="partof" href="#{lead["anchor"]}">← Part of: {escaped(lead["title"])}</a>' if lead else '')
         + f'<h1>{escaped(a["title"])}</h1>'
@@ -218,7 +244,8 @@ def article_page(a: dict, family: list[dict], before: dict | None, after: dict |
             else '<div class="step back"></div>'
         )
         + '<div class="step home"><a href="#top">The front page</a>'
-        + '<a href="#more">Other articles</a></div>'
+        + ('<a href="#more">Other news</a>' if more else '')
+        + '</div>'
         + (
             f'<div class="step on"><a href="#{after["anchor"]}">Next →'
             f'<span>{escaped(short(after["title"]))}</span></a></div>'
@@ -229,25 +256,28 @@ def article_page(a: dict, family: list[dict], before: dict | None, after: dict |
     )
 
 
-def card(a: dict) -> str:
-    """One story on the second page: a picture, a topic mark, a headline, a source.
+def story(a: dict, *, opens: bool, tall: float) -> str:
+    """One story on the second sheet.
 
-    Bigger than an index row and shaped like a newspaper's inside page — the front sheet has
-    to fit a day's timetable beside it and the second has a whole page to spend. The whole
-    card is one link, and its companions are links of their own beneath it.
+    **The story opening a run leads it**: its picture, `tall` points high, a larger headline,
+    and the first sentence of its summary. The others are headline and source — a column of
+    pictures is a catalogue, and the white between a few of them is what lets a headline be
+    read. A story with no picture or no summary leads with what it has.
 
-    **No note here, even when Claude wrote one.** The front page argues for six stories; the
-    second one is a glance across everything else, and a paragraph under each card turns a
-    page you can scan into a page you have to read. The note is still on the story's own page.
+    Every headline is printed whole: a narrow column wraps it rather than clipping it. No note,
+    even when Claude wrote one — the front page argues for six stories and this is a glance
+    across the rest; the note is on the story's own page. Its companions each get a line.
     """
-    shot = picture(a['shot'])
+    shot = picture(a['shot']) if opens else ''
+    said = gist(a.get('summary')) if opens else ''
     companions = a.get('also') or []
     return (
-        '<div class="card">'
-        + (f'<a class="shot" href="#{a["anchor"]}"><img src="{shot}"></a>' if shot else '')
-        + f'<a class="head" href="#{a["anchor"]}">{escaped(to_a_glance(a["title"]))}</a>'
-        + f'<div class="src">{badge(a.get("topic"), size=9)}'
-        f'<span>{escaped(a["source"])} · {a["published"][11:16]}</span></div>'
+        f'<div class="story{" opens" if opens else ""}"><a class="lead" href="#{a["anchor"]}">'
+        + (f'<img src="{shot}" style="height:{tall:.0f}pt">' if shot else '')
+        + f'<span class="head">{escaped(a["title"])}</span>'
+        + (f'<span class="gist">{escaped(said)}</span>' if said else '')
+        + f'<span class="src">{badge(a.get("topic"), size=9)}'
+        f'<span>{escaped(a["source"])} · {a["published"][11:16]}</span></span></a>'
         + (
             '<div class="also">'
             + ''.join(
@@ -262,46 +292,32 @@ def card(a: dict) -> str:
     )
 
 
-def second_page(articles: list[dict]) -> str:
-    """Everything worth knowing that is not on the front, grouped by topic and in the paper's
-    own order: home, abroad, technology, culture, sport, and the one worth knowing.
+def second_page(articles: list[dict], every: int, tall: float) -> str:
+    """Everything worth knowing that is not on the front, in three columns and in the paper's
+    own order: home, abroad, technology, culture, sport, nearby, and the one worth knowing.
 
-    A section with nothing in it is not drawn. An empty heading over white space says a
-    source is broken when the truth is that nothing happened in it today — and on a day with
-    no basketball, which is most days, a "Basketball" heading with nothing under it would be
-    on the page every morning.
+    **No section headings.** Each story carries its topic's mark instead. A heading costs its
+    height whether it heads one story or four, and a section of two left half a row white — so
+    the sheet read as empty, and the brief asked for four a category to hide it.
+
+    Every `every`-th story opens a run, with a picture `tall` points high. Which setting a day
+    gets is `fit`'s to decide.
     """
     if not articles:
         return ''
-    sections = ''
-    for name, (_, heading, colour, _shape) in TOPICS.items():
-        inside = [a for a in articles if a.get('topic') == name]
-        if not inside:
-            continue
-        sections += (
-            f'<section class="group"><h2 style="border-color:{colour}">'
-            f'{badge(name, size=12)}<span>{escaped(heading)}</span>'
-            f'<span class="count">{len(inside)}</span></h2>'
-            f'<div class="cards">{"".join(card(a) for a in inside)}</div></section>'
-        )
-    loose = [a for a in articles if a.get('topic') not in TOPICS]
-    if loose:
-        sections += (
-            '<section class="group"><h2><span>Also</span></h2><div class="cards">'
-            + ''.join(card(a) for a in loose)
-            + '</div></section>'
-        )
+    stories = ''.join(story(a, opens=place % every == 0, tall=tall) for place, a in enumerate(articles))
     return (
         '<div class="sheet two" id="more"><div class="colhead">'
         '<span class="label">Also today</span>'
         f'<span class="label">{len(articles)} more</span>'
         '<span class="back"><a href="#top">← The front page</a></span></div>'
-        f'{sections}</div>'
+        f'<div class="columns">{stories}</div></div>'
     )
 
 
-def compose(intro: str, data: dict, room: float) -> str:
-    """The whole document, with `room` points of column for the timetable."""
+def compose(intro: str, data: dict, room: float, sheet: tuple[int, float] = LADDER[0]) -> str:
+    """The whole document, with `room` points of column for the timetable and the second sheet
+    set at `sheet` — a picture every so many stories, and how tall."""
     today, forecast = data['today'], data['forecast']
     day_events, articles = data['day_events'], data['articles']
 
@@ -312,16 +328,12 @@ def compose(intro: str, data: dict, room: float) -> str:
         a['number'] = place
     rest = in_reading_order([a for a in articles if not a['front']])
     index = ''.join(index_entry(a) for a in front)
-    inside = second_page(rest)
-    # The last thing under the six is the way to the rest. Without it the second sheet is
-    # reachable only by swiping, and a reader who reads the front page and stops never learns
-    # there was more.
-    onward = (
-        f'<a class="onward" href="#more"><span class="what">Other articles</span>'
-        f'<span class="how">{len(rest)} more, by subject →</span></a>'
-        if rest
-        else ''
-    )
+    inside = second_page(rest, *sheet)
+    # The way to the rest, in the head of the column. Without it the second sheet is reachable
+    # only by swiping, and a reader who reads the front page and stops never learns there was
+    # more. A `span` around the link because WeasyPrint writes no link for an `<a>` that is
+    # itself a flex item, and the head is a flex row.
+    onward = '<span class="onward"><a href="#more">Other news →</a></span>' if rest else ''
 
     # The article pages run in the paper's order too, front-page stories and second-page ones
     # together: the reader who taps a card on page two lands in the same sequence they would
@@ -339,7 +351,7 @@ def compose(intro: str, data: dict, room: float) -> str:
     for place, (a, family) in enumerate(sequence):
         before = sequence[place - 1][0] if place else None
         after = sequence[place + 1][0] if place + 1 < len(sequence) else None
-        pages += article_page(a, family, before, after)
+        pages += article_page(a, family, before, after, more=bool(rest))
 
     word = forecast.get('summary') or ''
     week = today.isocalendar().week
@@ -366,14 +378,11 @@ def compose(intro: str, data: dict, room: float) -> str:
     <div class="colhead"><span class="label">The day</span>
       <span class="label">{len(day_events)} entries</span></div>
     {data['legend']}
-    {timetable(day_events, data['palette'], hour_height(day_events, room))}
+    {timetable(day_events, data['palette'], room)}
   </div>
   <div class="right">
-    <div class="colhead"><span class="label">In this page</span>
-      <span class="label">{len(front)} articles</span></div>
+    <div class="colhead"><span class="label">In this page</span>{onward}</div>
     <div class="list">{index}</div>
-    <div class="filler"></div>
-    {onward}
   </div>
 </div>
 {inside}
@@ -407,7 +416,8 @@ def _boxes(page) -> list[tuple[str, float, float]]:
 
 
 def fit(intro: str, data: dict, log: Any) -> tuple[str, dict]:
-    """Lay the sheet out twice, so the timetable reaches the bottom of the page.
+    """Lay the front sheet out twice, so the timetable reaches the bottom of the page, and the
+    second sheet once per setting, so it fills the pages it takes.
 
     The intro is Claude's, so nobody knows how deep it runs until it has been set, and the
     all-day band is as tall as today happens to be. A guessed constant was wrong by 40pt in
@@ -444,28 +454,58 @@ def fit(intro: str, data: dict, log: Any) -> tuple[str, dict]:
         fills,
         fills - have,
     )
-    return compose(intro, data, room=room), {
+    sheet = settle(in_reading_order([a for a in data['articles'] if not a['front']]), log)
+    return compose(intro, data, room=room, sheet=(sheet['every'], sheet['picture'])), {
         'timetable': round(room, 1),
         'column': round(have, 1),
         'news': round(fills, 1),
+        'sheet': sheet,
     }
 
 
+TOP = 34.0  # the page's content starts here: 34pt of top margin
+
+
+def settle(articles: list[dict], log: Any) -> dict:
+    """The setting the second sheet is set at: the fewest pages, then the fullest last page.
+
+    Every setting on `LADDER` is tried by rendering the sheet on its own — the stylesheet and
+    the sheet, nothing else — which costs about a second each once the pictures are fetched.
+    **Fewest pages first**, because a day that fits one page should get one: a fuller second
+    page is not worth turning to. Among those, the one that leaves least white under its
+    columns. A tie goes to the more generous setting, which comes first.
+
+    No fill is too low. The page can hold only what the day gave — three stories fill a third
+    of a page at any setting — and adding stories is Claude's call, not Harry's.
+    """
+    from weasyprint import HTML
+
+    if not articles:
+        return {'every': LADDER[0][0], 'picture': LADDER[0][1], 'pages': 0, 'filled': 0.0}
+    tried = []
+    for every, tall in LADDER:
+        done = HTML(string=f'<style>{STYLE}</style>{second_page(articles, every, tall)}').render()
+        lowest = max((low for _, _, low in _boxes(done.pages[-1])), default=TOP)
+        tried.append((len(done.pages), (lowest - TOP) / (BOTTOM - TOP), every, tall))
+    pages, filled, every, tall = min(tried, key=lambda one: (one[0], -one[1]))
+    log.info(
+        'the second sheet: %d stories set with a picture every %d at %.0fpt, %d page(s), the last %.0f%% full',
+        len(articles),
+        every,
+        tall,
+        pages,
+        filled * 100,
+    )
+    return {'every': every, 'picture': tall, 'pages': pages, 'filled': round(filled, 2)}
+
+
 SECOND_SHEET_PAGES = 2
-"""How many pages "also today" may run to before it counts as crowded.
+"""How many pages "also today" may run to before it counts as crowded: the front page, at most
+two pages of index, then the articles — the owner's rule.
 
-It was one. The second sheet then held about a dozen stories and a category with a single
-story in it looked broken rather than quiet — so the brief now asks for up to twenty, about
-four in each category the day supports, and two pages is what a full second sheet looks like.
-
-**Three pages is reachable, and was reached.** This said otherwise for a day, on the strength of
-twenty test stand-ins that made two pages. On 2026-09-19 a real morning ran the sheet to three
-and this reported it — real headlines are longer, every card by then carried a picture, and
-companions add a line under a card. The claim was measured on the wrong thing.
-
-The sheet has since gone four across, which on one heavy day put five of six sections on the
-first page. `MOST_MORE` still refuses a twenty-first story; this is the guard for the day
-twenty fill more than two pages anyway."""
+`settle` keeps the sheet to the fewest pages the ladder can reach, and twenty real stories fit
+one at its leaner end, so this is not expected to fire. It is the report for the day it does:
+the sheet still renders, one page longer, and the answer says so."""
 
 
 def render(html: str, where: Path, log: Any) -> dict:
