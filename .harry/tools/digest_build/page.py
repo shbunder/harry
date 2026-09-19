@@ -165,6 +165,9 @@ def short(headline: str, most: int = 38) -> str:
 def gist(summary: str | None, most: int = 120) -> str:
     """The first sentence of a feed's summary, as plain text, cut at a word within `most`.
 
+    120 characters is about four lines of the sheet's small type under a headline: enough for
+    a sentence that says what happened, short enough that the opener stays a headline.
+
     Plain because a summary is not always text. KW sends a paragraph, a link and character
     codes such as `&#8230;`, and escaping that as it came printed the angle brackets on the
     page. So the tags are dropped and the codes read — a rule, not a rewording: every word
@@ -336,7 +339,7 @@ def compose(intro: str, data: dict, room: float, sheet: tuple[int, float] = LADD
     onward = '<span class="onward"><a href="#more">Other news →</a></span>' if rest else ''
 
     # The article pages run in the paper's order too, front-page stories and second-page ones
-    # together: the reader who taps a card on page two lands in the same sequence they would
+    # together: the reader who taps a story on page two lands in the same sequence they would
     # have reached by turning pages.
     # One flat sequence: every story and every companion, in the order the paper is read.
     # Previous and Next walk this list, so they never point at a page that is not there.
@@ -473,7 +476,7 @@ def settle(articles: list[dict], log: Any) -> dict:
     the sheet, nothing else — which costs about a second each once the pictures are fetched.
     **Fewest pages first**, because a day that fits one page should get one: a fuller second
     page is not worth turning to. Among those, the one that leaves least white under its
-    columns. A tie goes to the more generous setting, which comes first.
+    columns.
 
     No fill is too low. The page can hold only what the day gave — three stories fill a third
     of a page at any setting — and adding stories is Claude's call, not Harry's.
@@ -503,9 +506,12 @@ SECOND_SHEET_PAGES = 2
 """How many pages "also today" may run to before it counts as crowded: the front page, at most
 two pages of index, then the articles — the owner's rule.
 
-`settle` keeps the sheet to the fewest pages the ladder can reach, and twenty real stories fit
-one at its leaner end, so this is not expected to fire. It is the report for the day it does:
-the sheet still renders, one page longer, and the answer says so."""
+`settle` keeps the sheet to the fewest pages the ladder can reach, and eighteen real stories
+fit one page at 96%. **Three pages is still reachable**: companions add a line each under their
+story and nothing caps them, so twenty stories with nine companions apiece run to three even
+at the leanest setting. This said three pages could not be reached once before, on the
+strength of test stand-ins, and a real morning reached them the next day. When it fires the
+sheet still renders, a page longer, and the answer says so."""
 
 
 def render(html: str, where: Path, log: Any) -> dict:
@@ -529,7 +535,10 @@ def render(html: str, where: Path, log: Any) -> dict:
         crowded.append('the day column did not fit on the front sheet')
     spread = [n for n, one in enumerate(document.pages, start=1) if 'sheet' in [c for c, _, _ in _boxes(one)]]
     if len(spread) > SECOND_SHEET_PAGES:
-        crowded.append(f'"also today" runs to {len(spread)} pages — one or two stories too many')
+        crowded.append(
+            f'"also today" runs to {len(spread)} pages, past the {SECOND_SHEET_PAGES} it should — '
+            'fewer stories, or fewer companions under them, would bring it back'
+        )
     for what in crowded:
         log.warning('%s', what)
 

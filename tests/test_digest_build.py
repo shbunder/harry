@@ -11,6 +11,7 @@ what goes where, in which order, and what happens when a piece of it is missing.
 from __future__ import annotations
 
 import datetime as dt
+import html
 import json
 import re
 import sys
@@ -166,6 +167,28 @@ def the_hours(html: str) -> tuple[list[int], float]:
     grid = re.search(r'<div class="grid" style="height:([\d.]+)pt">', html)
     assert grid, 'no timetable on the page'
     return hours, float(grid.group(1))
+
+
+def headline_sizes(html: str) -> dict[bool, set[float]]:
+    """The font size every second-sheet headline is laid out at, split by whether its story
+    opens a run."""
+    from weasyprint import HTML
+
+    sizes: dict[bool, set[float]] = {True: set(), False: set()}
+
+    def walk(box, opens: bool | None) -> None:
+        element = getattr(box, 'element', None)
+        classes = (element.get('class') or '').split() if element is not None else []
+        if 'story' in classes:
+            opens = 'opens' in classes
+        if 'head' in classes and opens is not None:
+            sizes[opens].add(round(float(box.style['font_size']), 2))
+        for child in getattr(box, 'children', ()):
+            walk(child, opens)
+
+    for page in HTML(string=html).render().pages:
+        walk(page._page_box, None)  # pyright: ignore[reportPrivateUsage]
+    return sizes
 
 
 def links(path: str) -> list[list[tuple[str, float, float]]]:
@@ -351,17 +374,22 @@ def test_no_weather_connector_costs_the_panel_and_not_the_page(digest):
     assert answer['page']['pages'] >= 2
 
 
-def test_a_calendar_that_raises_costs_the_column_and_not_the_page(digest, caplog):
+def test_a_calendar_that_raises_costs_the_column_and_not_the_page(digest, caplog, monkeypatch):
     """A lapsed password is the case this is really about, and it must not take the news
-    with it."""
+    with it. What is left is an empty day, 07 to 21, sized to the column like any other."""
     import logging
 
     built_now = digest(icloud={'raises': 'the password was refused'}, news={'many': 4})
+    caught = drawn(built_now, monkeypatch)
     with caplog.at_level(logging.WARNING, logger='harry.capability.digest_build'):
-        answer = built(built_now)(intro='No agenda.', picks=[pick(0)])
+        answer = built(built_now)(intro=INTRO, picks=[pick(0)])
 
     assert 'no agenda on the page' in caplog.text
     assert 'Why story 0 matters.' in text_of(answer['page']['path'])
+    hours, grid = the_hours(caught['html'])
+    assert hours == list(range(7, 22)), hours
+    assert abs(grid - answer['fits']['timetable']) < 0.5
+    assert answer['page']['crowded'] == [], answer['page']['crowded']
 
 
 def test_with_no_tablet_the_page_is_still_on_disk_and_the_answer_says_so(digest):
@@ -898,6 +926,7 @@ def test_with_no_second_sheet_nothing_offers_a_way_to_it(digest):
     or not it existed, so on such a day that link went nowhere."""
     answer = built(digest(news={'many': 4}))(intro='Front only.', picks=[pick(0), pick(1)])
 
+    assert answer['fits']['sheet']['pages'] == 0, 'a sheet that does not exist was measured'
     prose = text_of(answer['page']['path'])
     assert not says(prose, 'Other news'), 'a way to a sheet that is not there'
     assert says(prose, 'The front page'), 'the article pages lost their other way out'
@@ -1057,6 +1086,12 @@ def test_the_story_opening_each_run_leads_it(digest, monkeypatch):
 
     assert '<a class="one" href="#story6-1">' in stories[4], 'the companion lost its line'
 
+    # Larger as laid out, not as a class name: the size WeasyPrint gives each headline.
+    html = caught['html']
+    sizes = headline_sizes(html[: html.index('</style>') + len('</style>')] + the_sheet(html))
+    assert len(sizes[True]) == 1 and len(sizes[False]) == 1, sizes
+    assert min(sizes[True]) > max(sizes[False]), f"an opener's headline is not larger: {sizes}"
+
 
 @respx.mock
 def test_the_second_sheet_takes_the_fewest_pages_then_the_fullest_last_page(digest, monkeypatch):
@@ -1112,15 +1147,17 @@ def test_the_second_sheet_takes_the_fewest_pages_then_the_fullest_last_page(dige
 
 @respx.mock
 def test_a_sheet_that_cannot_fit_two_pages_still_renders_and_says_so(digest, monkeypatch):
-    """Twenty real stories fit one page at the ladder's leaner end, so nothing a caller can send
-    reaches this. The ladder is cut to one generous setting to make it happen: the page still
-    renders, and `crowded` — the only report of it — fires."""
+    """Three pages is reachable through the tool: twenty stories with nine companions apiece
+    run to three at every setting, because companions add a line each and nothing caps them.
+    That build takes fifty seconds, so here one setting is forced that lands the same twenty
+    plain stories on exactly three pages in three. The page still renders, and `crowded` — the
+    only report of it — names the count."""
     respx.get('https://pictures.test/0.jpg').mock(
         return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
     )
     catalogue = digest(news={'many': 30, 'image': 'https://pictures.test/0.jpg', 'real_titles': True})
     page = built(catalogue).__globals__['fit'].__globals__
-    monkeypatch.setitem(page, 'LADDER', ((1, 240.0),))
+    monkeypatch.setitem(page, 'LADDER', ((1, 90.0),))
 
     answer = built(catalogue)(
         intro='Too much.',
@@ -1128,9 +1165,37 @@ def test_a_sheet_that_cannot_fit_two_pages_still_renders_and_says_so(digest, mon
         more=[{'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it', 'topic': 'world'} for n in range(1, 21)],
     )
 
-    assert answer['fits']['sheet']['pages'] >= 3, answer['fits']['sheet']
-    assert any('also today' in one and 'runs to' in one for one in answer['page']['crowded']), answer['page']['crowded']
+    assert answer['fits']['sheet']['pages'] == 3, answer['fits']['sheet']
+    said = [one for one in answer['page']['crowded'] if 'also today' in one]
+    assert len(said) == 1 and said[0].startswith('"also today" runs to 3 pages'), answer['page']['crowded']
     assert Path(answer['page']['path']).is_file()
+
+
+@respx.mock
+def test_a_full_two_page_sheet_is_not_reported_as_crowded(digest):
+    """Two pages is what the owner allows, so two pages must not be reported — a report that
+    fires every heavy morning is one nobody reads. Twenty stories with two companions each
+    need two pages at every setting."""
+    respx.get('https://pictures.test/0.jpg').mock(
+        return_value=httpx.Response(200, content=A_PIXEL, headers={'content-type': 'image/png'})
+    )
+    answer = built(digest(news={'many': 30, 'image': 'https://pictures.test/0.jpg', 'real_titles': True}))(
+        intro='Two pages.',
+        picks=[pick(0)],
+        more=[
+            {
+                'id': f'vrt-2026-09-15-story-{n}-and-what-came-of-it',
+                'topic': 'world',
+                'also': ['vrt-2026-09-15-story-21-and-what-came-of-it', 'vrt-2026-09-15-story-22-and-what-came-of-it'],
+            }
+            for n in range(1, 21)
+        ],
+    )
+
+    at = starts(answer['page']['path'])
+    first_article = min(page for name, page in at.items() if name.startswith('story'))
+    assert answer['fits']['sheet']['pages'] == 2 and first_article - at['more'] == 2, answer['fits']['sheet']
+    assert [one for one in answer['page']['crowded'] if 'also today' in one] == [], answer['page']['crowded']
 
 
 def recorded_summary(feed: str, title: str) -> str:
@@ -1236,3 +1301,41 @@ def test_the_brief_lets_a_category_have_what_the_day_has():
     assert 'about four in each category' not in brief.lower()
     assert 'looks broken' not in brief
     assert 'A category gets what the day has' in brief
+
+
+def test_a_summary_with_a_long_first_sentence_is_cut_at_a_word(digest, monkeypatch):
+    """A first sentence past 120 characters is cut at a word, with an ellipsis — about four
+    lines of the sheet's small type, so the opener stays a headline with a line under it."""
+    sentence = (
+        'De gemeenteraad van Holsbeek besliste gisterenavond na een lange discussie over de '
+        'veiligheid van de schoolroute om de oversteek aan de Kortrijksebaan opnieuw aan te leggen '
+        'met een verhoogd plateau. Dat gebeurt in het voorjaar.'
+    )
+    catalogue = digest(news={'many': 4, 'summary': sentence})
+    caught = drawn(catalogue, monkeypatch)
+    built(catalogue)(
+        intro='Cut.', picks=[pick(0)], more=[{'id': 'vrt-2026-09-15-story-1-and-what-came-of-it', 'topic': 'regional'}]
+    )
+
+    printed = re.search(r'<span class="gist">([^<]*)</span>', the_sheet(caught['html']))
+    assert printed, 'the opener carries no summary line'
+    line = html.unescape(printed.group(1))
+    assert line.endswith('…') and len(line) <= 121, line
+    assert sentence.startswith(line[:-1]), "the words are not the feed's own"
+    assert 'verhoogd plateau' not in line
+
+
+def test_with_the_most_room_a_page_leaves_no_hour_is_taller_than_34pt(digest, monkeypatch):
+    """No intro and no weather is the most room the column ever gets. The arithmetic has no
+    34pt ceiling of its own — `span` says why — so this is what holds it, for a quiet day and
+    for one with nothing timed."""
+    for events in ([event('09:30', '11:30')], []):
+        catalogue = digest(sources=('icloud', 'news'), news={'many': 4}, icloud={'events': events})
+        caught = drawn(catalogue, monkeypatch)
+        answer = built(catalogue)(intro='', picks=[pick(0)])
+
+        hours, grid = the_hours(caught['html'])
+        assert answer['fits']['timetable'] > 400, f'{answer["fits"]["timetable"]}pt is not the most room there is'
+        assert grid / len(hours) <= 34.0, f'{grid / len(hours):.1f}pt an hour with {len(events)} event(s)'
+        assert max(hours) <= 23, hours
+        assert abs(grid - answer['fits']['timetable']) < 0.5

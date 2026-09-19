@@ -40,13 +40,19 @@ def span(day_events: list[dict], room: float) -> tuple[int, int, float]:
 
     **A quiet day shows more of itself rather than stretching.** Six hours at 34pt came to
     204pt of a 302pt column on 2026-09-19, and the bottom third of the front page was white. So
-    while the hours at 34pt would not fill the room, the day runs on an hour later — to 23:00
-    at most. The evening is the part of a quiet day still to be planned. That is also what
-    keeps an hour to 34pt: the day starts by 08:00, and sixteen hours at 34pt is taller than
-    any room a page leaves, so the day always runs on far enough first.
+    while the hours at 34pt would not fill the room, the day runs on an hour later. The evening
+    is the part of a quiet day still to be planned.
 
     A day with nothing timed, which is also a calendar that could not be read, shows 07 to 21
     and is sized the same way, so it fits the column like any other day.
+
+    **Why there is no 34pt ceiling in the arithmetic.** The most room a page leaves is about
+    466pt, measured with no intro at all. A timed day starts by 08:00, so running on to 23:00
+    gives it sixteen hours, 544pt at 34pt — more than that room, so the day always runs on far
+    enough before an hour would pass 34pt. A day with nothing timed has fifteen hours, which is
+    31pt each at 466pt. The test that builds a page with no intro holds both. The loop still
+    stops at 23:00, because that is where the clock does and it is what ends the loop, not
+    because any page reaches it.
     """
     timed = [e for e in day_events if not e['all_day']]
     if timed:
