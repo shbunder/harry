@@ -625,10 +625,11 @@ CONTENT_RIGHT = 509.34 - 34.0
 """The right edge of the text on every sheet: the Paper Pro's page less its right margin."""
 
 
-def strip_cells(html: str) -> list[tuple[float, float]]:
-    """Left and right edge of each hour's cell on the front sheet, in points, exactly as
-    WeasyPrint lays out the page `digest_build` rendered. Read off the layout rather than the
-    PDF, which says where a label starts and never where it ends."""
+def strip_cells(html: str) -> list[tuple[float, float, float]]:
+    """Left and right edge of each hour's cell on the front sheet, and where its time label's
+    text ends, in points, exactly as WeasyPrint lays out the page `digest_build` rendered. Read
+    off the layout rather than the PDF, which says where a label starts and never where it
+    ends."""
     from weasyprint import HTML
 
     def classes(box) -> list[str]:
@@ -643,10 +644,23 @@ def strip_cells(html: str) -> list[tuple[float, float]]:
                 return found
         return None
 
+    def text_ends(box) -> list[float]:
+        """The right edge of every run of text inside a box. Only text boxes carry `text`."""
+        own = [box.position_x + box.width] if isinstance(getattr(box, 'text', None), str) else []
+        return own + [end for child in getattr(box, 'children', ()) for end in text_ends(child)]
+
+    def label_end(cell) -> float:
+        label = next(child for child in cell.children if 't' in classes(child))
+        return max(text_ends(label))
+
     strip = find(HTML(string=html).render().pages[0]._page_box)
     assert strip is not None, 'no strip on the front sheet'
     return [
-        (round(cell.border_box_x() * 72 / 96, 2), round((cell.border_box_x() + cell.border_width()) * 72 / 96, 2))
+        (
+            round(cell.border_box_x() * 72 / 96, 2),
+            round((cell.border_box_x() + cell.border_width()) * 72 / 96, 2),
+            round(label_end(cell) * 72 / 96, 2),
+        )
         for cell in strip.children
         if 'h' in classes(cell)
     ]
@@ -686,11 +700,12 @@ def test_the_eleven_oclock_hour_sits_inside_the_right_margin(digest, monkeypatch
 
     cells = strip_cells(pages[-1])
     assert len(cells) == 5
-    assert [round(right - left, 1) for left, right in cells] == [25.0] * 5, 'no hour is squeezed'
+    assert [round(right - left, 1) for left, right, _ in cells] == [25.0] * 5, 'no hour is squeezed'
     assert [round(b[0] - a[1], 1) for a, b in zip(cells, cells[1:])] == [6.0] * 4
-    last = cells[-1][1]
-    assert last <= CONTENT_RIGHT, f'23:00 ends at {last}pt, past the margin at {CONTENT_RIGHT}pt'
-    assert last > CONTENT_RIGHT - 31.0, f'23:00 ends at {last}pt, a whole hour short of the edge'
+    assert all(end <= right for _, right, end in cells), 'every time fits its own cell, so none overlaps the next'
+    label, last = cells[-1][2], cells[-1][1]
+    assert label <= CONTENT_RIGHT, f'the 23:00 label ends at {label}pt, past the margin at {CONTENT_RIGHT}pt'
+    assert last > CONTENT_RIGHT - 31.0, f'the 23:00 cell ends at {last}pt, a whole hour short of the edge'
     assert answer['page']['crowded'] == []
 
 
@@ -710,8 +725,11 @@ def test_an_hourly_block_that_stops_before_eleven_draws_the_hours_it_has(digest,
     full = digest(news={'many': 4}, **sky())
     full_pages = captured(full, monkeypatch)
     built(full)(intro='Hourly.', picks=[pick(0)])
-    # Four cells, not five: an empty one for 23:00 would be a fifth.
-    assert strip_cells(pages[-1]) == strip_cells(full_pages[-1])[:4], 'each hour keeps its place'
+    # Four cells, not five: an empty one for 23:00 would be a fifth. The full strip is counted
+    # first, so two empty lists cannot agree.
+    full_cells = strip_cells(full_pages[-1])
+    assert len(full_cells) == 5
+    assert strip_cells(pages[-1]) == full_cells[:4], 'each hour keeps its place'
 
 
 def test_no_forecast_draws_dashes_with_no_place_and_no_sun(digest):
