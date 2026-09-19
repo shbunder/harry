@@ -37,6 +37,7 @@ rule.
 ## Notes
 
 <!-- Appended by `board.py note`. -->
+- **2026-09-19** — Reflection: pre-close verifier APPROVE WITH NOTES; traceability 8/8. Two Important findings acted on before merge in 747dd4b: the footer pattern ran across paragraphs (now the last paragraph only), and an empty summary was announced as present (now 'The feed carried no summary either'); two suggestions taken too (only tag-shaped tokens are stripped; the loop runs until nothing changes). Six mutants, all killed. Degraded path exercised: an unreadable article with KW, ROB tv and De Tijd summaries from recorded fixtures, plus three written edge cases. Scope drift: none. make check green on the merge commit with FEAT-260919-e9cab2 alongside (1023 passed).
 
 ## Lessons Learned
 
